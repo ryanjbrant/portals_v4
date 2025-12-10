@@ -14,81 +14,159 @@ interface VoiceOverlayProps {
 export const VoiceOverlay = ({ visible, statusText = "Listening...", navigationRef }: VoiceOverlayProps) => {
     const scale = useRef(new Animated.Value(1)).current;
     const opacity = useRef(new Animated.Value(0)).current; // Start hidden
-    // const navigation = useNavigation<any>(); // Removed
-
 
     const { voiceContext, toggleLike, addComment } = useAppStore();
     const [transcription, setTranscription] = useState("");
 
-    const stopAndProcess = async () => {
-        try {
-            // Stop any ongoing scale animation
-            scale.stopAnimation();
-            scale.setValue(1); // Reset scale
-            opacity.setValue(0); // Hide overlay
+    useEffect(() => {
+        if (visible) {
+            startSession();
+        } else {
+            // If it becomes invisible, we stop. 
+            // However, usually invisibility is triggered BY the stop. 
+            // If the user lifts finger, current flow in BottomTabNavigator sets isVoiceActive=false.
+            // We should treat visible=false as "User let go, stop and process".
 
-            setTranscription("Processing..."); // Give feedback
+            // NOTE: We only stop if we were actually recording.
+            // But checking internal state inside effect is tricky.
+            // We rely on stopAndProcess checking execution.
+            stopAndProcess();
+        }
+    }, [visible]);
+
+    const startSession = async () => {
+        setTranscription("");
+
+        // Show Overlay
+        Animated.timing(opacity, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true
+        }).start();
+
+        // Pulsing Animation
+        Animated.loop(
+            Animated.sequence([
+                Animated.timing(scale, {
+                    toValue: 1.5,
+                    duration: 1000,
+                    easing: Easing.linear,
+                    useNativeDriver: true
+                }),
+                Animated.timing(scale, {
+                    toValue: 1,
+                    duration: 1000,
+                    easing: Easing.linear,
+                    useNativeDriver: true
+                })
+            ])
+        ).start();
+
+        console.log('[VoiceOverlay] Starting Recording...');
+        await VoiceService.startRecording((metering) => {
+            // Optional: Use metering for animation power
+        });
+    };
+
+    const stopAndProcess = async () => {
+        // Stop Animation
+        scale.stopAnimation();
+        scale.setValue(1);
+
+        // We do NOT hide immediately, we wait for processing result to show text?
+        // Actually, let's keep it visible while processing, then hide after delay.
+
+        if (!VoiceService.audioRecording) {
+            // Not recording, maybe already processed or never started
+            Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+            return;
+        }
+
+        console.log('[VoiceOverlay] Stopping Recording...');
+        setTranscription("Processing...");
+
+        try {
             const uri = await VoiceService.stopRecording();
             await handleProcessing(uri);
         } catch (e) {
-            console.error("Error stopping recording or processing:", e);
-            setTranscription("Error processing voice.");
+            console.error("Error stopping/processing:", e);
+            setTranscription("Error.");
         }
-    };
 
-    // ... (useEffect remains same until handleProcessing) ...
+        // Hide after short delay to show result
+        setTimeout(() => {
+            Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+        }, 200);
+    };
 
     const handleProcessing = async (uri: string | null) => {
         try {
-            const result = await VoiceService.processCommand(uri, voiceContext);
+            console.log(`[VoiceOverlay] Processing with context: ${JSON.stringify(voiceContext)}`);
 
-            console.log("Voice Processing Complete", result);
+            // Timeout safety
+            const resultPromise = VoiceService.processCommand(uri, voiceContext);
+            const timeoutPromise = new Promise<{ action: string, text: string }>((_, reject) =>
+                setTimeout(() => reject(new Error("Timeout")), 10000)
+            );
+
+            const result = await Promise.race([resultPromise, timeoutPromise]) as any;
+
+            console.log("[VoiceOverlay] Result:", result);
 
             if (result.action === 'navigate' && result.params) {
                 const nav = navigationRef?.current || navigationRef;
                 if (nav && nav.navigate) {
                     nav.navigate(result.params.screen, result.params.params);
+                    setTranscription(result.text || "Navigating...");
                 } else {
                     console.warn("Navigation Ref unavailable");
+                    setTranscription("Navigation failed.");
                 }
             }
             else if (result.action === 'like_post' && result.params?.id) {
                 await toggleLike(result.params.id);
                 setTranscription("Liked!");
             }
-            else if (result.action === 'add_comment' && result.params?.id && result.params?.text) {
-                await addComment(result.params.id, result.params.text);
-                setTranscription("Comment added!");
+            else if (result.action === 'add_comment') {
+                // Handle different param shapes just in case
+                const id = result.params?.id || result.params?.postId;
+                const text = result.params?.text || result.params?.comment;
+
+                if (id && text) {
+                    await addComment(id, text);
+                    setTranscription("Comment added!");
+                } else {
+                    setTranscription("Couldn't add comment.");
+                }
             }
             else {
-                console.log("Voice Result:", result.text);
-                setTranscription(result.text || "Command processed.");
+                setTranscription(result.text || "Done.");
             }
         } catch (e) {
             console.error("Error processing voice command:", e);
-            Alert.alert("Error", "Failed to process voice command.");
-            setTranscription("Error processing voice.");
+            setTranscription("Error.");
         }
     };
 
-    if (!visible) return null;
+    // Optimization removed to avoid private property access
+    // if (!visible && (opacity as any)._value === 0) return null;
+    // Optimization: if strictly not visible and opacity is 0, don't render. 
+    // But opacity is animated. We can rely on pointerEvents or zIndex?
+    // Start with pointerEvents.
 
     return (
-        <View style={styles.container}>
+        <Animated.View style={[styles.container, { opacity }]} pointerEvents={visible ? 'auto' : 'none'}>
             {/* Reactive Circle */}
             <Animated.View style={[styles.circle, {
                 transform: [{ scale }],
-                opacity
+                opacity // Use animated opacity for the circle itself if needed, or container
             }]} />
-
-            {/* Core */}
-            <View style={styles.core} />
 
             {/* Text */}
             <View style={styles.textContainer}>
                 <Text style={styles.text}>{transcription || statusText}</Text>
             </View>
-        </View>
+        </Animated.View>
     );
 };
 
@@ -108,22 +186,10 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.1)',
         position: 'absolute',
     },
-    core: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: '#000',
-        justifyContent: 'center',
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 10,
-    },
     textContainer: {
         marginTop: 100,
-        height: 40, // Fixed height to prevent jump
+        height: 40,
+        paddingHorizontal: 20
     },
     text: {
         fontSize: 24,

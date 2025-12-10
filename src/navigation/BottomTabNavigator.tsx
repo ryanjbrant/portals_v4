@@ -55,7 +55,7 @@ const ComposeButton = ({ navigation }: { navigation: any }) => {
             onPress={() => navigation.navigate('Compose')}
             onLongPress={handleLongPress}
             onPressOut={handlePressOut}
-            delayLongPress={300}
+            delayLongPress={150}
             activeOpacity={1}
         >
             <Ionicons name="add" size={32} color="black" />

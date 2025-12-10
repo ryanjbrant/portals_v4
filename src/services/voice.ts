@@ -87,6 +87,8 @@ export const VoiceService = {
             1. NAVIGATION:
                - "search for [X]" -> { "action": "navigate", "params": { "screen": "Search", "params": { "query": "[X]" } } }
                - "go to my profile" -> { "action": "navigate", "params": { "screen": "Tabs", "params": { "screen": "Me" } } }
+               - "take me to the feed" / "home" -> { "action": "navigate", "params": { "screen": "Tabs", "params": { "screen": "Home" } } }
+               - "go to map" -> { "action": "navigate", "params": { "screen": "Tabs", "params": { "screen": "Map" } } }
                
             2. INTERACTION (Use Context if "this" or "current" is implied):
                - "like this post" (if Type=post) -> { "action": "like_post", "params": { "id": "${context?.currentId}" } }
@@ -97,7 +99,7 @@ export const VoiceService = {
             {
               "action": "navigate" | "like_post" | "add_comment" | "follow_user" | "none",
               "params": { ... },
-              "text": "Confirmation message."
+              "text": "Confirmation message or response."
             }
 
             Return ONLY raw JSON.

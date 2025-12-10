@@ -108,6 +108,7 @@ const styles = StyleSheet.create({
     activeTabText: {
         color: theme.colors.white,
         fontWeight: '700',
+        fontSize: 16,
     },
     indicator: {
         height: 2,
