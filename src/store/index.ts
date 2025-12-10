@@ -34,6 +34,7 @@ interface AppState {
     // Notifications
     notifications: Notification[];
     respondToRequest: (notificationId: string, status: 'accepted' | 'declined') => void;
+    addNotification: (notification: Notification) => void;
 
     // Drafts
     drafts: Draft[];
@@ -113,6 +114,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             n.id === id ? { ...n, status } : n
         )
     })),
+    addNotification: (n) => set((state) => ({ notifications: [n, ...state.notifications] })),
 
     // Drafts
     drafts: DRAFTS,

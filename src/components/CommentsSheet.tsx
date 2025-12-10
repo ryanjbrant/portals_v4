@@ -1,10 +1,14 @@
+// ... imports
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TextInput, TouchableOpacity, FlatList, Image, KeyboardAvoidingView, Platform, Keyboard, Animated, LayoutAnimation } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { FeedService } from '../services/feed';
-import { Comment } from '../types';
+import { Comment, User } from '../types';
+import { USERS } from '../mock';
+
+const QUICK_EMOJIS = ['🔥', '❤️', '😂', '👏', '😮', '😢', '😡', '👍', '🎉', '💯'];
 
 interface CommentsSheetProps {
     visible: boolean;
@@ -12,7 +16,9 @@ interface CommentsSheetProps {
     onClose: () => void;
 }
 
+// ... CommentItem component (unchanged)
 const CommentItem = ({ item, onReply, depth = 0 }: { item: Comment, onReply: (username: string, id: string) => void, depth?: number }) => {
+    // ... existing code ...
     const [showReplies, setShowReplies] = useState(false);
     const [isLiked, setIsLiked] = useState(item.isLiked);
     const [likes, setLikes] = useState(item.likes);
@@ -89,14 +95,16 @@ const CommentItem = ({ item, onReply, depth = 0 }: { item: Comment, onReply: (us
 export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) => {
     const [comments, setComments] = useState<Comment[]>([]);
     const [newComment, setNewComment] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [showUserList, setShowUserList] = useState(false);
+    const [showEmojiList, setShowEmojiList] = useState(false);
     const [replyingTo, setReplyingTo] = useState<{ username: string, id: string } | null>(null);
 
     const currentUser = useAppStore(state => state.currentUser);
+    const addNotification = useAppStore(state => state.addNotification);
     const flatListRef = useRef<FlatList>(null);
     const inputRef = useRef<TextInput>(null);
 
-    // Subscribe to comments when sheet opens
+    // Subscribe to comments
     useEffect(() => {
         if (visible && postId) {
             const unsubscribe = FeedService.subscribeToComments(postId, (updatedComments) => {
@@ -106,6 +114,8 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
         } else {
             setComments([]);
             setReplyingTo(null);
+            setShowUserList(false);
+            setShowEmojiList(false);
         }
     }, [visible, postId]);
 
@@ -115,15 +125,56 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
         inputRef.current?.focus();
     };
 
+    const handleTagUser = (user: User) => {
+        setNewComment(prev => prev + `@${user.username} `);
+        setShowUserList(false);
+        inputRef.current?.focus();
+    };
+
+    const handleEmoji = (emoji: string) => {
+        setNewComment(prev => prev + emoji);
+    };
+
+    const toggleEmojiList = () => {
+        if (showUserList) setShowUserList(false);
+        setShowEmojiList(!showEmojiList);
+    };
+
+    const toggleUserList = () => {
+        if (showEmojiList) setShowEmojiList(false);
+        setShowUserList(!showUserList);
+    };
+
     const handleSend = async () => {
         if (!newComment.trim() || !currentUser || !postId) return;
 
-        const text = newComment;
+        const text = newComment; // Capture text before clearing
         setNewComment('');
         setReplyingTo(null);
+        setShowUserList(false);
+        setShowEmojiList(false);
         Keyboard.dismiss();
 
         try {
+            // 1. Logic to find tagged users and notify them
+            const taggedUsernames = text.match(/@(\w+)/g)?.map(t => t.substring(1)) || [];
+            if (taggedUsernames.length > 0) {
+                USERS.forEach(user => {
+                    if (taggedUsernames.includes(user.username) && user.id !== currentUser.id) {
+                        console.log(`[Notification] Sending tag notification to ${user.username}`);
+                        addNotification({
+                            id: Date.now().toString() + Math.random(),
+                            type: 'comment',
+                            user: currentUser,
+                            message: `tagged you in a comment: "${text}"`,
+                            timestamp: 'Just now',
+                            read: false
+                        });
+                    }
+                });
+            }
+
+            // 2. Add Comment
             await FeedService.addComment(
                 postId,
                 currentUser.id,
@@ -132,11 +183,8 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
                 currentUser.username
             );
 
-            // Increment local feed count in store
             useAppStore.getState().addComment(postId, text);
 
-            // Scroll to bottom? No, usually stay. Maybe scroll to top if new?
-            // For now, simple behavior.
         } catch (error) {
             console.error("Failed to send comment:", error);
         }
@@ -144,6 +192,19 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
 
     const renderComment = ({ item }: { item: Comment }) => (
         <CommentItem item={item} onReply={handleReply} />
+    );
+
+    const renderUserItem = ({ item }: { item: User }) => (
+        <TouchableOpacity style={styles.userItem} onPress={() => handleTagUser(item)}>
+            <Image source={{ uri: item.avatar }} style={styles.userAvatar} />
+            <Text style={styles.userUsername}>{item.username}</Text>
+        </TouchableOpacity>
+    );
+
+    const renderEmojiItem = ({ item }: { item: string }) => (
+        <TouchableOpacity style={styles.emojiItem} onPress={() => handleEmoji(item)}>
+            <Text style={styles.emojiText}>{item}</Text>
+        </TouchableOpacity>
     );
 
     return (
@@ -186,6 +247,33 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
                         }
                     />
 
+                    {/* Tagging User List Popup */}
+                    {showUserList && (
+                        <View style={styles.userListContainer}>
+                            <Text style={styles.userListHeader}>Following</Text>
+                            <FlatList
+                                data={USERS.filter(u => u.id !== currentUser?.id)}
+                                renderItem={renderUserItem}
+                                keyExtractor={item => item.id}
+                                style={{ maxHeight: 150 }}
+                            />
+                        </View>
+                    )}
+
+                    {/* Emoji List Popup */}
+                    {showEmojiList && (
+                        <View style={styles.userListContainer}>
+                            <FlatList
+                                data={QUICK_EMOJIS}
+                                renderItem={renderEmojiItem}
+                                keyExtractor={item => item}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={{ paddingHorizontal: 4 }}
+                            />
+                        </View>
+                    )}
+
                     {/* Input Area */}
                     <View style={styles.inputContainer}>
                         <Image
@@ -203,17 +291,16 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
                             maxLength={500}
                         />
                         <View style={styles.inputActions}>
-                            <TouchableOpacity style={styles.actionIcon}>
-                                <Ionicons name="at" size={20} color={theme.colors.text} />
+                            <TouchableOpacity style={styles.actionIcon} onPress={toggleUserList}>
+                                <Ionicons name="at" size={20} color={showUserList ? theme.colors.primary : theme.colors.text} />
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.actionIcon}>
-                                <Ionicons name="happy-outline" size={20} color={theme.colors.text} />
+                            <TouchableOpacity style={styles.actionIcon} onPress={toggleEmojiList}>
+                                <Ionicons name="happy-outline" size={20} color={showEmojiList ? theme.colors.primary : theme.colors.text} />
                             </TouchableOpacity>
 
                             {newComment.trim().length > 0 && (
                                 <TouchableOpacity onPress={handleSend}>
                                     <Ionicons name="arrow-up-circle" size={32} color="#FE2C55" />
-                                    {/* Using TikTok-ish red/pink color or primary */}
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -235,7 +322,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     sheet: {
-        backgroundColor: '#121212', // Darker background
+        backgroundColor: '#121212',
         borderTopLeftRadius: 12,
         borderTopRightRadius: 12,
         height: '75%',
@@ -353,6 +440,54 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
 
+    // User Tagging List & Emoji List
+    userListContainer: {
+        position: 'absolute',
+        bottom: 80,
+        left: 16,
+        right: 16,
+        backgroundColor: '#222',
+        borderRadius: 12,
+        padding: 8,
+        borderWidth: 1,
+        borderColor: '#333',
+        zIndex: 10,
+    },
+    userListHeader: {
+        color: theme.colors.textDim,
+        fontSize: 12,
+        marginBottom: 8,
+        marginLeft: 8,
+        fontWeight: '600',
+    },
+    userItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+    },
+    userAvatar: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        marginRight: 12,
+    },
+    userUsername: {
+        color: '#FFF',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    // Styles for Emoji Picker
+    emojiItem: {
+        padding: 10,
+        marginHorizontal: 4,
+        borderRadius: 8,
+        backgroundColor: '#333',
+    },
+    emojiText: {
+        fontSize: 24,
+    },
+
     // Input
     inputContainer: {
         flexDirection: 'row',
@@ -381,6 +516,6 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     actionIcon: {
-        opacity: 0.8,
+        padding: 4,
     }
 });
