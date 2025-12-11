@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, Share } from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { Post } from '../types';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { LinearGradient } from 'expo-linear-gradient';
-
 import { useNavigation } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
@@ -51,14 +51,26 @@ export const FeedItem = ({ post, onCommentPress }: FeedItemProps) => {
 
     return (
         <View style={styles.container}>
-            {/* Background Media Placeholder */}
-            <LinearGradient
-                colors={['#1c0f24', '#0f1724']}
-                style={styles.mediaContainer}
-            >
-                <Text style={styles.placeholderText}>Video Placeholder</Text>
-
-            </LinearGradient>
+            {/* Background Media */}
+            {post.mediaUri ? (
+                <Video
+                    style={styles.mediaContainer}
+                    source={{ uri: post.mediaUri }}
+                    resizeMode={ResizeMode.COVER}
+                    shouldPlay={true}
+                    isLooping={true}
+                    isMuted={false}
+                    onError={(e) => console.error("Video Playback Error:", e, post.mediaUri)}
+                    onLoad={() => console.log("Video Loaded:", post.mediaUri)}
+                />
+            ) : (
+                <LinearGradient
+                    colors={['#1c0f24', '#0f1724']}
+                    style={styles.mediaContainer}
+                >
+                    <Text style={styles.placeholderText}>Video Placeholder</Text>
+                </LinearGradient>
+            )}
 
             {/* Right Action Bar */}
             <View style={styles.rightContainer}>
@@ -95,7 +107,7 @@ export const FeedItem = ({ post, onCommentPress }: FeedItemProps) => {
                     <Text style={styles.actionText}>{post.shares}</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.actionButton}>
+                <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('ARViewer', { sceneId: post.sceneId || 'demo_scene' })}>
                     <Ionicons name="eye" size={35} color={theme.colors.white} />
                     <Text style={styles.actionText}>View</Text>
                 </TouchableOpacity>

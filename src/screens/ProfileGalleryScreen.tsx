@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, FlatList, Image, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, FlatList, Image, Dimensions, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { Post, Draft } from '../types';
@@ -15,9 +15,26 @@ type GalleryTab = 'posts' | 'artifacts' | 'likes' | 'drafts';
 export const ProfileGalleryScreen = () => {
     const navigation = useNavigation<any>();
     const currentUser = useAppStore(state => state.currentUser);
-    const feed = useAppStore(state => state.feed); // Using full feed for demo purpose of "Likes" etc.
+    const feed = useAppStore(state => state.feed);
+    const fetchFeed = useAppStore(state => state.fetchFeed);
+    const drafts = useAppStore(state => state.drafts);
+    const fetchDrafts = useAppStore(state => state.fetchDrafts);
+    React.useEffect(() => {
+        if (feed.length === 0) fetchFeed();
+        fetchDrafts();
+    }, []);
 
-    const [activeTab, setActiveTab] = useState<GalleryTab>('posts');
+    const route = useRoute<any>();
+    const { initialTab } = route.params || {};
+
+    const [activeTab, setActiveTab] = useState<GalleryTab>(initialTab || 'posts');
+
+    // Update active tab if params change (e.g. navigation from Composer)
+    React.useEffect(() => {
+        if (route.params?.initialTab) {
+            setActiveTab(route.params.initialTab);
+        }
+    }, [route.params?.initialTab]);
 
     if (!currentUser) return null;
 
@@ -35,7 +52,7 @@ export const ProfileGalleryScreen = () => {
                 // Posts I have liked
                 return feed.filter(p => p.isLiked);
             case 'drafts':
-                return DRAFTS;
+                return drafts;
             default:
                 return [];
         }
@@ -43,12 +60,39 @@ export const ProfileGalleryScreen = () => {
 
     const data = getTabContent();
 
-    const handleItemPress = (item: any, index: number) => {
-        if (activeTab === 'drafts') {
-            // Draft behavior might be different, maybe open composer
-            navigation.navigate('Compose'); // Or some draft editor
+    const deletePost = useAppStore(state => state.deletePost);
+
+    // Selection Mode Logic
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    const toggleSelection = (id: string) => {
+        const newSet = new Set(selectedIds);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+            if (newSet.size === 0) setIsSelectionMode(false);
         } else {
-            // Open Feed Viewer
+            newSet.add(id);
+        }
+        setSelectedIds(newSet);
+    };
+
+    const handleLongPress = (item: any) => {
+        if (!isSelectionMode) {
+            setIsSelectionMode(true);
+            setSelectedIds(new Set([item.id]));
+        }
+    };
+
+    const handleItemPress = (item: any, index: number) => {
+        if (isSelectionMode) {
+            toggleSelection(item.id);
+            return;
+        }
+
+        if (activeTab === 'drafts') {
+            navigation.navigate('ComposerEditor', { draftData: item.sceneData, draftTitle: item.title });
+        } else {
             navigation.navigate('PostFeed', {
                 posts: data,
                 initialIndex: index,
@@ -57,29 +101,73 @@ export const ProfileGalleryScreen = () => {
         }
     };
 
+    const handleDeleteSelected = () => {
+        Alert.alert(
+            "Delete Selected",
+            `Are you sure you want to delete ${selectedIds.size} items?`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        const idsToDelete = Array.from(selectedIds);
+                        for (const id of idsToDelete) {
+                            await deletePost(id);
+                        }
+                        setIsSelectionMode(false);
+                        setSelectedIds(new Set());
+                    }
+                }
+            ]
+        );
+    };
+
+    const cancelSelection = () => {
+        setIsSelectionMode(false);
+        setSelectedIds(new Set());
+    };
+
     const renderItem = ({ item, index }: { item: any, index: number }) => {
         if (activeTab === 'drafts') {
             return (
                 <TouchableOpacity style={styles.draftItem} onPress={() => handleItemPress(item, index)}>
-                    <View style={styles.draftPreview}>
-                        <Ionicons name="construct-outline" size={32} color={theme.colors.textDim} />
-                    </View>
-                    <Text style={styles.draftTitle} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.draftDate}>{item.date}</Text>
+                    {item.coverImage ? (
+                        <Image source={{ uri: item.coverImage }} style={[styles.thumbnail, { borderRadius: 8 }]} />
+                    ) : (
+                        <View style={styles.draftPreview}>
+                            <Ionicons name="construct-outline" size={32} color={theme.colors.textDim} />
+                        </View>
+                    )}
+                    <Text style={styles.draftDate}>{new Date(item.updatedAt).toLocaleDateString()}</Text>
                 </TouchableOpacity>
             );
         }
 
         // Standard Post Thumbnail
-        // Using picsum for mock thumbnail if post doesn't have one (our Post type uses video placeholder usually)
-        // Let's assume item.user.avatar is a placeholder for the thumbnail or use a gradient
+        const isSelected = selectedIds.has(item.id);
+
         return (
-            <TouchableOpacity style={styles.gridItem} onPress={() => handleItemPress(item, index)}>
-                {/* Simulate thumbnail with random image based on ID */}
+            <TouchableOpacity
+                style={[styles.gridItem, isSelectionMode && { opacity: 0.9 }]}
+                onPress={() => handleItemPress(item, index)}
+                onLongPress={() => handleLongPress(item)}
+                delayLongPress={200}
+            >
                 <Image
-                    source={{ uri: `https://picsum.photos/300/500?random=${item.id}` }}
+                    source={{ uri: item.coverImage || `https://picsum.photos/300/500?random=${item.id}` }}
                     style={styles.thumbnail}
                 />
+
+                {isSelectionMode && (
+                    <View style={styles.selectionOverlay}>
+                        <Ionicons
+                            name={isSelected ? "checkmark-circle" : "ellipse-outline"}
+                            size={24}
+                            color={isSelected ? theme.colors.primary : "white"}
+                        />
+                    </View>
+                )}
 
                 {activeTab === 'artifacts' && (
                     <View style={styles.diamondBadge}>
@@ -87,10 +175,12 @@ export const ProfileGalleryScreen = () => {
                     </View>
                 )}
 
-                <View style={styles.statsOverlay}>
-                    <Ionicons name="play-outline" size={12} color="white" />
-                    <Text style={styles.statsText}>{item.likes}</Text>
-                </View>
+                {!isSelectionMode && (
+                    <View style={styles.statsOverlay}>
+                        <Ionicons name="play-outline" size={12} color="white" />
+                        <Text style={styles.statsText}>{item.likes}</Text>
+                    </View>
+                )}
             </TouchableOpacity>
         );
     };
@@ -111,11 +201,25 @@ export const ProfileGalleryScreen = () => {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-                    <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-                    <Text style={styles.headerTitle}>{currentUser.username}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity><Ionicons name="stats-chart" size={24} color={theme.colors.text} /></TouchableOpacity>
+                {isSelectionMode ? (
+                    <View style={styles.selectionHeader}>
+                        <TouchableOpacity onPress={cancelSelection}>
+                            <Text style={styles.cancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.selectionTitle}>{selectedIds.size} Selected</Text>
+                        <TouchableOpacity onPress={handleDeleteSelected}>
+                            <Ionicons name="trash-outline" size={24} color={theme.colors.error || '#FF3050'} />
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <>
+                        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+                            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+                            <Text style={styles.headerTitle}>{currentUser.username}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity><Ionicons name="stats-chart" size={24} color={theme.colors.text} /></TouchableOpacity>
+                    </>
+                )}
             </View>
 
             <View style={styles.tabs}>
@@ -253,5 +357,26 @@ const styles = StyleSheet.create({
     emptyText: {
         color: theme.colors.textDim,
         fontSize: 16,
+    },
+    selectionHeader: {
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    cancelText: {
+        color: theme.colors.text,
+        fontSize: 16,
+    },
+    selectionTitle: {
+        color: theme.colors.text,
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+    selectionOverlay: {
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        zIndex: 10,
     }
 });

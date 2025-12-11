@@ -244,7 +244,7 @@ export const MapScreen = () => {
 
                 <TouchableOpacity style={styles.directionsButton}>
                     <Text style={styles.directionsText}>Directions</Text>
-                    <Ionicons name="navigate" size={20} color={theme.colors.white} />
+                    <Ionicons name="navigate" size={20} color="black" />
                 </TouchableOpacity>
             </SafeAreaView>
         </View>
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
         elevation: 5,
     },
     directionsText: {
-        color: theme.colors.white,
+        color: 'black',
         fontWeight: 'bold',
         fontSize: 16,
     }

@@ -1,13 +1,19 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Video, ResizeMode } from 'expo-av';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { Post } from '../types';
+import { saveScene, uploadVideo } from '../api/client';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { StorageService } from '../services/storage';
 
 export const PostDetailsScreen = () => {
     const navigation = useNavigation<any>();
+    const route = useRoute<any>();
     const addPost = useAppStore(state => state.addPost);
     const currentUser = useAppStore(state => state.currentUser);
     const draftPost = useAppStore(state => state.draftPost);
@@ -15,6 +21,9 @@ export const PostDetailsScreen = () => {
     const updateDraftPost = useAppStore(state => state.updateDraftPost);
 
     const [tagInput, setTagInput] = useState('');
+    const [isPublishing, setIsPublishing] = useState(false);
+
+    const coverImage = route.params?.coverImage;
 
     // Initialize draft on mount
     React.useEffect(() => {
@@ -32,31 +41,103 @@ export const PostDetailsScreen = () => {
     const tags = draftPost?.tags || [];
     const taggedUsers = draftPost?.taggedUsers || [];
     const locations = draftPost?.locations || [];
+    const mediaUri = draftPost?.mediaUri;
+    const [compressedUri, setCompressedUri] = useState<string | null>(null);
+    const [isCompressing, setIsCompressing] = useState(false);
 
-    const handlePublish = () => {
+    React.useEffect(() => {
+        // User requested reducing complexity - use raw video
+        if (mediaUri) {
+            setCompressedUri(mediaUri);
+            setIsCompressing(false);
+        }
+    }, [mediaUri]);
+
+    const handlePublish = async () => {
         if (!currentUser || !draftPost) return;
+        setIsPublishing(true);
 
-        const newPost: Post = {
-            id: Date.now().toString(),
-            userId: currentUser.id,
-            user: currentUser,
-            caption: caption,
-            likes: 0,
-            comments: 0,
-            shares: 0,
-            isLiked: false,
-            date: 'Just now',
-            tags: tags,
-            taggedUsers: taggedUsers,
-            locations: locations,
-            music: 'Original Sound'
-        };
+        try {
+            let sceneId = draftPost.sceneId;
 
-        addPost(newPost);
-        setDraftPost(null); // Clear draft
-        Alert.alert("Published!", "Your post is live.", [
-            { text: "OK", onPress: () => navigation.navigate('Home') }
-        ]);
+            // Determine if we need to save the scene (mock for scene data)
+            if (draftPost.sceneData) {
+                const sceneRes = await saveScene(draftPost.sceneData);
+                sceneId = sceneRes.sceneId;
+            }
+
+            // Upload Media
+            let finalMediaUri = compressedUri || mediaUri;
+            if (isCompressing) {
+                Alert.alert("Please wait", "Video optimization in progress...");
+                setIsPublishing(false);
+                return;
+            }
+            if (finalMediaUri && !finalMediaUri.startsWith('http')) {
+                const ext = finalMediaUri.split('.').pop() || 'mp4';
+                const path = `videos/${currentUser.id}/${Date.now()}.${ext}`;
+                console.log("Uploading media...", finalMediaUri);
+                try {
+                    finalMediaUri = await StorageService.uploadFile(finalMediaUri, path);
+                    console.log("Media uploaded:", finalMediaUri);
+                } catch (uploadErr) {
+                    console.error("Upload failed details:", uploadErr);
+                    throw new Error("Failed to upload video.");
+                }
+            }
+
+            if (!finalMediaUri || !finalMediaUri.startsWith('http')) {
+                throw new Error("Invalid Media URI: " + finalMediaUri);
+            }
+
+            // Upload Cover
+            let finalCoverUri = coverImage;
+            if (coverImage && !coverImage.startsWith('http')) {
+                const path = `covers/${currentUser.id}/${Date.now()}.jpg`;
+                finalCoverUri = await StorageService.uploadFile(coverImage, path);
+            }
+
+            const newPostData = {
+                userId: currentUser.id,
+                user: currentUser,
+                caption: caption,
+                likes: 0,
+                comments: 0,
+                shares: 0,
+                isLiked: false,
+                date: new Date().toISOString(),
+                tags: tags,
+                taggedUsers: taggedUsers,
+                locations: locations,
+                music: 'Original Sound',
+                sceneId: sceneId || null,
+                sceneData: draftPost.sceneData || null,
+                mediaUri: finalMediaUri || null,
+                coverImage: finalCoverUri || null,
+                createdAt: serverTimestamp()
+            };
+
+            // Save to Firestore
+            const docRef = await addDoc(collection(db, 'posts'), newPostData);
+
+            // Update local store
+            const newPost: Post = {
+                ...newPostData,
+                id: docRef.id,
+                date: 'Just now',
+            } as any;
+
+            addPost(newPost);
+            setDraftPost(null);
+            Alert.alert("Published!", "Your portal is live.", [
+                { text: "OK", onPress: () => navigation.navigate('Tabs') }
+            ]);
+        } catch (e) {
+            console.error(e);
+            Alert.alert("Error", "Failed to publish post.");
+        } finally {
+            setIsPublishing(false);
+        }
     };
 
     const addTag = () => {
@@ -73,21 +154,70 @@ export const PostDetailsScreen = () => {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
+                <TouchableOpacity onPress={() => navigation.goBack()} disabled={isPublishing}>
                     <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
                 </TouchableOpacity>
                 <Text style={styles.title}>New Post</Text>
-                <TouchableOpacity onPress={handlePublish}>
-                    <Text style={styles.publishText}>Publish</Text>
+                <TouchableOpacity onPress={handlePublish} disabled={isPublishing}>
+                    {isPublishing ? <ActivityIndicator color={theme.colors.primary} /> : <Text style={styles.publishText}>Publish</Text>}
                 </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.content}>
                 <View style={styles.mediaPreview}>
-                    <View style={styles.placeholderMedia}>
-                        <Ionicons name="image" size={48} color={theme.colors.textDim} />
-                        <Text style={styles.mediaText}>Cover Selected</Text>
-                    </View>
+                    {mediaUri ? (
+                        <>
+                            <Video
+                                style={{
+                                    width: 100,
+                                    height: 150,
+                                    borderRadius: 12,
+                                    marginRight: 16,
+                                    backgroundColor: theme.colors.surfaceHighlight
+                                }}
+                                source={{ uri: mediaUri }}
+                                resizeMode={ResizeMode.COVER}
+                                shouldPlay
+                                isLooping
+                                isMuted
+                                posterSource={coverImage ? { uri: coverImage } : undefined}
+                                usePoster={!!coverImage}
+                            />
+                            {isCompressing && (
+                                <View style={{
+                                    position: 'absolute',
+                                    bottom: 8,
+                                    left: 8,
+                                    backgroundColor: 'rgba(0,0,0,0.6)',
+                                    padding: 6,
+                                    borderRadius: 6,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 6
+                                }}>
+                                    <ActivityIndicator size="small" color="white" />
+                                    <Text style={{ color: 'white', fontSize: 10, fontWeight: '600' }}>Optimizing</Text>
+                                </View>
+                            )}
+                        </>
+                    ) : coverImage ? (
+                        <Image
+                            style={{
+                                width: 100,
+                                height: 150,
+                                borderRadius: 12,
+                                marginRight: 16,
+                                backgroundColor: theme.colors.surfaceHighlight
+                            }}
+                            source={{ uri: coverImage }}
+                            resizeMode="cover"
+                        />
+                    ) : (
+                        <View style={styles.placeholderMedia}>
+                            <Ionicons name="image" size={48} color={theme.colors.textDim} />
+                            <Text style={styles.mediaText}>Cover Selected</Text>
+                        </View>
+                    )}
                     <View style={styles.inputContainer}>
                         <TextInput
                             style={styles.captionInput}

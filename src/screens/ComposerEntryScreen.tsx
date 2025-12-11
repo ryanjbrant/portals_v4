@@ -9,6 +9,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 export const ComposerEntryScreen = () => {
     const navigation = useNavigation<any>();
     const drafts = useAppStore(state => state.drafts);
+    const fetchDrafts = useAppStore(state => state.fetchDrafts);
+
+    React.useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            fetchDrafts();
+        });
+        return unsubscribe;
+    }, [navigation]);
     const [activeTab, setActiveTab] = React.useState<'Drafts' | 'Collabs'>('Drafts');
 
     // Mock Collabs Data
@@ -20,10 +28,20 @@ export const ComposerEntryScreen = () => {
     const currentData = activeTab === 'Drafts' ? drafts : collabs;
 
     const renderDraft = ({ item }: { item: any }) => (
-        <TouchableOpacity style={styles.draftCard} onPress={() => navigation.navigate('CreateCapture')}>
-            <View style={styles.draftPreview} />
-            <Text style={styles.draftTitle}>{item.title}</Text>
-            <Text style={styles.draftDate}>{item.date}</Text>
+        <TouchableOpacity
+            style={styles.draftCard}
+            onPress={() => navigation.navigate('ComposerEditor', {
+                draftData: item.sceneData,
+                draftTitle: item.title || "Untitled"
+            })}
+        >
+            {item.coverImage ? (
+                <Image source={{ uri: item.coverImage }} style={[styles.draftPreview, { marginBottom: 8 }]} />
+            ) : (
+                <View style={styles.draftPreview} />
+            )}
+            <Text style={styles.draftTitle} numberOfLines={1}>{item.title || "Untitled"}</Text>
+            <Text style={styles.draftDate}>{new Date(item.updatedAt || Date.now()).toLocaleDateString()}</Text>
         </TouchableOpacity>
     );
 
@@ -59,7 +77,7 @@ export const ComposerEntryScreen = () => {
                             renderItem={({ item }) => {
                                 if (item.id === 'new') {
                                     return (
-                                        <TouchableOpacity style={styles.newCard} onPress={() => navigation.navigate('CreateCapture')}>
+                                        <TouchableOpacity style={styles.newCard} onPress={() => navigation.navigate('ComposerEditor')}>
                                             <Ionicons name="add-circle" size={40} color={theme.colors.text} />
                                             <Text style={styles.cardText}>New {activeTab === 'Drafts' ? 'Project' : 'Collab'}</Text>
                                         </TouchableOpacity>

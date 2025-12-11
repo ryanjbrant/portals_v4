@@ -5,11 +5,18 @@ import { FeedItem } from '../components/FeedItem';
 import { Post } from '../types';
 import { theme } from '../theme/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { useAppStore } from '../store';
 
 export const PostFeedScreen = () => {
     const route = useRoute<any>();
     const navigation = useNavigation();
-    const { posts, initialIndex = 0, title } = route.params || {};
+    const feed = useAppStore(state => state.feed);
+    const fetchFeed = useAppStore(state => state.fetchFeed);
+    const posts = route.params?.posts || feed;
+    const initialIndex = route.params?.initialIndex || 0;
+    const title = route.params?.title;
+
+    useEffect(() => { if (!route.params?.posts) fetchFeed(); }, []);
     const flatListRef = useRef<FlatList>(null);
 
     // Scroll to initial index on mount

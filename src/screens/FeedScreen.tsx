@@ -78,9 +78,15 @@ export const FeedScreen = () => {
     const navigation = useNavigation<any>();
     const [activeIndex, setActiveIndex] = useState(1); // Default to 'Friends' (index 1)
     const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+    const fetchFeed = useAppStore(state => state.fetchFeed);
 
     const feedListRef = useRef<FlatList>(null);
     const tabsListRef = useRef<FlatList>(null);
+
+    // Fetch posts from Firestore on mount
+    useEffect(() => {
+        fetchFeed();
+    }, []);
 
     const handleTabPress = (index: number) => {
         setActiveIndex(index);

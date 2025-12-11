@@ -138,7 +138,7 @@ export const ProfileScreen = () => {
                                     <Text style={styles.primaryButtonText}>Edit Profile</Text>
                                 </TouchableOpacity>
 
-                                <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Compose')}>
+                                <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('ComposerEditor')}>
                                     <Text style={styles.secondaryButtonText}>Create World</Text>
                                 </TouchableOpacity>
                             </>

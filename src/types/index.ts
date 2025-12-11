@@ -38,6 +38,10 @@ export interface Post {
         longitude: number;
     }[];
     music?: string;
+    mediaUri?: string; // Video or Image URI
+    coverImage?: string; // Thumbnail/Poster
+    sceneData?: any; // Serialized Scene Data
+    sceneId?: string; // ID if already saved
     linkedArtifact?: Artifact;
 }
 
