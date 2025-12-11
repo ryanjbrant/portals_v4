@@ -10,7 +10,10 @@ export interface User {
     following: number;
     friends: number; // For "Friends" count specifically if different from following
     flames: number; // Total likes received
+    isPrivate?: boolean;
 }
+
+
 
 export interface Artifact {
     id: string;
@@ -37,7 +40,12 @@ export interface Post {
         latitude: number;
         longitude: number;
     }[];
+    category: string; // Feed Channel
     music?: string;
+    mediaUri?: string; // Video or Image URI
+    coverImage?: string; // Thumbnail/Poster
+    sceneData?: any; // Serialized Scene Data
+    sceneId?: string; // ID if already saved
     linkedArtifact?: Artifact;
 }
 
@@ -72,4 +80,8 @@ export interface Draft {
     title: string;
     date: string;
     coverImage?: string;
+    sceneData?: any;
+    sceneId?: string;
+    updatedAt?: string;
+    createdAt?: string;
 }

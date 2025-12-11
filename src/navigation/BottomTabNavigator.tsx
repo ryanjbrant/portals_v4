@@ -53,7 +53,7 @@ const ComposeButton = ({ navigation }: { navigation: any }) => {
                 borderColor: theme.colors.background,
                 transform: [{ scale: scaleValue }]
             }}
-            onPress={() => navigation.navigate('Compose')}
+            onPress={() => navigation.navigate('ComposerEntry')}
             onLongPress={handleLongPress}
             onPressOut={handlePressOut}
             delayLongPress={150}

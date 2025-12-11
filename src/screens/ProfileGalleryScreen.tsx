@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, FlatList, Image, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, FlatList, Image, Dimensions, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { Post, Draft } from '../types';
@@ -15,9 +15,26 @@ type GalleryTab = 'posts' | 'artifacts' | 'likes' | 'drafts';
 export const ProfileGalleryScreen = () => {
     const navigation = useNavigation<any>();
     const currentUser = useAppStore(state => state.currentUser);
-    const feed = useAppStore(state => state.feed); // Using full feed for demo purpose of "Likes" etc.
+    const feed = useAppStore(state => state.feed);
+    const fetchFeed = useAppStore(state => state.fetchFeed);
+    const drafts = useAppStore(state => state.drafts);
+    const fetchDrafts = useAppStore(state => state.fetchDrafts);
+    React.useEffect(() => {
+        if (feed.length === 0) fetchFeed();
+        fetchDrafts();
+    }, []);
 
-    const [activeTab, setActiveTab] = useState<GalleryTab>('posts');
+    const route = useRoute<any>();
+    const { initialTab } = route.params || {};
+
+    const [activeTab, setActiveTab] = useState<GalleryTab>(initialTab || 'posts');
+
+    // Update active tab if params change (e.g. navigation from Composer)
+    React.useEffect(() => {
+        if (route.params?.initialTab) {
+            setActiveTab(route.params.initialTab);
+        }
+    }, [route.params?.initialTab]);
 
     if (!currentUser) return null;
 
@@ -35,7 +52,7 @@ export const ProfileGalleryScreen = () => {
                 // Posts I have liked
                 return feed.filter(p => p.isLiked);
             case 'drafts':
-                return DRAFTS;
+                return drafts;
             default:
                 return [];
         }
@@ -43,12 +60,83 @@ export const ProfileGalleryScreen = () => {
 
     const data = getTabContent();
 
-    const handleItemPress = (item: any, index: number) => {
-        if (activeTab === 'drafts') {
-            // Draft behavior might be different, maybe open composer
-            navigation.navigate('Compose'); // Or some draft editor
+    const deletePost = useAppStore(state => state.deletePost);
+    const deleteDraft = useAppStore(state => state.deleteDraft);
+    const toggleLike = useAppStore(state => state.toggleLike);
+
+    // Selection Mode Logic
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    const toggleSelection = (id: string) => {
+        const newSet = new Set(selectedIds);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+            if (newSet.size === 0) setIsSelectionMode(false);
         } else {
-            // Open Feed Viewer
+            newSet.add(id);
+        }
+        setSelectedIds(newSet);
+    };
+
+    const handleLongPress = (item: any) => {
+        if (!isSelectionMode) {
+            setIsSelectionMode(true);
+            setSelectedIds(new Set([item.id]));
+        }
+    };
+
+    const loadDraft = useAppStore(state => state.loadDraft);
+    const [isLoadingDraft, setIsLoadingDraft] = useState(false);
+
+    const handleItemPress = async (item: any, index: number) => {
+        if (isSelectionMode) {
+            toggleSelection(item.id);
+            return;
+        }
+
+        if (activeTab === 'drafts') {
+            // Lazy Load Scene Data if missing
+            if (!item.sceneData && item.sceneId) {
+                try {
+                    setIsLoadingDraft(true);
+                    // Use store action to fetch and update local state (or just return data)
+                    // Since loadDraft updates the store's draftPost, we might want to just fetch it here or rely on store.
+                    // Actually, Composer expects `draftData` param. 
+                    // Let's call loadDraft which populates `draftPost`.
+                    // Wait, Composer navigation param `draftData` is used.
+                    // If I update `loadDraft` to RETURN the data it would be easier.
+                    // But `loadDraft` updates `draftPost` in store.
+                    // Let's update `loadDraft` to return the data, OR read it from store after.
+                    // Simpler: Just rely on the store's `draftPost` if I was navigating to a screen that uses `draftPost`.
+                    // But `ComposerEditor` uses `route.params.draftData`.
+                    // I should probably pass the lightweight draft and let COMPOSER load it?
+                    // "Cold-start-friendly loading" -> Composer should show "Loading Scene..."
+                    // That is better UX than blocking here.
+                    // BUT, I can't easily change Composer right now without verifying it.
+                    // Let's block here with a spinner for MVP.
+
+                    // We need to access the loaded data.
+                    // I will look at `item` again. `loadDraft` updates the specific draft in `drafts` array? 
+                    // No, `loadDraft` sets `draftPost` (active draft).
+
+                    await loadDraft(item);
+                    // Now `useAppStore.getState().draftPost` has the data.
+                    const loadedDraft = useAppStore.getState().draftPost;
+                    setIsLoadingDraft(false);
+
+                    navigation.navigate('ComposerEditor', {
+                        draftData: loadedDraft?.sceneData,
+                        draftTitle: item.title || "Untitled"
+                    });
+                } catch (e) {
+                    Alert.alert("Error", "Could not load draft.");
+                    setIsLoadingDraft(false);
+                }
+            } else {
+                navigation.navigate('ComposerEditor', { draftData: item.sceneData, draftTitle: item.title || "Untitled" });
+            }
+        } else {
             navigation.navigate('PostFeed', {
                 posts: data,
                 initialIndex: index,
@@ -57,29 +145,101 @@ export const ProfileGalleryScreen = () => {
         }
     };
 
+    const handleDeleteSelected = () => {
+        const actionMap: Record<string, string> = {
+            'posts': 'delete',
+            'artifacts': 'delete',
+            'drafts': 'delete',
+            'likes': 'remove'
+        };
+        const action = actionMap[activeTab];
+
+        Alert.alert(
+            "Confirm Action",
+            `Are you sure you want to ${action} ${selectedIds.size} items?`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: action === 'delete' ? "Delete" : "Remove",
+                    style: "destructive",
+                    onPress: async () => {
+                        const idsToDelete = Array.from(selectedIds);
+                        for (const id of idsToDelete) {
+                            if (activeTab === 'drafts') {
+                                await deleteDraft(id);
+                            } else if (activeTab === 'likes') {
+                                // "Remove from gallery" for likes = Unlike
+                                await toggleLike(id);
+                            } else {
+                                // Posts and Artifacts
+                                await deletePost(id);
+                            }
+                        }
+                        setIsSelectionMode(false);
+                        setSelectedIds(new Set());
+                    }
+                }
+            ]
+        );
+    };
+
+    const cancelSelection = () => {
+        setIsSelectionMode(false);
+        setSelectedIds(new Set());
+    };
+
     const renderItem = ({ item, index }: { item: any, index: number }) => {
+        const isSelected = selectedIds.has(item.id);
+
+        // Common Selection Overlay
+        const SelectionOverlay = () => (
+            <View style={styles.selectionOverlay}>
+                <Ionicons
+                    name={isSelected ? "checkmark-circle" : "ellipse-outline"}
+                    size={24}
+                    color={isSelected ? theme.colors.primary : "white"}
+                />
+            </View>
+        );
+
         if (activeTab === 'drafts') {
             return (
-                <TouchableOpacity style={styles.draftItem} onPress={() => handleItemPress(item, index)}>
-                    <View style={styles.draftPreview}>
-                        <Ionicons name="construct-outline" size={32} color={theme.colors.textDim} />
+                <TouchableOpacity
+                    style={[styles.draftItem, isSelectionMode && { opacity: 0.9 }]}
+                    onPress={() => handleItemPress(item, index)}
+                    onLongPress={() => handleLongPress(item)}
+                    delayLongPress={200}
+                >
+                    {item.coverImage ? (
+                        <Image source={{ uri: item.coverImage }} style={[styles.thumbnail, { borderRadius: 8 }]} />
+                    ) : (
+                        <View style={styles.draftPreview}>
+                            <Ionicons name="construct-outline" size={32} color={theme.colors.textDim} />
+                        </View>
+                    )}
+                    <View style={styles.draftInfo}>
+                        <Text style={styles.draftTitle} numberOfLines={1}>{item.title || "Untitled Scene"}</Text>
+                        <Text style={styles.draftDate}>{new Date(item.updatedAt || Date.now()).toLocaleDateString()}</Text>
                     </View>
-                    <Text style={styles.draftTitle} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.draftDate}>{item.date}</Text>
+                    {isSelectionMode && <SelectionOverlay />}
                 </TouchableOpacity>
             );
         }
 
         // Standard Post Thumbnail
-        // Using picsum for mock thumbnail if post doesn't have one (our Post type uses video placeholder usually)
-        // Let's assume item.user.avatar is a placeholder for the thumbnail or use a gradient
         return (
-            <TouchableOpacity style={styles.gridItem} onPress={() => handleItemPress(item, index)}>
-                {/* Simulate thumbnail with random image based on ID */}
+            <TouchableOpacity
+                style={[styles.gridItem, isSelectionMode && { opacity: 0.9 }]}
+                onPress={() => handleItemPress(item, index)}
+                onLongPress={() => handleLongPress(item)}
+                delayLongPress={200}
+            >
                 <Image
-                    source={{ uri: `https://picsum.photos/300/500?random=${item.id}` }}
+                    source={{ uri: item.coverImage || `https://picsum.photos/300/500?random=${item.id}` }}
                     style={styles.thumbnail}
                 />
+
+                {isSelectionMode && <SelectionOverlay />}
 
                 {activeTab === 'artifacts' && (
                     <View style={styles.diamondBadge}>
@@ -87,10 +247,12 @@ export const ProfileGalleryScreen = () => {
                     </View>
                 )}
 
-                <View style={styles.statsOverlay}>
-                    <Ionicons name="play-outline" size={12} color="white" />
-                    <Text style={styles.statsText}>{item.likes}</Text>
-                </View>
+                {!isSelectionMode && (
+                    <View style={styles.statsOverlay}>
+                        <Ionicons name="play-outline" size={12} color="white" />
+                        <Text style={styles.statsText}>{item.likes}</Text>
+                    </View>
+                )}
             </TouchableOpacity>
         );
     };
@@ -111,11 +273,25 @@ export const ProfileGalleryScreen = () => {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-                    <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-                    <Text style={styles.headerTitle}>{currentUser.username}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity><Ionicons name="stats-chart" size={24} color={theme.colors.text} /></TouchableOpacity>
+                {isSelectionMode ? (
+                    <View style={styles.selectionHeader}>
+                        <TouchableOpacity onPress={cancelSelection}>
+                            <Text style={styles.cancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.selectionTitle}>{selectedIds.size} Selected</Text>
+                        <TouchableOpacity onPress={handleDeleteSelected}>
+                            <Ionicons name="trash-outline" size={24} color={theme.colors.error || '#FF3050'} />
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <>
+                        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+                            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+                            <Text style={styles.headerTitle}>{currentUser.username}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity><Ionicons name="stats-chart" size={24} color={theme.colors.text} /></TouchableOpacity>
+                    </>
+                )}
             </View>
 
             <View style={styles.tabs}>
@@ -227,13 +403,12 @@ const styles = StyleSheet.create({
         borderColor: theme.colors.surfaceHighlight,
     },
     draftPreview: {
-        width: 60,
-        height: 60,
-        borderRadius: 8,
-        backgroundColor: theme.colors.surfaceHighlight,
+        flex: 1,
+        backgroundColor: '#1E1E1E',
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 8,
+        borderTopLeftRadius: 8,
+        borderTopRightRadius: 8
     },
     draftTitle: {
         color: theme.colors.text,
@@ -253,5 +428,29 @@ const styles = StyleSheet.create({
     emptyText: {
         color: theme.colors.textDim,
         fontSize: 16,
-    }
+    },
+    selectionHeader: {
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    cancelText: {
+        color: theme.colors.text,
+        fontSize: 16,
+    },
+    selectionTitle: {
+        color: theme.colors.text,
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+    selectionOverlay: {
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        zIndex: 10,
+    },
+    draftInfo: { padding: 8 },
+    draftTitle: { color: theme.colors.text, fontSize: 13, fontWeight: '600', marginBottom: 2 },
+    draftDate: { color: theme.colors.textDim, fontSize: 11 }
 });

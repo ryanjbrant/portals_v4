@@ -138,7 +138,7 @@ export const ProfileScreen = () => {
                                     <Text style={styles.primaryButtonText}>Edit Profile</Text>
                                 </TouchableOpacity>
 
-                                <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Compose')}>
+                                <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('ComposerEditor')}>
                                     <Text style={styles.secondaryButtonText}>Create World</Text>
                                 </TouchableOpacity>
                             </>
@@ -164,14 +164,14 @@ export const ProfileScreen = () => {
                     {(isSelf || !profileUser.isPrivate || (profileUser.isPrivate && isFollowing)) ? (
                         <TouchableOpacity style={styles.galleryButton} onPress={() => navigation.navigate('ProfileGallery')}>
                             <LinearGradient
-                                colors={[theme.colors.primary, '#D62E55']}
+                                colors={[theme.colors.primary, theme.colors.primary]}
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 1 }}
                                 style={styles.galleryGradient}
                             >
-                                <Ionicons name="images" size={24} color={theme.colors.white} />
-                                <Text style={styles.galleryButtonText}>Open Gallery</Text>
-                                <Ionicons name="arrow-forward" size={20} color={theme.colors.white} />
+                                <Ionicons name="images" size={24} color={theme.colors.black} />
+                                <Text style={[styles.galleryButtonText, { color: theme.colors.black }]}>Open Gallery</Text>
+                                <Ionicons name="arrow-forward" size={20} color={theme.colors.black} />
                             </LinearGradient>
                         </TouchableOpacity>
                     ) : (
@@ -187,7 +187,7 @@ export const ProfileScreen = () => {
 
                 <View style={styles.bioContainer}>
                     <Text style={styles.bioTitle}>About</Text>
-                    <Text style={styles.bioText}>{currentUser.bio || "No bio yet."}</Text>
+                    <Text style={styles.bioText}>{profileUser.bio || "No bio yet."}</Text>
                 </View>
 
             </ScrollView>

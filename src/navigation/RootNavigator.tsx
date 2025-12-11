@@ -24,6 +24,10 @@ import { theme } from '../theme/theme';
 import { VoiceOverlay } from '../components/VoiceOverlay';
 
 import { PostDetailsScreen } from '../screens/PostDetailsScreen';
+import { ComposerEntryScreen } from '../screens/ComposerEntryScreen';
+import { ComposerEditorScreen } from '../screens/Composer/ComposerEditorScreen';
+import { ComposerPublishScreen } from '../screens/Composer/ComposerPublishScreen';
+import { ARViewerScreen } from '../screens/AR/ARViewerScreen';
 
 // Stub or Reuse Screen
 const UserProfileScreen = ProfileScreen; // Reuse for now, ideally refactor later
@@ -51,6 +55,10 @@ const MainStackScreen = () => (
         <MainStack.Screen name="Activity" component={ActivityScreen} />
         <MainStack.Screen name="PostFeed" component={PostFeedScreen} />
         <MainStack.Screen name="PostDetails" component={PostDetailsScreen} />
+        <MainStack.Screen name="ComposerEntry" component={ComposerEntryScreen} />
+        <MainStack.Screen name="ComposerEditor" component={ComposerEditorScreen} />
+        <MainStack.Screen name="ComposerPublish" component={ComposerPublishScreen} />
+        <MainStack.Screen name="ARViewer" component={ARViewerScreen} options={{ presentation: 'transparentModal' }} />
         <MainStack.Screen name="Chat" component={ChatScreen} />
         <MainStack.Screen name="TagPeople" component={TagPeopleScreen} options={{ presentation: 'modal' }} />
         <MainStack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ presentation: 'fullScreenModal' }} />

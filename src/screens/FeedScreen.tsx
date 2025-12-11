@@ -9,7 +9,7 @@ import { CommentsSheet } from '../components/CommentsSheet';
 import { LinearGradient } from 'expo-linear-gradient'; // Assuming available, or remove if error
 
 const { width, height } = Dimensions.get('window');
-const CATEGORIES = ["Live", "Friends", "Artifacts", "Exclusive", "Creative", "Countdown", "Music", "Sports", "Entertainment"];
+const CATEGORIES = ["Live", "Feed", "Friends", "Artifacts", "Exclusive", "Creative", "Countdown", "Music", "Sports", "Entertainment"];
 
 // --- Category Feed Component ---
 const CategoryFeed = ({ category, isActive, onCommentPress }: { category: string, isActive: boolean, onCommentPress: (id: string) => void }) => {
@@ -18,11 +18,11 @@ const CategoryFeed = ({ category, isActive, onCommentPress }: { category: string
     const setVoiceContext = useAppStore(state => state.setVoiceContext);
     const [refreshing, setRefreshing] = useState(false);
 
-    // Create a stable, shuffled version or filtered version for this category
-    // In a real app, this would be a query. For now, we memoize a shuffled slice or just use full feed.
-    // To make them look different, we can rotate the array based on category index length
-    const offset = category.length;
-    const categoryData = [...allFeed.slice(offset % allFeed.length), ...allFeed.slice(0, offset % allFeed.length)];
+    // Filter feed based on category (Default to 'Feed' if undefined)
+    const categoryData = allFeed.filter(post => {
+        const postCategory = post.category || 'Feed';
+        return postCategory === category;
+    });
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -78,9 +78,15 @@ export const FeedScreen = () => {
     const navigation = useNavigation<any>();
     const [activeIndex, setActiveIndex] = useState(1); // Default to 'Friends' (index 1)
     const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+    const fetchFeed = useAppStore(state => state.fetchFeed);
 
     const feedListRef = useRef<FlatList>(null);
     const tabsListRef = useRef<FlatList>(null);
+
+    // Fetch posts from Firestore on mount
+    useEffect(() => {
+        fetchFeed();
+    }, []);
 
     const handleTabPress = (index: number) => {
         setActiveIndex(index);

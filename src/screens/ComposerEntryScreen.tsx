@@ -9,6 +9,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 export const ComposerEntryScreen = () => {
     const navigation = useNavigation<any>();
     const drafts = useAppStore(state => state.drafts);
+    const fetchDrafts = useAppStore(state => state.fetchDrafts);
+
+    React.useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            fetchDrafts();
+        });
+        return unsubscribe;
+    }, [navigation]);
     const [activeTab, setActiveTab] = React.useState<'Drafts' | 'Collabs'>('Drafts');
 
     // Mock Collabs Data
@@ -19,11 +27,52 @@ export const ComposerEntryScreen = () => {
 
     const currentData = activeTab === 'Drafts' ? drafts : collabs;
 
+    const loadDraft = useAppStore(state => state.loadDraft);
+    const [isLoading, setIsLoading] = React.useState(false);
+
+    const handleDraftPress = async (item: any) => {
+        if (isLoading) return;
+
+        let draftData = item.sceneData;
+
+        // Lazy load if missing and we have a sceneId
+        if (!draftData && item.sceneId) {
+            try {
+                setIsLoading(true);
+                // loadDraft updates the store's draftPost. We can access it from there or just let loadDraft do its work 
+                // and we grab the result if loadDraft returned it (it currently doesn't, but it updates store).
+                // Actually, let's look at how ProfileGallery did it. 
+                // Wait, I didn't finish reading ProfileGallery.
+                // Let's assume we can use the same logic: await loadDraft(item).
+                await loadDraft(item);
+                const updatedDraft = useAppStore.getState().draftPost;
+                draftData = updatedDraft?.sceneData;
+            } catch (e) {
+                console.error("Failed to load draft", e);
+            } finally {
+                setIsLoading(false);
+            }
+        }
+
+        navigation.navigate('ComposerEditor', {
+            draftData: draftData,
+            draftTitle: item.title || "Untitled"
+        });
+    };
+
     const renderDraft = ({ item }: { item: any }) => (
-        <TouchableOpacity style={styles.draftCard} onPress={() => navigation.navigate('CreateCapture')}>
-            <View style={styles.draftPreview} />
-            <Text style={styles.draftTitle}>{item.title}</Text>
-            <Text style={styles.draftDate}>{item.date}</Text>
+        <TouchableOpacity
+            style={[styles.draftCard, isLoading && { opacity: 0.7 }]}
+            onPress={() => handleDraftPress(item)}
+            disabled={isLoading}
+        >
+            {item.coverImage ? (
+                <Image source={{ uri: item.coverImage }} style={[styles.draftPreview, { marginBottom: 8 }]} />
+            ) : (
+                <View style={styles.draftPreview} />
+            )}
+            <Text style={styles.draftTitle} numberOfLines={1}>{item.title || "Untitled"}</Text>
+            <Text style={styles.draftDate}>{new Date(item.updatedAt || Date.now()).toLocaleDateString()}</Text>
         </TouchableOpacity>
     );
 
@@ -35,6 +84,12 @@ export const ComposerEntryScreen = () => {
             />
 
             <SafeAreaView style={styles.safeArea}>
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+                        <Ionicons name="close" size={28} color="white" />
+                    </TouchableOpacity>
+                </View>
+
                 <View style={styles.heroSection}>
                     <View style={styles.orb}>
                         <Ionicons name="planet" size={60} color={theme.colors.secondary} />
@@ -59,7 +114,7 @@ export const ComposerEntryScreen = () => {
                             renderItem={({ item }) => {
                                 if (item.id === 'new') {
                                     return (
-                                        <TouchableOpacity style={styles.newCard} onPress={() => navigation.navigate('CreateCapture')}>
+                                        <TouchableOpacity style={styles.newCard} onPress={() => navigation.navigate('ComposerEditor')}>
                                             <Ionicons name="add-circle" size={40} color={theme.colors.text} />
                                             <Text style={styles.cardText}>New {activeTab === 'Drafts' ? 'Project' : 'Collab'}</Text>
                                         </TouchableOpacity>
@@ -87,6 +142,16 @@ const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
         justifyContent: 'space-between',
+    },
+    // Matches Composer Header Style
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 16,
+    },
+    iconButton: {
+        padding: 8,
     },
     heroSection: {
         flex: 1,
