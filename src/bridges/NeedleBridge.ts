@@ -2,8 +2,8 @@ import { SerializedScene } from '../types/scene';
 
 export type NeedleEditorOutboundMessage =
     | { type: "add-glb"; id: string; uri: string }
-    | { type: "add-image"; id: string; uri: string }
-    | { type: "add-video"; id: string; uri: string }
+    | { type: "add-image"; id: string; uri: string; originalUri?: string }
+    | { type: "add-video"; id: string; uri: string; originalUri?: string }
     | { type: "add-audio"; id: string; uri: string }
     | { type: "add-primitive"; id: string; primitive: "cube" | "sphere" | "plane" | "cylinder" }
     | { type: "reset-scene" }
@@ -15,7 +15,11 @@ export type NeedleEditorOutboundMessage =
     | { type: "update-object-material"; id: string; material: any }
     | { type: "add-object-animation"; id: string; animation: any }
     | { type: "update-object-animation"; id: string; animationId: string; params: any }
-    | { type: "select-object"; id: string | null }; // To programmatically select
+    | { type: "select-object"; id: string | null }
+    // Stream Messages
+    | { type: "stream-start"; id: string; mediaType: 'video' | 'image'; totalChunks: number; mimeType: string; originalUri?: string }
+    | { type: "stream-chunk"; id: string; chunkIndex: number; data: string }
+    | { type: "stream-end"; id: string };
 
 export type NeedleEditorInboundMessage =
     | { type: 'log'; message: string; level?: 'info' | 'warn' | 'error' }

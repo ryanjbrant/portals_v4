@@ -11,15 +11,21 @@ interface Props {
     onClose: () => void;
     onUpdateMaterial: (key: string, value: any) => void;
     onUpdateAnimation: (type: string, params: any, active: boolean) => void;
+    currentAnimations?: { [key: string]: { active: boolean, intensity: number, axis?: { x: boolean, y: boolean, z: boolean } } };
 }
 
 const ANIMATION_TYPES = ['bounce', 'pulse', 'rotate', 'scale', 'wiggle', 'random'];
 const { height } = Dimensions.get('window');
 const PANEL_HEIGHT = height * 0.55;
 
-export const ObjectPropertiesPanel = ({ visible, onClose, onUpdateMaterial, onUpdateAnimation }: Props) => {
+export const ObjectPropertiesPanel = ({ visible, onClose, onUpdateMaterial, onUpdateAnimation, currentAnimations = {} }: Props) => {
     const [activeTab, setActiveTab] = useState<'material' | 'animation'>('material');
-    const [animations, setAnimations] = useState<{ [key: string]: { active: boolean, intensity: number } }>({});
+    const [animations, setAnimations] = useState<{ [key: string]: { active: boolean, intensity: number, axis?: { x: boolean, y: boolean, z: boolean } } }>(currentAnimations);
+
+    // Sync with external selection changes
+    useEffect(() => {
+        setAnimations(currentAnimations);
+    }, [currentAnimations]);
 
     // Animation Driver
     const translateY = useRef(new Animated.Value(PANEL_HEIGHT)).current;
@@ -87,6 +93,38 @@ export const ObjectPropertiesPanel = ({ visible, onClose, onUpdateMaterial, onUp
     // we just keep it rendered off-screen or rely on pointerEvents.
     // However, to prevent unintended touches when "closed" (but rendered), we can check visibility for pointerEvents.
 
+    const updateAxis = (type: string, axisKey: 'x' | 'y' | 'z') => {
+        const current = animations[type] || { active: false, intensity: 1.0, axis: { x: false, y: true, z: false } };
+        const currentAxis = current.axis || { x: false, y: true, z: false };
+
+        const newAxis = { ...currentAxis, [axisKey]: !currentAxis[axisKey] };
+        // Ensure at least one is active? Or allow stop? User can use switch to stop.
+
+        const newState = { ...current, axis: newAxis };
+        setAnimations({ ...animations, [type]: newState });
+        onUpdateAnimation(type, { intensity: current.intensity, axis: newAxis }, true);
+    };
+
+    const renderAxisSelector = (type: string, currentAxis: { x: boolean, y: boolean, z: boolean } = { x: false, y: true, z: false }) => (
+        <View style={styles.axisContainer}>
+            <Text style={styles.intensityLabel}>Axes</Text>
+            <View style={styles.pillContainer}>
+                {['x', 'y', 'z'].map((key) => {
+                    const isActive = currentAxis[key as 'x' | 'y' | 'z'];
+                    return (
+                        <TouchableOpacity
+                            key={key}
+                            style={[styles.pill, isActive && styles.pillActive]}
+                            onPress={() => updateAxis(type, key as 'x' | 'y' | 'z')}
+                        >
+                            <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{key.toUpperCase()}</Text>
+                        </TouchableOpacity>
+                    );
+                })}
+            </View>
+        </View>
+    );
+
     return (
         <Animated.View
             style={[
@@ -132,11 +170,13 @@ export const ObjectPropertiesPanel = ({ visible, onClose, onUpdateMaterial, onUp
                             {[
                                 { label: 'Base Map', key: 'mapUri' },
                                 { label: 'Normal Map', key: 'normalMapUri' },
-                                { label: 'Roughness', key: 'roughnessMapUri' }
-                            ].map((item, i) => (
+                                { label: 'Roughness', key: 'roughnessMapUri' },
+                                { label: 'AO Map', key: 'aoMapUri' },
+                                { label: 'Glossiness', key: 'glossinessMapUri' }
+                            ].map((item, i, arr) => (
                                 <TouchableOpacity
                                     key={item.key}
-                                    style={[styles.textureRow, i !== 2 && styles.textureRowBorder]}
+                                    style={[styles.textureRow, i !== arr.length - 1 && styles.textureRowBorder]}
                                     onPress={() => handlePickImage(item.key as any)}
                                 >
                                     <Text style={styles.textureLabel}>{item.label}</Text>
@@ -152,7 +192,7 @@ export const ObjectPropertiesPanel = ({ visible, onClose, onUpdateMaterial, onUp
                     <View style={styles.section}>
                         <Text style={styles.label}>ANIMATION LAYERS</Text>
                         {ANIMATION_TYPES.map((type, index) => {
-                            const anim = animations[type] || { active: false, intensity: 1.0 };
+                            const anim = animations[type] || { active: false, intensity: 1.0, axis: { x: false, y: true, z: false } };
                             return (
                                 <View key={type} style={[styles.animRow, index !== ANIMATION_TYPES.length - 1 && styles.animRowBorder]}>
                                     <View style={styles.animHeader}>
@@ -166,19 +206,24 @@ export const ObjectPropertiesPanel = ({ visible, onClose, onUpdateMaterial, onUp
                                     </View>
 
                                     {anim.active && (
-                                        <View style={styles.intensityContainer}>
-                                            <Text style={styles.intensityLabel}>Intensity</Text>
-                                            <View style={styles.pillContainer}>
-                                                {[0.5, 1.0, 2.0].map(val => (
-                                                    <TouchableOpacity
-                                                        key={val}
-                                                        style={[styles.pill, anim.intensity === val && styles.pillActive]}
-                                                        onPress={() => updateIntensity(type, val)}
-                                                    >
-                                                        <Text style={[styles.pillText, anim.intensity === val && styles.pillTextActive]}>{val}x</Text>
-                                                    </TouchableOpacity>
-                                                ))}
+                                        <View>
+                                            <View style={styles.intensityContainer}>
+                                                <Text style={styles.intensityLabel}>Intensity</Text>
+                                                <View style={styles.pillContainer}>
+                                                    {[0.5, 1.0, 2.0].map(val => (
+                                                        <TouchableOpacity
+                                                            key={val}
+                                                            style={[styles.pill, anim.intensity === val && styles.pillActive]}
+                                                            onPress={() => updateIntensity(type, val)}
+                                                        >
+                                                            <Text style={[styles.pillText, anim.intensity === val && styles.pillTextActive]}>{val}x</Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </View>
                                             </View>
+
+                                            {/* Axis Selector for Rotation */}
+                                            {type === 'rotate' && renderAxisSelector(type, anim.axis)}
                                         </View>
                                     )}
                                 </View>
@@ -272,5 +317,6 @@ const styles = StyleSheet.create({
     pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)' },
     pillActive: { backgroundColor: theme.colors.primary },
     pillText: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600' },
-    pillTextActive: { color: 'black' }
+    pillTextActive: { color: 'black' },
+    axisContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 12, justifyContent: 'space-between', paddingLeft: 0 }
 });

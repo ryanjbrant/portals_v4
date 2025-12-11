@@ -6,7 +6,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { Post } from '../types';
-import { saveScene, uploadVideo } from '../api/client';
+import { uploadVideo } from '../api/client';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { StorageService } from '../services/storage';
@@ -71,6 +71,9 @@ export const PostDetailsScreen = () => {
         }
     }, [mediaUri]);
 
+    const [selectedCategory, setSelectedCategory] = useState(draftPost?.category || 'Feed');
+    const CHANNELS = ["Live", "Feed", "Friends", "Exclusive", "Creative", "Countdown", "Music", "Sports", "Entertainment"];
+
     const handlePublish = async () => {
         if (!currentUser || !draftPost) return;
         setIsPublishing(true);
@@ -78,10 +81,11 @@ export const PostDetailsScreen = () => {
         try {
             let sceneId = draftPost.sceneId;
 
-            // Determine if we need to save the scene (mock for scene data)
+            // Determine if we need to save the scene (real save to R2)
             if (draftPost.sceneData) {
-                const sceneRes = await saveScene(draftPost.sceneData);
-                sceneId = sceneRes.sceneId;
+                // Use the scalable saver
+                const { saveSceneToStorage } = require('../services/sceneSaver');
+                sceneId = await saveSceneToStorage(draftPost.sceneData, coverImage, currentUser.id);
             }
 
             // Upload Media
@@ -128,8 +132,9 @@ export const PostDetailsScreen = () => {
                 taggedUsers: taggedUsers,
                 locations: locations,
                 music: 'Original Sound',
+                category: selectedCategory, // Save Channel
                 sceneId: sceneId || null,
-                sceneData: draftPost.sceneData || null,
+                sceneData: null, // CRITICAL: Do NOT store heavy scene JSON in Firestore. Only the ID.
                 mediaUri: finalMediaUri || null,
                 coverImage: finalCoverUri || null,
                 createdAt: serverTimestamp()
@@ -147,7 +152,7 @@ export const PostDetailsScreen = () => {
 
             addPost(newPost);
             setDraftPost(null);
-            Alert.alert("Published!", "Your portal is live.", [
+            Alert.alert("Published!", `Your portal is live on #${selectedCategory}.`, [
                 { text: "OK", onPress: () => navigation.navigate('Tabs') }
             ]);
         } catch (e) {
@@ -246,6 +251,30 @@ export const PostDetailsScreen = () => {
                             onChangeText={setCaption}
                         />
                     </View>
+                </View>
+
+                {/* Channel Selector */}
+                <View style={styles.channelContainer}>
+                    <Text style={styles.sectionTitle}>Publish to Channel</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.channelsScroll}>
+                        {CHANNELS.map((channel) => (
+                            <TouchableOpacity
+                                key={channel}
+                                style={[
+                                    styles.channelChip,
+                                    selectedCategory === channel && styles.channelChipActive
+                                ]}
+                                onPress={() => setSelectedCategory(channel)}
+                            >
+                                <Text style={[
+                                    styles.channelText,
+                                    selectedCategory === channel && styles.channelTextActive
+                                ]}>
+                                    {channel}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
                 </View>
 
                 <View style={styles.row}>
@@ -388,5 +417,41 @@ const styles = StyleSheet.create({
     },
     tagText: {
         color: theme.colors.primary,
+    },
+    channelContainer: {
+        marginBottom: theme.spacing.m,
+        paddingHorizontal: theme.spacing.m,
+    },
+    sectionTitle: {
+        color: theme.colors.text,
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 8,
+        marginLeft: 4,
+    },
+    channelsScroll: {
+        paddingRight: 16,
+        gap: 8,
+    },
+    channelChip: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: theme.colors.surfaceHighlight,
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    channelChipActive: {
+        backgroundColor: theme.colors.primary,
+        borderColor: theme.colors.primary,
+    },
+    channelText: {
+        color: theme.colors.textDim,
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    channelTextActive: {
+        color: theme.colors.black,
+        fontWeight: '600',
     }
 });

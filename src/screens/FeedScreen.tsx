@@ -9,7 +9,7 @@ import { CommentsSheet } from '../components/CommentsSheet';
 import { LinearGradient } from 'expo-linear-gradient'; // Assuming available, or remove if error
 
 const { width, height } = Dimensions.get('window');
-const CATEGORIES = ["Live", "Friends", "Artifacts", "Exclusive", "Creative", "Countdown", "Music", "Sports", "Entertainment"];
+const CATEGORIES = ["Live", "Feed", "Friends", "Artifacts", "Exclusive", "Creative", "Countdown", "Music", "Sports", "Entertainment"];
 
 // --- Category Feed Component ---
 const CategoryFeed = ({ category, isActive, onCommentPress }: { category: string, isActive: boolean, onCommentPress: (id: string) => void }) => {
@@ -18,8 +18,11 @@ const CategoryFeed = ({ category, isActive, onCommentPress }: { category: string
     const setVoiceContext = useAppStore(state => state.setVoiceContext);
     const [refreshing, setRefreshing] = useState(false);
 
-    // Use the actual feed without rotation to ensure newest posts (index 0) appear at the top
-    const categoryData = allFeed;
+    // Filter feed based on category (Default to 'Feed' if undefined)
+    const categoryData = allFeed.filter(post => {
+        const postCategory = post.category || 'Feed';
+        return postCategory === category;
+    });
 
     const handleRefresh = async () => {
         setRefreshing(true);

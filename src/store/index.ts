@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Post, User, Notification, Comment, Draft, User as UserType } from '../types';
 import { POSTS, CURRENT_USER, NOTIFICATIONS, DRAFTS, COMMENTS } from '../mock';
-import { collection, query, orderBy, getDocs, limit, deleteDoc, doc, addDoc, where } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, limit, deleteDoc, doc, addDoc, setDoc, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 // Voice Context
@@ -65,6 +65,7 @@ interface AppState {
     fetchDrafts: () => Promise<void>;
     deleteDraft: (id: string) => Promise<void>;
     updateDraftPost: (updates: Partial<Post>) => void;
+    loadDraft: (draft: Draft) => Promise<void>;
 
     // Voice
     isVoiceActive: boolean;
@@ -265,24 +266,107 @@ export const useAppStore = create<AppState>((set, get) => ({
     updateDraftPost: (updates) => set((state) => ({
         draftPost: state.draftPost ? { ...state.draftPost, ...updates } : updates
     })),
+    loadDraft: async (draft) => {
+        try {
+            console.log("[Store] Loading draft...", draft.id);
+            let fullSceneData = draft.sceneData;
+
+            // version 2: sceneData is missing, fetch from R2 via sceneId
+            if (!fullSceneData && draft.sceneId) {
+                console.log("[Store] Fetching heavy scene data from R2...");
+                const { getDownloadUrl } = require('../services/storage/r2');
+                const { sceneJsonKey, assetKey } = require('../services/storage/paths');
+
+                const jsonKey = sceneJsonKey(draft.sceneId);
+                const signedUrl = await getDownloadUrl(jsonKey);
+
+                const res = await fetch(signedUrl);
+                fullSceneData = await res.json();
+                console.log("[Store] Scene data loaded.");
+            }
+
+            // --- Recursive Resolution of R2 Keys ---
+            if (fullSceneData && typeof fullSceneData === 'object') {
+                const { getDownloadUrl } = require('../services/storage/r2');
+
+                // Helper to walk the JSON tree
+                const resolveNode = async (node: any) => {
+                    if (!node) return;
+
+                    if (Array.isArray(node)) {
+                        await Promise.all(node.map(child => resolveNode(child)));
+                    } else if (typeof node === 'object') {
+                        // Check known texture slots or iterate all values? 
+                        // Iterating all keys is safer for nested materials
+                        const keys = Object.keys(node);
+                        await Promise.all(keys.map(async (key) => {
+                            const value = node[key];
+                            if (typeof value === 'string' && value.startsWith('r2://')) {
+                                const storageKey = value.replace('r2://', '');
+                                try {
+                                    const signed = await getDownloadUrl(storageKey);
+                                    node[key] = signed;
+                                } catch (e) {
+                                    console.warn("Failed to sign URL for", storageKey);
+                                }
+                            } else if (typeof value === 'object') {
+                                await resolveNode(value);
+                            }
+                        }));
+                    }
+                };
+
+                await resolveNode(fullSceneData.objects); // Only resolve objects array to limit scope
+            }
+
+            set({
+                draftPost: {
+                    ...draft,
+                    sceneData: fullSceneData
+                } as any // Cast because Post might not perfectly align with Draft but close enough for Composer
+            });
+        } catch (e) {
+            console.error("[Store] Error loading draft:", e);
+        }
+    },
     saveDraft: async (sceneData, coverImage) => {
         try {
-            console.log("[Store] Saving draft...");
+            console.log("[Store] Saving draft to Scalable Storage...");
             const state = get();
-            const newDraft = {
-                userId: state.currentUser?.id || 'anonymous',
+            const userId = state.currentUser?.id || 'anonymous';
+
+            // Use the new Scalable Saver
+            // This handles R2 uploads and proper Firestore structuring
+            const { saveSceneToStorage } = require('../services/sceneSaver'); // Lazy import to avoid cycle if any
+            const sceneId = await saveSceneToStorage(sceneData, coverImage, userId);
+
+            // Update/Create Draft Document
+            // Now the draft doc is TINY, just a reference to the scene
+            const draftRef = sceneData.draftId ? doc(db, 'drafts', sceneData.draftId) : doc(collection(db, 'drafts'));
+            const draftId = sceneData.draftId || draftRef.id;
+
+            const newDraft: any = {
+                userId,
                 user: state.currentUser,
-                sceneData: sceneData,
-                coverImage: coverImage,
-                createdAt: new Date().toISOString(),
+                sceneId: sceneId, // Link to the heavy scene data
+                coverImage: coverImage, // We might want the R2 URL here eventually, but local URI ok for session
+                title: sceneData.title || "Untitled Scene",
                 updatedAt: new Date().toISOString(),
             };
-            await addDoc(collection(db, "drafts"), newDraft);
-            console.log("[Store] Draft saved.");
+
+            if (!sceneData.draftId) {
+                newDraft.createdAt = new Date().toISOString();
+            }
+
+            await setDoc(draftRef, newDraft, { merge: true });
+
+            console.log("[Store] Draft saved successfully:", draftId);
+
             // Refresh drafts
             await state.fetchDrafts();
         } catch (e) {
             console.error("[Store] Error saving draft:", e);
+            // Optionally notify user via UI toast
         }
     },
     fetchDrafts: async () => {

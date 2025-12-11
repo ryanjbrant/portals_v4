@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, Dimensions, Image as RNImage } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, Dimensions, Image as RNImage, ScrollView } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,7 +37,29 @@ export const ComposerEditorScreen = () => {
     // Revamped UI State
     const [fileName, setFileName] = useState("Untitled Scene");
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [showEnvPicker, setShowEnvPicker] = useState(false);
+    const [showObjectPicker, setShowObjectPicker] = useState(false); // New Object Picker State
+    const [previousEnv, setPreviousEnv] = useState<string | null>(null);
     const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+    const [selectedObjectAnimations, setSelectedObjectAnimations] = useState<any>({});
+
+    // Primitives List
+    const PRIMITIVES = [
+        { id: 'cube', name: 'Cube', icon: 'cube-outline', type: 'cube' },
+        { id: 'rounded-cube', name: 'Rounded', icon: 'square-outline', type: 'rounded-cube' },
+        { id: 'sphere', name: 'Sphere', icon: 'basketball-outline', type: 'sphere' },
+        { id: 'icosphere', name: 'Icosphere', icon: 'football-outline', type: 'icosphere' },
+        { id: 'cylinder', name: 'Cylinder', icon: 'battery-half-outline', type: 'cylinder' },
+        { id: 'cone', name: 'Cone', icon: 'triangle-outline', type: 'cone' },
+        { id: 'capsule', name: 'Capsule', icon: 'tablet-landscape-outline', type: 'capsule' },
+        { id: 'torus', name: 'Torus', icon: 'ellipse-outline', type: 'torus' },
+        { id: 'torus-knot', name: 'Knot', icon: 'infinite-outline', type: 'torus-knot' },
+        { id: 'ring', name: 'Ring', icon: 'radio-button-off-outline', type: 'ring' },
+        { id: 'octahedron', name: 'Octahedron', icon: 'prism-outline', type: 'octahedron' },
+        { id: 'dodecahedron', name: 'Dodecahedron', icon: 'cube-outline', type: 'dodecahedron' }, // hexagon-outline invalid
+        { id: 'tetrahedron', name: 'Tetrahedron', icon: 'caret-up-outline', type: 'tetrahedron' },
+        { id: 'plane', name: 'Plane', icon: 'film-outline', type: 'plane' },
+    ];
     const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false);
 
     const [duration, setDuration] = useState(0);
@@ -85,16 +107,20 @@ export const ComposerEditorScreen = () => {
         return () => clearInterval(interval);
     }, [isRecording, MAX_DURATION]);
 
-    const handleMessage = async (event: any) => {
-        const msg = parseInboundMessage(event);
-        if (!msg) return;
+    // Refs for synchronization
+    const pendingExportRef = useRef<{ scene: any, coverImage: string } | null>(null);
+    const latestVideoUriRef = useRef<string | null>(null);
+
+    const handleMessage = (event: any) => {
+        const msg = JSON.parse(event.nativeEvent.data);
+        // console.log("RN Message:", msg.type);
 
         switch (msg.type) {
             case 'log':
-                console.log("[WebView]", msg.message);
+                console.log("LOG", msg.message);
                 break;
             case 'recording-paused':
-                // Update accumulated duration from WebView's authoritative value
+                // msg.durationMs
                 if (msg.durationMs) {
                     accumulatedRef.current = msg.durationMs;
                     setDuration(msg.durationMs);
@@ -114,11 +140,26 @@ export const ComposerEditorScreen = () => {
                     FileSystem.writeAsStringAsync(fileUri, base64Data, { encoding: FileSystem.EncodingType.Base64 })
                         .then(() => {
                             console.log("Saved complete video:", fileUri, "Duration:", msg.durationMs, "ms");
-                            // For continuous recording, we only have ONE final segment
+
+                            // Update State & Refs
                             const newSegment = { uri: fileUri, durationMs: msg.durationMs, data: null };
-                            setSegments([newSegment]); // Replace all segments with the final one
+                            setSegments([newSegment]);
+                            latestVideoUriRef.current = fileUri;
                             accumulatedRef.current = msg.durationMs || 0;
                             setDuration(msg.durationMs || 0);
+
+                            // CHECK PENDING EXPORT (Race Condition Fix)
+                            if (pendingExportRef.current) {
+                                console.log("Found pending export queue, navigating now.");
+                                const { scene, coverImage } = pendingExportRef.current;
+                                pendingExportRef.current = null;
+
+                                navigation.navigate('PostDetails', {
+                                    videoUri: fileUri,
+                                    coverImage: coverImage,
+                                    sceneData: scene
+                                });
+                            }
                         }).catch(e => console.error("Save Error", e));
                 }
                 break;
@@ -135,22 +176,36 @@ export const ComposerEditorScreen = () => {
                     navigation.navigate('ProfileGallery', { initialTab: 'drafts' });
                 } else {
                     // === VIDEO EXPORT (Publish Flow) ===
-                    let finalUri = msg.finalVideoUri;
-                    if (segments.length > 0) {
+                    // Try to get video from Synced Ref, then State
+                    let finalUri = latestVideoUriRef.current;
+
+                    if (!finalUri && segments.length > 0) {
                         finalUri = segments[segments.length - 1].uri;
-                        console.log("Using latest recorded segment:", finalUri);
                     }
 
-                    navigation.navigate('PostDetails', {
-                        videoUri: finalUri,
-                        coverImage: msg.coverImageURI,
-                        sceneData: msg.scene
-                    });
+                    if (finalUri) {
+                        console.log("Using ready video:", finalUri);
+                        navigation.navigate('PostDetails', {
+                            videoUri: finalUri,
+                            coverImage: msg.coverImageURI,
+                            sceneData: msg.scene
+                        });
+                    } else {
+                        // Video not ready (async save in progress), queue it.
+                        console.log("Video not ready yet, queueing navigation...");
+                        pendingExportRef.current = { scene: msg.scene, coverImage: msg.coverImageURI };
+                    }
                 }
                 break;
 
             case 'object-selected':
                 setSelectedObjectId(msg.id);
+                if (msg.animations) {
+                    setSelectedObjectAnimations(msg.animations);
+                } else {
+                    setSelectedObjectAnimations({}); // Reset if no animations
+                }
+
                 // Open panel if an object is selected? Or just let user open it manually?
                 // User said "contextual button... will reveal". So we just update state.
                 if (msg.id) {
@@ -177,6 +232,7 @@ export const ComposerEditorScreen = () => {
                 id: selectedObjectId,
                 animation: { type, params, active }
             });
+            console.log("[Composer] Sending add-object-animation for:", selectedObjectId);
         } else {
             // Send update to disable or remove? 
             // For now assume update works
@@ -188,7 +244,7 @@ export const ComposerEditorScreen = () => {
             });
         }
     };
-    const handleAddPrimitive = (type: 'cube' | 'sphere' | 'plane') => {
+    const handleAddPrimitive = (type: string) => {
         const id = Date.now().toString();
         setSelectedObjectId(id);
         sendMessageToWebView(webviewRef, {
@@ -199,8 +255,6 @@ export const ComposerEditorScreen = () => {
     };
 
     // ... (existing imports)
-
-    const [showEnvPicker, setShowEnvPicker] = useState(false);
 
     const loadEnvironment = async (assetSource: any) => {
         try {
@@ -300,23 +354,102 @@ export const ComposerEditorScreen = () => {
         }
     };
 
-    const handleAddImage = async () => {
-        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images });
+    const handleAddMedia = () => {
+        Alert.alert(
+            "Select Media Type",
+            "Choose what you want to add to the scene",
+            [
+                {
+                    text: "Photo",
+                    onPress: () => pickMedia(ImagePicker.MediaTypeOptions.Images)
+                },
+                {
+                    text: "Video",
+                    onPress: () => pickMedia(ImagePicker.MediaTypeOptions.Videos)
+                },
+                {
+                    text: "Cancel",
+                    style: "cancel"
+                }
+            ]
+        );
+    };
+
+    // Helper to send large data in chunks to avoid WebView bridge crash
+    const sendChunkedMessage = async (type: 'video' | 'image', id: string, base64: string, mimeType: string, originalUri?: string) => {
+        // CHUNK_SIZE must be a multiple of 4 for safe Base64 chunking
+        const CHUNK_SIZE = 512 * 1024; // 512KB (Multiple of 4)
+        const totalLength = base64.length;
+        const totalChunks = Math.ceil(totalLength / CHUNK_SIZE);
+
+        console.log(`[Composer] Starting Stream: ${totalLength} bytes, ${totalChunks} chunks`);
+
+        // 1. Start Stream
+        sendMessageToWebView(webviewRef, {
+            type: 'stream-start',
+            id: id,
+            mediaType: type, // 'video' or 'image'
+            totalChunks: totalChunks,
+            mimeType: mimeType,
+            originalUri: originalUri // Pass persistent URI for export
+        });
+
+        // 2. Send Chunks
+        let currentPosition = 0;
+        for (let i = 0; i < totalChunks; i++) {
+            const chunk = base64.slice(currentPosition, currentPosition + CHUNK_SIZE);
+            sendMessageToWebView(webviewRef, {
+                type: 'stream-chunk',
+                id: id,
+                chunkIndex: i,
+                data: chunk
+            });
+            currentPosition += CHUNK_SIZE;
+            // Small delay to let bridge breathe
+            if (i % 5 === 0) await new Promise(r => setTimeout(r, 10));
+        }
+
+        // 3. Finish Stream (WebView triggers processing)
+        sendMessageToWebView(webviewRef, {
+            type: 'stream-end',
+            id: id
+        });
+    };
+
+    const pickMedia = async (mediaType: ImagePicker.MediaTypeOptions) => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: mediaType,
+            quality: 1,
+        });
+
         if (!result.canceled && result.assets[0].uri) {
             try {
-                // Convert to Base64 to ensure WebView can load it
-                const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: 'base64' });
-                const uri = `data:image/jpeg;base64,${base64}`;
+                const asset = result.assets[0];
+                const type = asset.type; // 'image' or 'video'
                 const id = Date.now().toString();
-
                 setSelectedObjectId(id);
-                sendMessageToWebView(webviewRef, {
-                    type: 'add-image',
-                    id: id,
-                    uri: uri
-                });
+
+                if (type === 'video') {
+                    // Read as Base64
+                    const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+                    // Send RAW Base64 via Chunked Stream (No Data URI prefix)
+                    await sendChunkedMessage('video', id, base64, 'video/mp4', asset.uri);
+
+                } else {
+                    const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+                    const uri = `data:image/jpeg;base64,${base64}`;
+
+                    // Images are usually smaller, but let's chunk them too if they are huge?
+                    // For now, keep simple message for images unless user complains.
+                    sendMessageToWebView(webviewRef, {
+                        type: 'add-image',
+                        id: id,
+                        uri: uri,
+                        originalUri: asset.uri
+                    });
+                }
             } catch (e) {
-                console.error("Failed to load image", e);
+                console.error("Failed to load media", e);
             }
         }
     };
@@ -371,10 +504,24 @@ export const ComposerEditorScreen = () => {
                     ref={webviewRef}
                     style={{ flex: 1, backgroundColor: 'transparent' }}
                     source={{ html: EditorContent }}
+                    scrollEnabled={false}
+                    allowsInlineMediaPlayback={true}
+                    mediaPlaybackRequiresUserAction={false}
+                    allowFileAccess={true}
+                    allowFileAccessFromFileURLs={true}
                     originWhitelist={['*']}
                     onMessage={handleMessage}
                     javaScriptEnabled
                     domStorageEnabled
+                    onContentProcessDidTerminate={(syntheticEvent) => {
+                        const { nativeEvent } = syntheticEvent;
+                        console.error("WebView Content Process Terminated:", nativeEvent);
+                        Alert.alert("Crash Detected", "The 3D Engine crashed (likely Out of Memory).");
+                    }}
+                    onRenderProcessGone={(syntheticEvent) => {
+                        const { nativeEvent } = syntheticEvent;
+                        console.error("WebView Render Process Gone:", nativeEvent);
+                    }}
                 />
             </View>
 
@@ -429,46 +576,81 @@ export const ComposerEditorScreen = () => {
 
                 {/* Footer Controls */}
                 <View style={styles.footer}>
-                    {/* Toolbar hides when recording or reviewing */}
-                    {!isRecording && segments.length === 0 && (
-                        <View style={styles.toolbar}>
-                            {/* Save removed */}
-                            <TouchableOpacity style={styles.toolButton} onPress={() => handleAddPrimitive('cube')}>
-                                <Ionicons name="cube-outline" size={24} color="white" />
-                                <Text style={styles.toolLabel}>Cube</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.toolButton} onPress={() => handleAddPrimitive('sphere')}>
-                                <Ionicons name="basketball-outline" size={24} color="white" />
-                                <Text style={styles.toolLabel}>Sphere</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.toolButton} onPress={handleAddImage}>
-                                <Ionicons name="image-outline" size={24} color="white" />
-                                <Text style={styles.toolLabel}>Image</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.toolButton} onPress={() => setShowEnvPicker(!showEnvPicker)}>
-                                <Ionicons name="sunny-outline" size={24} color="white" />
-                                <Text style={styles.toolLabel}>Light</Text>
-                            </TouchableOpacity>
+                    {/* Object Picker (Bottom Anchored) */}
+                    {showObjectPicker && !isRecording && (
+                        <View style={styles.pickerContainer}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerScrollContent}>
+                                {PRIMITIVES.map((prim) => (
+                                    <TouchableOpacity
+                                        key={prim.id}
+                                        style={styles.pickerItem}
+                                        onPress={() => {
+                                            handleAddPrimitive(prim.type);
+                                            setShowObjectPicker(false);
+                                        }}
+                                    >
+                                        <View style={styles.pickerIconContainer}>
+                                            <Ionicons name={prim.icon as any} size={24} color="white" />
+                                        </View>
+                                        <Text style={styles.pickerLabel}>{prim.name}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
                         </View>
                     )}
 
-                    {/* Environment Picker */}
+                    {/* Environment Picker (Bottom Anchored) */}
                     {showEnvPicker && !isRecording && (
-                        <View style={styles.envPicker}>
-                            {HDRI_MAPS.map((map) => (
-                                <TouchableOpacity
-                                    key={map.id}
-                                    style={styles.envOption}
-                                    onPress={() => {
-                                        loadEnvironment(map.source);
-                                        setShowEnvPicker(false);
-                                    }}
-                                >
-                                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#333', overflow: 'hidden', borderWidth: 1, borderColor: 'white' }}>
-                                        <RNImage source={map.source} style={{ width: '100%', height: '100%' }} />
-                                    </View>
-                                </TouchableOpacity>
-                            ))}
+                        <View style={styles.pickerContainer}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerScrollContent}>
+                                {HDRI_MAPS.map((map) => (
+                                    <TouchableOpacity
+                                        key={map.id}
+                                        style={styles.pickerItem}
+                                        onPress={() => {
+                                            loadEnvironment(map.source);
+                                            setShowEnvPicker(false);
+                                        }}
+                                    >
+                                        <View style={[styles.pickerIconContainer, { overflow: 'hidden', padding: 0, borderWidth: 1, borderColor: 'white' }]}>
+                                            <RNImage source={map.source} style={{ width: '100%', height: '100%' }} />
+                                        </View>
+                                        <Text style={styles.pickerLabel}>{map.name}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        </View>
+                    )}
+
+                    {/* Toolbar hides when recording or reviewing */}
+                    {!isRecording && segments.length === 0 && (
+                        <View style={styles.toolbar}>
+                            <TouchableOpacity
+                                style={styles.toolButton}
+                                onPress={() => {
+                                    setShowObjectPicker(!showObjectPicker);
+                                    setShowEnvPicker(false); // Auto-close other picker
+                                }}
+                            >
+                                <Ionicons name="shapes-outline" size={24} color={showObjectPicker ? theme.colors.primary : "white"} />
+                                <Text style={[styles.toolLabel, showObjectPicker && { color: theme.colors.primary }]}>Objects</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.toolButton} onPress={handleAddMedia}>
+                                <Ionicons name="images-outline" size={24} color="white" />
+                                <Text style={styles.toolLabel}>Media</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.toolButton}
+                                onPress={() => {
+                                    setShowEnvPicker(!showEnvPicker);
+                                    setShowObjectPicker(false); // Auto-close other picker
+                                }}
+                            >
+                                <Ionicons name="sunny-outline" size={24} color={showEnvPicker ? theme.colors.primary : "white"} />
+                                <Text style={[styles.toolLabel, showEnvPicker && { color: theme.colors.primary }]}>Light</Text>
+                            </TouchableOpacity>
                         </View>
                     )}
 
@@ -568,6 +750,7 @@ export const ComposerEditorScreen = () => {
                 onClose={() => setIsPropertiesPanelOpen(false)}
                 onUpdateMaterial={handleUpdateMaterial}
                 onUpdateAnimation={handleUpdateAnimation}
+                currentAnimations={selectedObjectAnimations}
             />
         </View>
     );
@@ -642,6 +825,41 @@ const styles = StyleSheet.create({
     },
     envOption: {
         alignItems: 'center',
+    },
+    // Premium Picker Styles
+    pickerContainer: {
+        width: '100%',
+        marginBottom: 16,
+        paddingHorizontal: 20, // inset
+    },
+    pickerScrollContent: {
+        backgroundColor: 'rgba(20, 20, 20, 0.9)', // Dark glass look
+        borderRadius: 24,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        gap: 16,
+        alignItems: 'center',
+        // Optional border/shadow for pop effect
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    pickerItem: {
+        alignItems: 'center',
+        gap: 6,
+        minWidth: 56,
+    },
+    pickerIconContainer: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    pickerLabel: {
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: 11,
+        fontWeight: '500',
     },
     menuDropdown: {
         position: 'absolute',

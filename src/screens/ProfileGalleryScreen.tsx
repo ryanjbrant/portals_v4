@@ -61,6 +61,8 @@ export const ProfileGalleryScreen = () => {
     const data = getTabContent();
 
     const deletePost = useAppStore(state => state.deletePost);
+    const deleteDraft = useAppStore(state => state.deleteDraft);
+    const toggleLike = useAppStore(state => state.toggleLike);
 
     // Selection Mode Logic
     const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -84,14 +86,56 @@ export const ProfileGalleryScreen = () => {
         }
     };
 
-    const handleItemPress = (item: any, index: number) => {
+    const loadDraft = useAppStore(state => state.loadDraft);
+    const [isLoadingDraft, setIsLoadingDraft] = useState(false);
+
+    const handleItemPress = async (item: any, index: number) => {
         if (isSelectionMode) {
             toggleSelection(item.id);
             return;
         }
 
         if (activeTab === 'drafts') {
-            navigation.navigate('ComposerEditor', { draftData: item.sceneData, draftTitle: item.title });
+            // Lazy Load Scene Data if missing
+            if (!item.sceneData && item.sceneId) {
+                try {
+                    setIsLoadingDraft(true);
+                    // Use store action to fetch and update local state (or just return data)
+                    // Since loadDraft updates the store's draftPost, we might want to just fetch it here or rely on store.
+                    // Actually, Composer expects `draftData` param. 
+                    // Let's call loadDraft which populates `draftPost`.
+                    // Wait, Composer navigation param `draftData` is used.
+                    // If I update `loadDraft` to RETURN the data it would be easier.
+                    // But `loadDraft` updates `draftPost` in store.
+                    // Let's update `loadDraft` to return the data, OR read it from store after.
+                    // Simpler: Just rely on the store's `draftPost` if I was navigating to a screen that uses `draftPost`.
+                    // But `ComposerEditor` uses `route.params.draftData`.
+                    // I should probably pass the lightweight draft and let COMPOSER load it?
+                    // "Cold-start-friendly loading" -> Composer should show "Loading Scene..."
+                    // That is better UX than blocking here.
+                    // BUT, I can't easily change Composer right now without verifying it.
+                    // Let's block here with a spinner for MVP.
+
+                    // We need to access the loaded data.
+                    // I will look at `item` again. `loadDraft` updates the specific draft in `drafts` array? 
+                    // No, `loadDraft` sets `draftPost` (active draft).
+
+                    await loadDraft(item);
+                    // Now `useAppStore.getState().draftPost` has the data.
+                    const loadedDraft = useAppStore.getState().draftPost;
+                    setIsLoadingDraft(false);
+
+                    navigation.navigate('ComposerEditor', {
+                        draftData: loadedDraft?.sceneData,
+                        draftTitle: item.title || "Untitled"
+                    });
+                } catch (e) {
+                    Alert.alert("Error", "Could not load draft.");
+                    setIsLoadingDraft(false);
+                }
+            } else {
+                navigation.navigate('ComposerEditor', { draftData: item.sceneData, draftTitle: item.title || "Untitled" });
+            }
         } else {
             navigation.navigate('PostFeed', {
                 posts: data,
@@ -102,18 +146,34 @@ export const ProfileGalleryScreen = () => {
     };
 
     const handleDeleteSelected = () => {
+        const actionMap: Record<string, string> = {
+            'posts': 'delete',
+            'artifacts': 'delete',
+            'drafts': 'delete',
+            'likes': 'remove'
+        };
+        const action = actionMap[activeTab];
+
         Alert.alert(
-            "Delete Selected",
-            `Are you sure you want to delete ${selectedIds.size} items?`,
+            "Confirm Action",
+            `Are you sure you want to ${action} ${selectedIds.size} items?`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
-                    text: "Delete",
+                    text: action === 'delete' ? "Delete" : "Remove",
                     style: "destructive",
                     onPress: async () => {
                         const idsToDelete = Array.from(selectedIds);
                         for (const id of idsToDelete) {
-                            await deletePost(id);
+                            if (activeTab === 'drafts') {
+                                await deleteDraft(id);
+                            } else if (activeTab === 'likes') {
+                                // "Remove from gallery" for likes = Unlike
+                                await toggleLike(id);
+                            } else {
+                                // Posts and Artifacts
+                                await deletePost(id);
+                            }
                         }
                         setIsSelectionMode(false);
                         setSelectedIds(new Set());
@@ -129,9 +189,27 @@ export const ProfileGalleryScreen = () => {
     };
 
     const renderItem = ({ item, index }: { item: any, index: number }) => {
+        const isSelected = selectedIds.has(item.id);
+
+        // Common Selection Overlay
+        const SelectionOverlay = () => (
+            <View style={styles.selectionOverlay}>
+                <Ionicons
+                    name={isSelected ? "checkmark-circle" : "ellipse-outline"}
+                    size={24}
+                    color={isSelected ? theme.colors.primary : "white"}
+                />
+            </View>
+        );
+
         if (activeTab === 'drafts') {
             return (
-                <TouchableOpacity style={styles.draftItem} onPress={() => handleItemPress(item, index)}>
+                <TouchableOpacity
+                    style={[styles.draftItem, isSelectionMode && { opacity: 0.9 }]}
+                    onPress={() => handleItemPress(item, index)}
+                    onLongPress={() => handleLongPress(item)}
+                    delayLongPress={200}
+                >
                     {item.coverImage ? (
                         <Image source={{ uri: item.coverImage }} style={[styles.thumbnail, { borderRadius: 8 }]} />
                     ) : (
@@ -139,14 +217,16 @@ export const ProfileGalleryScreen = () => {
                             <Ionicons name="construct-outline" size={32} color={theme.colors.textDim} />
                         </View>
                     )}
-                    <Text style={styles.draftDate}>{new Date(item.updatedAt).toLocaleDateString()}</Text>
+                    <View style={styles.draftInfo}>
+                        <Text style={styles.draftTitle} numberOfLines={1}>{item.title || "Untitled Scene"}</Text>
+                        <Text style={styles.draftDate}>{new Date(item.updatedAt || Date.now()).toLocaleDateString()}</Text>
+                    </View>
+                    {isSelectionMode && <SelectionOverlay />}
                 </TouchableOpacity>
             );
         }
 
         // Standard Post Thumbnail
-        const isSelected = selectedIds.has(item.id);
-
         return (
             <TouchableOpacity
                 style={[styles.gridItem, isSelectionMode && { opacity: 0.9 }]}
@@ -159,15 +239,7 @@ export const ProfileGalleryScreen = () => {
                     style={styles.thumbnail}
                 />
 
-                {isSelectionMode && (
-                    <View style={styles.selectionOverlay}>
-                        <Ionicons
-                            name={isSelected ? "checkmark-circle" : "ellipse-outline"}
-                            size={24}
-                            color={isSelected ? theme.colors.primary : "white"}
-                        />
-                    </View>
-                )}
+                {isSelectionMode && <SelectionOverlay />}
 
                 {activeTab === 'artifacts' && (
                     <View style={styles.diamondBadge}>
@@ -331,13 +403,12 @@ const styles = StyleSheet.create({
         borderColor: theme.colors.surfaceHighlight,
     },
     draftPreview: {
-        width: 60,
-        height: 60,
-        borderRadius: 8,
-        backgroundColor: theme.colors.surfaceHighlight,
+        flex: 1,
+        backgroundColor: '#1E1E1E',
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 8,
+        borderTopLeftRadius: 8,
+        borderTopRightRadius: 8
     },
     draftTitle: {
         color: theme.colors.text,
@@ -378,5 +449,8 @@ const styles = StyleSheet.create({
         top: 6,
         right: 6,
         zIndex: 10,
-    }
+    },
+    draftInfo: { padding: 8 },
+    draftTitle: { color: theme.colors.text, fontSize: 13, fontWeight: '600', marginBottom: 2 },
+    draftDate: { color: theme.colors.textDim, fontSize: 11 }
 });

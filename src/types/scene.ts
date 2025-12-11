@@ -1,8 +1,9 @@
 export interface SceneObject {
     id: string;
-    type: "glb" | "primitive" | "image-plane" | "video-plane" | "audio-source";
+    // Extended types for AR and Splats
+    type: "glb" | "primitive" | "image-plane" | "video-plane" | "audio-source" | "gaussian-splat" | "ar-anchor";
     assetUri: string | null;
-    primitiveType?: "cube" | "sphere" | "plane" | "cylinder";
+    primitiveType?: "cube" | "sphere" | "plane" | "cylinder" | "p-cone" | "p-torus"; // Extended primitives as needed
     transform: {
         position: [number, number, number];
         rotation: [number, number, number];
@@ -10,7 +11,8 @@ export interface SceneObject {
     };
     extra?: {
         spatialAudio?: { gain: number; range: number };
-        videoSettings?: { loop: boolean; muted: boolean };
+        videoSettings?: { loop: boolean; muted: boolean; autoPlay: boolean };
+        splatSettings?: { splatAlphaRemovalThreshold?: number }; // Specific to splats
     };
     material?: {
         color?: string;
@@ -18,11 +20,13 @@ export interface SceneObject {
         normalMapUri?: string;
         roughnessMapUri?: string;
         envMapUri?: string;
+        opacity?: number;
+        transparent?: boolean;
     };
     animations?: {
-        id: string; // Unique ID for the animation instance
+        id: string;
         type: 'bounce' | 'pulse' | 'rotate' | 'scale' | 'wiggle' | 'random';
-        params: { [key: string]: number }; // e.g. intensity, interval
+        params: { [key: string]: number };
         active: boolean;
     }[];
 }
