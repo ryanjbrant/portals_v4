@@ -18,11 +18,8 @@ const CategoryFeed = ({ category, isActive, onCommentPress }: { category: string
     const setVoiceContext = useAppStore(state => state.setVoiceContext);
     const [refreshing, setRefreshing] = useState(false);
 
-    // Create a stable, shuffled version or filtered version for this category
-    // In a real app, this would be a query. For now, we memoize a shuffled slice or just use full feed.
-    // To make them look different, we can rotate the array based on category index length
-    const offset = category.length;
-    const categoryData = [...allFeed.slice(offset % allFeed.length), ...allFeed.slice(0, offset % allFeed.length)];
+    // Use the actual feed without rotation to ensure newest posts (index 0) appear at the top
+    const categoryData = allFeed;
 
     const handleRefresh = async () => {
         setRefreshing(true);

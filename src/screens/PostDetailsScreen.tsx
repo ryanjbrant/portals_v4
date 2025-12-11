@@ -26,8 +26,26 @@ export const PostDetailsScreen = () => {
     const coverImage = route.params?.coverImage;
 
     // Initialize draft on mount
+    // Initialize draft on mount
     React.useEffect(() => {
-        if (!draftPost) {
+        const incomingVideo = route.params?.videoUri;
+        const incomingScene = route.params?.sceneData;
+
+        if (incomingVideo) {
+            // Came from Composer with new video
+            const baseState = draftPost || {
+                caption: '',
+                tags: [],
+                taggedUsers: [],
+                locations: [],
+            };
+
+            setDraftPost({
+                ...baseState,
+                mediaUri: incomingVideo,
+                sceneData: incomingScene || baseState.sceneData
+            });
+        } else if (!draftPost) {
             setDraftPost({
                 caption: '',
                 tags: [],
@@ -35,7 +53,7 @@ export const PostDetailsScreen = () => {
                 locations: [],
             });
         }
-    }, []);
+    }, [route.params?.videoUri]);
 
     const caption = draftPost?.caption || '';
     const tags = draftPost?.tags || [];
