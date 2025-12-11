@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Post } from '../types';
 import { theme } from '../theme/theme';
@@ -32,6 +32,16 @@ export const FeedItem = ({ post, onCommentPress }: FeedItemProps) => {
         } catch (error) {
             console.error(error);
             setIsFollowing(false); // Revert
+        }
+    };
+
+    const handleShare = async () => {
+        try {
+            await Share.share({
+                message: `Check out this post from @${post.user.username}\n\n"${post.caption}"\n\nSent via Portals`,
+            });
+        } catch (error: any) {
+            console.error(error.message);
         }
     };
 
@@ -80,14 +90,15 @@ export const FeedItem = ({ post, onCommentPress }: FeedItemProps) => {
                     <Text style={styles.actionText}>{post.comments}</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.actionButton}>
+                <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
                     <Ionicons name="share-social" size={35} color={theme.colors.white} />
                     <Text style={styles.actionText}>{post.shares}</Text>
                 </TouchableOpacity>
 
-                <View style={styles.arBadge}>
-                    <Text style={styles.arText}>AR</Text>
-                </View>
+                <TouchableOpacity style={styles.actionButton}>
+                    <Ionicons name="eye" size={35} color={theme.colors.white} />
+                    <Text style={styles.actionText}>View</Text>
+                </TouchableOpacity>
 
 
             </View>
@@ -155,20 +166,6 @@ const styles = StyleSheet.create({
         fontSize: 12,
         marginTop: 4,
         fontWeight: '600',
-    },
-    arBadge: {
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 12,
-        marginTop: 10,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.5)',
-    },
-    arText: {
-        color: theme.colors.white,
-        fontSize: 10,
-        fontWeight: 'bold',
     },
     bottomContainer: {
         position: 'absolute',

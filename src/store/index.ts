@@ -32,12 +32,33 @@ interface AppState {
     addReply: (postId: string, parentCommentId: string, reply: Comment) => void;
 
     // Notifications
+    // Notifications
     notifications: Notification[];
     respondToRequest: (notificationId: string, status: 'accepted' | 'declined') => void;
     addNotification: (notification: Notification) => void;
+    markAsRead: (id: string) => void;
+    markAllAsRead: () => void;
+
+    // Social Relationships
+    relationships: {
+        team: string[];
+        invites: string[];
+        friends: string[];
+        following: string[];
+        blocked: string[];
+    };
+    sendInvite: (userId: string) => void;
+    approveInvite: (userId: string) => void;
+    rejectInvite: (userId: string) => void;
+    removeTeamMember: (userId: string) => void;
+    followUser: (userId: string) => void;
+    unfollowUser: (userId: string) => void;
 
     // Drafts
     drafts: Draft[];
+    draftPost: Partial<Post> | null;
+    setDraftPost: (draft: Partial<Post> | null) => void;
+    updateDraftPost: (updates: Partial<Post>) => void;
 
     // Voice
     isVoiceActive: boolean;
@@ -76,7 +97,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         }));
     },
     addPost: (post) => set((state) => ({ feed: [post, ...state.feed] })),
-    fetchFeed: async () => { }, // Placeholder
+    fetchFeed: async () => {
+        // Simulate network delay
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Shuffle feed to simulate new content
+        const shuffled = [...POSTS].sort(() => Math.random() - 0.5);
+        set({ feed: shuffled });
+    },
     createPost: async (post) => { }, // Placeholder
 
     // Comments
@@ -111,13 +138,69 @@ export const useAppStore = create<AppState>((set, get) => ({
     notifications: NOTIFICATIONS,
     respondToRequest: (id, status) => set((state) => ({
         notifications: state.notifications.map(n =>
-            n.id === id ? { ...n, status } : n
+            n.id === id ? { ...n, actionStatus: status } : n
         )
     })),
     addNotification: (n) => set((state) => ({ notifications: [n, ...state.notifications] })),
+    markAsRead: (id) => set((state) => ({
+        notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n)
+    })),
+    markAllAsRead: () => set((state) => ({
+        notifications: state.notifications.map(n => ({ ...n, read: true }))
+    })),
+
+    // Social Relationships
+    relationships: {
+        team: [],
+        invites: ['u2', 'u3', 'u4'], // Mock: Everyone invited us for demo
+        friends: ['u3'],
+        following: ['u3', 'u4'],
+        blocked: []
+    },
+    sendInvite: (userId) => set((state) => ({
+        relationships: { ...state.relationships, invites: [...state.relationships.invites, userId] } // Self-invite? Or outgoing? Assuming incoming for this demo context or we just add to team? 
+        // Real app would send API request.
+    })),
+    approveInvite: (userId) => set((state) => ({
+        relationships: {
+            ...state.relationships,
+            invites: state.relationships.invites.filter(id => id !== userId),
+            team: [...state.relationships.team, userId]
+        }
+    })),
+    rejectInvite: (userId) => set((state) => ({
+        relationships: {
+            ...state.relationships,
+            invites: state.relationships.invites.filter(id => id !== userId),
+            blocked: [...state.relationships.blocked, userId] // Optional: Add to blocked or just remove
+        }
+    })),
+    removeTeamMember: (userId) => set((state) => ({
+        relationships: {
+            ...state.relationships,
+            team: state.relationships.team.filter(id => id !== userId)
+        }
+    })),
+    followUser: (userId) => set((state) => ({
+        relationships: {
+            ...state.relationships,
+            following: [...state.relationships.following, userId]
+        }
+    })),
+    unfollowUser: (userId) => set((state) => ({
+        relationships: {
+            ...state.relationships,
+            following: state.relationships.following.filter(id => id !== userId)
+        }
+    })),
 
     // Drafts
     drafts: DRAFTS,
+    draftPost: null,
+    setDraftPost: (draft) => set({ draftPost: draft }),
+    updateDraftPost: (updates) => set((state) => ({
+        draftPost: state.draftPost ? { ...state.draftPost, ...updates } : updates
+    })),
 
     // Voice
     isVoiceActive: false,

@@ -5,10 +5,11 @@ import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { FeedScreen } from '../screens/FeedScreen';
 import { PeopleScreen } from '../screens/PeopleScreen';
+import { ShopScreen } from '../screens/ShopScreen';
 import { ComposerNavigator } from './ComposerNavigator';
 import { MapScreen } from '../screens/MapScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
-import { View, TouchableOpacity, Platform, Animated } from 'react-native';
+import { View, TouchableOpacity, Platform, Animated, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const Tab = createBottomTabNavigator();
@@ -65,6 +66,8 @@ const ComposeButton = ({ navigation }: { navigation: any }) => {
 
 export const BottomTabNavigator = () => {
     const insets = useSafeAreaInsets();
+    const notifications = useAppStore(state => state.notifications);
+    const unreadCount = notifications.filter(n => !n.read).length;
 
     return (
         <Tab.Navigator
@@ -85,14 +88,39 @@ export const BottomTabNavigator = () => {
 
                     if (route.name === 'Home') {
                         iconName = focused ? 'home' : 'home-outline';
-                    } else if (route.name === 'Friends') {
-                        iconName = focused ? 'people' : 'people-outline';
+                    } else if (route.name === 'Artifacts') {
+                        iconName = focused ? 'diamond' : 'diamond-outline';
                     } else if (route.name === 'Compose') {
                         return <ComposeButton navigation={navigation} />;
                     } else if (route.name === 'Map') {
                         iconName = focused ? 'map' : 'map-outline';
                     } else if (route.name === 'Me') {
                         iconName = focused ? 'person' : 'person-outline';
+                        return (
+                            <View>
+                                <Ionicons name={iconName} size={24} color={color} />
+                                {unreadCount > 0 && (
+                                    <View style={{
+                                        position: 'absolute',
+                                        right: -6,
+                                        top: -2,
+                                        backgroundColor: '#FF3B30',
+                                        borderRadius: 8,
+                                        minWidth: 16,
+                                        height: 16,
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                        borderWidth: 1.5,
+                                        borderColor: theme.colors.background,
+                                        paddingHorizontal: 2,
+                                    }}>
+                                        <Text style={{ color: 'white', fontSize: 9, fontWeight: 'bold', lineHeight: 11 }}>
+                                            {unreadCount > 99 ? '99+' : unreadCount}
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                        );
                     }
 
                     return <Ionicons name={iconName} size={24} color={color} />;
@@ -100,14 +128,17 @@ export const BottomTabNavigator = () => {
             })}
         >
             <Tab.Screen name="Home" component={FeedScreen} />
-            <Tab.Screen name="Friends" component={PeopleScreen} />
+            <Tab.Screen name="Artifacts" component={ShopScreen} />
             <Tab.Screen
                 name="Compose"
                 component={ComposerNavigator}
                 options={{ tabBarLabel: () => null }}
             />
             <Tab.Screen name="Map" component={MapScreen} />
-            <Tab.Screen name="Me" component={ProfileScreen} />
+            <Tab.Screen
+                name="Me"
+                component={ProfileScreen}
+            />
         </Tab.Navigator>
     );
 };

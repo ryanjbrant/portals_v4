@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -16,6 +16,8 @@ export const ProfileScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const currentUser = useAppStore(state => state.currentUser);
+    const notifications = useAppStore(state => state.notifications);
+    const hasUnread = notifications.some(n => !n.read);
 
     // Params: userId can be passed to view others. If null, view self.
     const targetUserId = route.params?.userId || currentUser?.id;
@@ -86,6 +88,16 @@ export const ProfileScreen = () => {
                 style={styles.background}
             />
 
+            {isSelf && (
+                <SafeAreaView style={styles.topNav}>
+                    <View style={{ flex: 1 }} />
+                    <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Activity')}>
+                        <Ionicons name="notifications-outline" size={26} color={theme.colors.white} />
+                        {hasUnread && <View style={styles.redDot} />}
+                    </TouchableOpacity>
+                </SafeAreaView>
+            )}
+
             <ScrollView contentContainerStyle={styles.content}>
                 <View style={styles.header}>
                     <View style={styles.avatarContainer}>
@@ -102,12 +114,12 @@ export const ProfileScreen = () => {
 
                     {/* Stats Row */}
                     <View style={styles.statsContainer}>
-                        <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('Friends', { tab: 'Following' })}>
+                        <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Following' })}>
                             <Text style={styles.statNumber}>{profileUser.following}</Text>
                             <Text style={styles.statLabel}>Following</Text>
                         </TouchableOpacity>
                         <View style={styles.statDivider} />
-                        <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('Friends', { tab: 'Followers' })}>
+                        <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Followers' })}>
                             <Text style={styles.statNumber}>{profileUser.followers}</Text>
                             <Text style={styles.statLabel}>Followers</Text>
                         </TouchableOpacity>
@@ -321,6 +333,35 @@ const styles = StyleSheet.create({
         fontSize: 16,
         flex: 1,
         marginLeft: 12,
+    },
+    topNav: {
+        position: 'absolute',
+        top: 50, // Approximate Status Bar height + padding
+        left: 0,
+        right: 0,
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        paddingHorizontal: 20,
+        zIndex: 10,
+    },
+    iconBtn: {
+        width: 44,
+        height: 44,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        borderRadius: 22,
+    },
+    redDot: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: '#FF3B30',
+        borderWidth: 1,
+        borderColor: theme.colors.surface,
     },
     bioContainer: {
         width: '100%',

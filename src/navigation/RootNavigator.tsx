@@ -4,12 +4,16 @@ import { NavigationContainer, useNavigationContainerRef } from '@react-navigatio
 import { LoginScreen } from '../screens/LoginScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
 import { BottomTabNavigator } from './BottomTabNavigator';
+import { PeopleScreen } from '../screens/PeopleScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { ProfileGalleryScreen } from '../screens/ProfileGalleryScreen';
 import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen';
 import { ActivityScreen } from '../screens/ActivityScreen';
 import { PostFeedScreen } from '../screens/PostFeedScreen';
+import { ChatScreen } from '../screens/ChatScreen';
+import { TagPeopleScreen } from '../screens/TagPeopleScreen';
+import { LocationPickerScreen } from '../screens/LocationPickerScreen';
 import { useAppStore } from '../store';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -18,6 +22,8 @@ import { auth, db } from '../config/firebase';
 import { User } from '../types';
 import { theme } from '../theme/theme';
 import { VoiceOverlay } from '../components/VoiceOverlay';
+
+import { PostDetailsScreen } from '../screens/PostDetailsScreen';
 
 // Stub or Reuse Screen
 const UserProfileScreen = ProfileScreen; // Reuse for now, ideally refactor later
@@ -38,11 +44,16 @@ const MainStackScreen = () => (
     <MainStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
         <MainStack.Screen name="Tabs" component={BottomTabNavigator} />
         <MainStack.Screen name="Search" component={SearchScreen} />
+        <MainStack.Screen name="People" component={PeopleScreen} />
         <MainStack.Screen name="UserProfile" component={ProfileScreen} />
         <MainStack.Screen name="ProfileGallery" component={ProfileGalleryScreen} />
         <MainStack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
         <MainStack.Screen name="Activity" component={ActivityScreen} />
         <MainStack.Screen name="PostFeed" component={PostFeedScreen} />
+        <MainStack.Screen name="PostDetails" component={PostDetailsScreen} />
+        <MainStack.Screen name="Chat" component={ChatScreen} />
+        <MainStack.Screen name="TagPeople" component={TagPeopleScreen} options={{ presentation: 'modal' }} />
+        <MainStack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ presentation: 'fullScreenModal' }} />
     </MainStack.Navigator>
 );
 

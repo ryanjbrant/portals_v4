@@ -1,26 +1,42 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Dimensions, StatusBar, TouchableOpacity } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, Dimensions, StatusBar, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { FeedItem } from '../components/FeedItem';
-import { CommentsSheet } from '../components/CommentsSheet'; // Creating this next
+import { CommentsSheet } from '../components/CommentsSheet';
+import { LinearGradient } from 'expo-linear-gradient'; // Assuming available, or remove if error
 
-export const FeedScreen = () => {
-    const navigation = useNavigation<any>();
-    const feed = useAppStore(state => state.feed);
-    const [activeTab, setActiveTab] = useState('FRIENDS');
-    const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+const { width, height } = Dimensions.get('window');
+const CATEGORIES = ["Live", "Friends", "Artifacts", "Exclusive", "Creative", "Countdown", "Music", "Sports", "Entertainment"];
+
+// --- Category Feed Component ---
+const CategoryFeed = ({ category, isActive, onCommentPress }: { category: string, isActive: boolean, onCommentPress: (id: string) => void }) => {
+    // Determine data based on category (Mock logic)
+    const allFeed = useAppStore(state => state.feed);
     const setVoiceContext = useAppStore(state => state.setVoiceContext);
+    const [refreshing, setRefreshing] = useState(false);
+
+    // Create a stable, shuffled version or filtered version for this category
+    // In a real app, this would be a query. For now, we memoize a shuffled slice or just use full feed.
+    // To make them look different, we can rotate the array based on category index length
+    const offset = category.length;
+    const categoryData = [...allFeed.slice(offset % allFeed.length), ...allFeed.slice(0, offset % allFeed.length)];
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await new Promise(r => setTimeout(r, 1500));
+        // In real app, refetch category.
+        setRefreshing(false);
+    };
 
     const renderItem = ({ item }: { item: any }) => (
-        <FeedItem post={item} onCommentPress={() => setSelectedPostId(item.id)} />
+        <FeedItem post={item} onCommentPress={() => onCommentPress(item.id)} />
     );
 
-    // Track visible item for Voice Context
-    const onViewableItemsChanged = React.useRef(({ viewableItems }: any) => {
-        if (viewableItems && viewableItems.length > 0) {
+    const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+        if (isActive && viewableItems && viewableItems.length > 0) {
             const currentItem = viewableItems[0];
             if (currentItem) {
                 setVoiceContext({
@@ -32,27 +48,114 @@ export const FeedScreen = () => {
         }
     }).current;
 
-    const viewabilityConfig = React.useRef({
+    const viewabilityConfig = useRef({
         itemVisiblePercentThreshold: 50
     }).current;
+
+    return (
+        <View style={{ width, height: height - 80 }}>
+            {/* height - 80 accounts for bottom tab bar roughly, usually flex:1 is better but nested in horizontal list needs explicit dims */}
+            <FlatList
+                data={categoryData}
+                renderItem={renderItem}
+                keyExtractor={item => item.id}
+                pagingEnabled
+                showsVerticalScrollIndicator={false}
+                decelerationRate="fast"
+                snapToInterval={height - 80} // Consistent with previous implementation
+                snapToAlignment="start"
+                onViewableItemsChanged={onViewableItemsChanged}
+                viewabilityConfig={viewabilityConfig}
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+            />
+        </View>
+    );
+};
+
+// --- Main Feed Screen ---
+export const FeedScreen = () => {
+    const navigation = useNavigation<any>();
+    const [activeIndex, setActiveIndex] = useState(1); // Default to 'Friends' (index 1)
+    const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+
+    const feedListRef = useRef<FlatList>(null);
+    const tabsListRef = useRef<FlatList>(null);
+
+    const handleTabPress = (index: number) => {
+        setActiveIndex(index);
+        feedListRef.current?.scrollToIndex({ index, animated: true });
+        tabsListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+    };
+
+    const onMomentumScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const index = Math.round(e.nativeEvent.contentOffset.x / width);
+        if (index !== activeIndex) {
+            setActiveIndex(index);
+            tabsListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+        }
+    };
+
+    useEffect(() => {
+        // Force initial scroll alignment
+        // We use a slightly longer delay to ensure layout is computed
+        setTimeout(() => {
+            if (tabsListRef.current) {
+                tabsListRef.current.scrollToIndex({
+                    index: activeIndex,
+                    animated: true, // Animated ensure it scrolls after layout 
+                    viewPosition: 0.5
+                });
+            }
+        }, 500);
+    }, []);
 
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" translucent />
 
-            {/* Top Tabs Overlay */}
-            <View style={styles.topTabs}>
-                {['LIVE', 'FRIENDS', 'FASHION'].map((tab) => (
-                    <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)}>
-                        <Text style={[
-                            styles.tabText,
-                            activeTab === tab && styles.activeTabText
-                        ]}>
-                            {tab}
-                        </Text>
-                        {activeTab === tab && <View style={styles.indicator} />}
-                    </TouchableOpacity>
-                ))}
+            {/* Top Categories Tab Bar */}
+            <View style={styles.topTabsContainer}>
+                <FlatList
+                    ref={tabsListRef}
+                    data={CATEGORIES}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyExtractor={item => item}
+                    contentContainerStyle={styles.tabsContent}
+                    ListHeaderComponent={<View style={{ width: width / 2 - 40 }} />}
+                    ListFooterComponent={<View style={{ width: width / 2 - 40 }} />}
+                    renderItem={({ item, index }) => {
+                        const isActive = index === activeIndex;
+                        // Dynamic opacity based on distance from center
+                        const distance = Math.abs(index - activeIndex);
+                        const opacity = Math.max(0.35, 1 - (distance * 0.3));
+
+                        return (
+                            <TouchableOpacity onPress={() => handleTabPress(index)} style={[styles.tabItem, { opacity }]}>
+                                <Text style={[styles.tabText, isActive && styles.activeTabText]}>
+                                    {item}
+                                </Text>
+                                {isActive && <View style={styles.activeIndicator} />}
+                            </TouchableOpacity>
+                        );
+                    }}
+                    // Remove fixed initialScrollIndex to avoid conflicts with centering logic
+                    onLayout={() => {
+                        tabsListRef.current?.scrollToIndex({
+                            index: activeIndex,
+                            animated: false,
+                            viewPosition: 0.5
+                        });
+                    }}
+                    initialNumToRender={CATEGORIES.length}
+                    onScrollToIndexFailed={info => {
+                        const wait = new Promise(resolve => setTimeout(resolve, 500));
+                        wait.then(() => {
+                            tabsListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
+                        });
+                    }}
+                />
             </View>
 
             {/* Search Button */}
@@ -63,17 +166,24 @@ export const FeedScreen = () => {
                 <Ionicons name="search" size={28} color="white" />
             </TouchableOpacity>
 
+            {/* Horizontal Feed Pager */}
             <FlatList
-                data={feed}
-                renderItem={renderItem}
-                keyExtractor={item => item.id}
+                ref={feedListRef}
+                data={CATEGORIES}
+                horizontal
                 pagingEnabled
-                showsVerticalScrollIndicator={false}
-                decelerationRate="fast"
-                snapToInterval={Dimensions.get('window').height - 80} // Adjusting for tab bar roughly
-                snapToAlignment="start"
-                onViewableItemsChanged={onViewableItemsChanged}
-                viewabilityConfig={viewabilityConfig}
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={item => item}
+                onMomentumScrollEnd={onMomentumScrollEnd}
+                initialScrollIndex={1}
+                getItemLayout={(data, index) => ({ length: width, offset: width * index, index })}
+                renderItem={({ item, index }) => (
+                    <CategoryFeed
+                        category={item}
+                        isActive={index === activeIndex}
+                        onCommentPress={setSelectedPostId}
+                    />
+                )}
             />
 
             <CommentsSheet
@@ -90,38 +200,63 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: theme.colors.background
     },
-    topTabs: {
+    topTabsContainer: {
         position: 'absolute',
         top: 50,
         left: 0,
         right: 0,
-        flexDirection: 'row',
-        justifyContent: 'center',
+        height: 50,
         zIndex: 10,
-        gap: 20,
+        // Centering logic handled by FlatList contentContainer and initial scroll
+    },
+    tabsContent: {
+        alignItems: 'center',
+    },
+    tabItem: {
+        paddingHorizontal: 15,
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100%',
+        paddingBottom: 8, // Shift text up slightly to make room for indicator
     },
     tabText: {
         color: 'rgba(255,255,255,0.6)',
         fontWeight: '600',
         fontSize: 16,
+        textShadowColor: 'rgba(0,0,0,0.5)',
+        textShadowOffset: { width: 1, height: 1 },
+        textShadowRadius: 3,
     },
     activeTabText: {
         color: theme.colors.white,
         fontWeight: '700',
-        fontSize: 16,
+        fontSize: 17,
     },
-    indicator: {
-        height: 2,
-        backgroundColor: theme.colors.white,
-        marginTop: 4,
+    activeIndicator: {
+        position: 'absolute',
+        bottom: 2, // Move closer to bottom edge
+        width: 20,
+        height: 3,
+        backgroundColor: 'white',
         borderRadius: 2,
-        width: '60%',
-        alignSelf: 'center',
+    },
+    gradient: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        width: 60,
+        zIndex: 20,
+    },
+    gradientLeft: {
+        left: 0,
+    },
+    gradientRight: {
+        right: 0,
     },
     searchButton: {
         position: 'absolute',
-        top: 50,
+        top: 55,
         right: 20,
-        zIndex: 20,
+        zIndex: 30,
     }
 });

@@ -12,6 +12,14 @@ export interface User {
     flames: number; // Total likes received
 }
 
+export interface Artifact {
+    id: string;
+    name: string;
+    price: number;
+    image: string;
+    description: string;
+}
+
 export interface Post {
     id: string;
     userId: string;
@@ -23,7 +31,14 @@ export interface Post {
     isLiked: boolean;
     date: string;
     tags: string[];
+    taggedUsers?: string[]; // IDs of tagged users
+    locations?: {
+        name?: string;
+        latitude: number;
+        longitude: number;
+    }[];
     music?: string;
+    linkedArtifact?: Artifact;
 }
 
 export interface Comment {
@@ -39,12 +54,17 @@ export interface Comment {
 
 export interface Notification {
     id: string;
-    type: 'like' | 'comment' | 'follow' | 'request' | 'mention';
+    type: 'like_post' | 'like_comment' | 'follow' | 'comment' | 'mention' | 'collab_invite' | 'message' | 'system';
     user: User;
     message: string;
     timestamp: string;
-    status?: 'pending' | 'accepted' | 'declined';
     read: boolean;
+    data?: {
+        postId?: string;
+        commentId?: string;
+        previewMedia?: string; // URL for thumbnail
+    };
+    actionStatus?: 'pending' | 'accepted' | 'declined'; // For invites
 }
 
 export interface Draft {

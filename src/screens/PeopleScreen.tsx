@@ -3,45 +3,76 @@ import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, Image, Touch
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
 import { USERS } from '../mock';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
+
+import { useAppStore } from '../store';
+import { User } from '../types';
 
 export const PeopleScreen = () => {
     const route = useRoute<any>();
+    const navigation = useNavigation<any>();
     const initialTab = route.params?.tab || 'Friends';
     const [activeTab, setActiveTab] = useState(initialTab);
-    const [users, setUsers] = useState(USERS);
     const [search, setSearch] = useState('');
 
-    // Local state for actions
-    const [connectedUsers, setConnectedUsers] = useState<Set<string>>(new Set());
-    const [unfollowingIds, setUnfollowingIds] = useState<Set<string>>(new Set());
+    // Store State
+    const relationships = useAppStore(state => state.relationships);
+    const approveInvite = useAppStore(state => state.approveInvite);
+    const rejectInvite = useAppStore(state => state.rejectInvite);
+    const followUser = useAppStore(state => state.followUser);
+    const unfollowUser = useAppStore(state => state.unfollowUser);
+    const removeTeamMember = useAppStore(state => state.removeTeamMember);
 
-    useEffect(() => {
-        if (route.params?.tab) setActiveTab(route.params.tab);
-    }, [route.params]);
+    // Filter Users based on Tab
+    const getTabUsers = () => {
+        let filteredIds: string[] = [];
+        switch (activeTab) {
+            case 'Team': filteredIds = relationships.team; break;
+            case 'Invites': filteredIds = relationships.invites; break;
+            case 'Friends': filteredIds = relationships.friends; break; // Or use USERS for discovery? 'Friends' usually means your friends. For Discovery maybe 'All'? 
+            // For now, let's treat 'Friends' as 'All Users' or 'My Friends'? 
+            // The mockup suggests 'Friends' is a list. I'll make it 'My Friends' + maybe suggestions if empty?
+            // Actually, for the demo to feel populated, I'll return ALL USERS if the list is empty, or just specific mock friends.
+            // Let's stick to strict Friends list from store (u3).
+            case 'Following': filteredIds = relationships.following; break;
+            default: filteredIds = [];
+        }
 
-    useEffect(() => {
-        // Reset users when tab changes if needed, or filter?
-        // For now, we use the same mock USERS list for all tabs to demonstrate logic,
-        // but in real app 'Invites' would fetch invites, etc.
-        setUsers(USERS);
-        setUnfollowingIds(new Set());
-    }, [activeTab]);
+        // If tab is 'Friends' and we want to show "Suggested" if empty, we can handle that.
+        // But strictly:
+        const list = USERS.filter(u => filteredIds.includes(u.id));
+
+        // Search Filter
+        if (search) {
+            return list.filter(u => u.username.toLowerCase().includes(search.toLowerCase()) || u.name?.toLowerCase().includes(search.toLowerCase()));
+        }
+        return list;
+    };
+
+    const displayUsers = getTabUsers();
 
     // Actions
-    const handleConnect = (userId: string) => {
-        setConnectedUsers(prev => {
-            const next = new Set(prev);
-            const isConnected = next.has(userId);
-            if (isConnected) {
-                next.delete(userId);
-                console.log(`[DB] Disconnected from user ${userId}`);
-            } else {
-                next.add(userId);
-                console.log(`[DB] Connected with user ${userId}`);
-            }
-            return next;
-        });
+    const onApprove = (id: string) => {
+        approveInvite(id);
+        Alert.alert("Success", "User added to your Team!");
+    };
+
+    const onReject = (id: string) => {
+        Alert.alert(
+            "Reject Invitation",
+            "Are you sure you want to reject this invitation?",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Reject",
+                    style: 'destructive',
+                    onPress: () => {
+                        rejectInvite(id);
+                        // TODO: Log to DB and notify user (Handled by Store action conceptually)
+                    }
+                }
+            ]
+        );
     };
 
     const handleUnfollowRequest = (userId: string) => {
@@ -50,38 +81,14 @@ export const PeopleScreen = () => {
             "Are you sure you want to unfollow this person?",
             [
                 { text: "Cancel", style: "cancel" },
-                { text: "Unfollow", style: 'destructive', onPress: () => performUnfollow(userId) }
+                { text: "Unfollow", style: 'destructive', onPress: () => unfollowUser(userId) }
             ]
         );
     };
 
-    const performUnfollow = (userId: string) => {
-        console.log(`[DB] Unfollowing user ${userId}`);
-        setUsers(prev => prev.filter(u => u.id !== userId));
-    };
-
-    const handleFollowingTap = (userId: string) => {
-        if (unfollowingIds.has(userId)) return; // Already processing
-
-        // Toggle to "Unfollowed" visually
-        setUnfollowingIds(prev => new Set(prev).add(userId));
-        console.log(`[DB] Marked user ${userId} as Unfollowed`);
-
-        // Remove after 3 seconds
-        setTimeout(() => {
-            setUsers(prev => prev.filter(u => u.id !== userId));
-            // Cleanup ID from set not strictly needed if user is gone, but good practice
-            setUnfollowingIds(prev => {
-                const next = new Set(prev);
-                next.delete(userId);
-                return next;
-            });
-        }, 3000);
-    };
-
     const renderItem = ({ item }: { item: any }) => {
-        const isConnected = connectedUsers.has(item.id);
-        const isUnfollowing = unfollowingIds.has(item.id);
+        // const isConnected = connectedUsers.has(item.id); // Replaced by store logic
+        // const isUnfollowing = unfollowingIds.has(item.id); // Replaced by store logic
 
         return (
             <View style={styles.userRow}>
@@ -94,19 +101,17 @@ export const PeopleScreen = () => {
                 {/* --- TEAM TAB --- */}
                 {activeTab === 'Team' && (
                     <TouchableOpacity
-                        style={[styles.actionButton, isConnected && styles.connectedButton]}
-                        onPress={() => handleConnect(item.id)}
+                        style={[styles.actionButton, styles.connectedButton]}
+                        onPress={() => removeTeamMember(item.id)}
                     >
-                        <Text style={[styles.actionText, isConnected && styles.connectedText]}>
-                            {isConnected ? 'Disconnected' : 'Connected'}
-                        </Text>
+                        <Text style={[styles.actionText, styles.connectedText]}>Remove</Text>
                     </TouchableOpacity>
                 )}
 
                 {/* --- FRIENDS TAB --- */}
                 {activeTab === 'Friends' && (
                     <>
-                        <TouchableOpacity style={styles.actionButton}>
+                        <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Chat', { userId: item.id })}>
                             <Text style={styles.actionText}>Message</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => handleUnfollowRequest(item.id)}>
@@ -118,10 +123,16 @@ export const PeopleScreen = () => {
                 {/* --- INVITES TAB --- */}
                 {activeTab === 'Invites' && (
                     <View style={styles.inviteContainer}>
-                        <TouchableOpacity style={[styles.inviteButton, { backgroundColor: theme.colors.primary }]}>
+                        <TouchableOpacity
+                            style={[styles.inviteButton, { backgroundColor: theme.colors.primary }]}
+                            onPress={() => onApprove(item.id)}
+                        >
                             <Text style={styles.actionText}>Approve</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={[styles.inviteButton, { backgroundColor: '#333' }]}>
+                        <TouchableOpacity
+                            style={[styles.inviteButton, { backgroundColor: '#333' }]}
+                            onPress={() => onReject(item.id)}
+                        >
                             <Text style={[styles.actionText, { color: '#FFF' }]}>Reject</Text>
                         </TouchableOpacity>
                     </View>
@@ -130,12 +141,10 @@ export const PeopleScreen = () => {
                 {/* --- FOLLOWING TAB --- */}
                 {activeTab === 'Following' && (
                     <TouchableOpacity
-                        style={[styles.actionButton, isUnfollowing && styles.unfollowedButton]}
-                        onPress={() => handleFollowingTap(item.id)}
+                        style={[styles.actionButton, styles.connectedButton]}
+                        onPress={() => handleUnfollowRequest(item.id)}
                     >
-                        <Text style={[styles.actionText, isUnfollowing && styles.unfollowedText]}>
-                            {isUnfollowing ? 'Unfollowed' : 'Following'}
-                        </Text>
+                        <Text style={[styles.actionText, styles.connectedText]}>Following</Text>
                     </TouchableOpacity>
                 )}
             </View>
@@ -145,7 +154,15 @@ export const PeopleScreen = () => {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>People</Text>
+                <View style={styles.headerRow}>
+                    {navigation.canGoBack() && (
+                        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                            <Ionicons name="chevron-back" size={28} color={theme.colors.text} />
+                        </TouchableOpacity>
+                    )}
+                    <Text style={styles.title}>People</Text>
+                </View>
+
                 <View style={styles.searchContainer}>
                     <Ionicons name="search" size={20} color={theme.colors.textSecondary} style={styles.searchIcon} />
                     <TextInput
@@ -171,7 +188,7 @@ export const PeopleScreen = () => {
             </View>
 
             <FlatList
-                data={users}
+                data={displayUsers}
                 renderItem={renderItem}
                 keyExtractor={item => item.id}
                 contentContainerStyle={styles.list}
@@ -188,10 +205,18 @@ const styles = StyleSheet.create({
     header: {
         padding: theme.spacing.m,
     },
+    headerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: theme.spacing.m,
+    },
+    backButton: {
+        marginRight: theme.spacing.m,
+        padding: 4,
+    },
     title: {
         ...theme.typography.h1,
         color: theme.colors.text,
-        marginBottom: theme.spacing.m,
     },
     searchContainer: {
         flexDirection: 'row',

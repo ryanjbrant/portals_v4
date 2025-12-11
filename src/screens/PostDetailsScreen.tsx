@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { Post } from '../types';
@@ -10,13 +10,31 @@ export const PostDetailsScreen = () => {
     const navigation = useNavigation<any>();
     const addPost = useAppStore(state => state.addPost);
     const currentUser = useAppStore(state => state.currentUser);
+    const draftPost = useAppStore(state => state.draftPost);
+    const setDraftPost = useAppStore(state => state.setDraftPost);
+    const updateDraftPost = useAppStore(state => state.updateDraftPost);
 
-    const [caption, setCaption] = useState('');
-    const [tags, setTags] = useState<string[]>([]);
     const [tagInput, setTagInput] = useState('');
 
+    // Initialize draft on mount
+    React.useEffect(() => {
+        if (!draftPost) {
+            setDraftPost({
+                caption: '',
+                tags: [],
+                taggedUsers: [],
+                locations: [],
+            });
+        }
+    }, []);
+
+    const caption = draftPost?.caption || '';
+    const tags = draftPost?.tags || [];
+    const taggedUsers = draftPost?.taggedUsers || [];
+    const locations = draftPost?.locations || [];
+
     const handlePublish = () => {
-        if (!currentUser) return;
+        if (!currentUser || !draftPost) return;
 
         const newPost: Post = {
             id: Date.now().toString(),
@@ -29,20 +47,27 @@ export const PostDetailsScreen = () => {
             isLiked: false,
             date: 'Just now',
             tags: tags,
+            taggedUsers: taggedUsers,
+            locations: locations,
             music: 'Original Sound'
         };
 
         addPost(newPost);
+        setDraftPost(null); // Clear draft
         Alert.alert("Published!", "Your post is live.", [
-            { text: "OK", onPress: () => navigation.navigate('Home') } // Navigate to Feed via Tab
+            { text: "OK", onPress: () => navigation.navigate('Home') }
         ]);
     };
 
     const addTag = () => {
         if (tagInput.trim()) {
-            setTags([...tags, tagInput.trim()]);
+            updateDraftPost({ tags: [...tags, tagInput.trim()] });
             setTagInput('');
         }
+    };
+
+    const setCaption = (text: string) => {
+        updateDraftPost({ caption: text });
     };
 
     return (
@@ -96,19 +121,31 @@ export const PostDetailsScreen = () => {
 
                 <View style={styles.divider} />
 
-                <View style={styles.row}>
+                <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('TagPeople')}>
                     <Ionicons name="people" size={20} color={theme.colors.text} />
-                    <Text style={styles.rowLabel}>Tag People</Text>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.rowLabel}>Tag People</Text>
+                        {taggedUsers.length > 0 && (
+                            <Text style={styles.rowSubLabel}>{taggedUsers.length} people tagged</Text>
+                        )}
+                    </View>
                     <Ionicons name="chevron-forward" size={20} color={theme.colors.textDim} style={{ marginLeft: 'auto' }} />
-                </View>
+                </TouchableOpacity>
 
                 <View style={styles.divider} />
 
-                <View style={styles.row}>
+                <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('LocationPicker')}>
                     <Ionicons name="location" size={20} color={theme.colors.text} />
-                    <Text style={styles.rowLabel}>Add Location</Text>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.rowLabel}>Add Locations</Text>
+                        {locations.length > 0 && (
+                            <Text style={styles.rowSubLabel}>
+                                {locations.length} locations selected
+                            </Text>
+                        )}
+                    </View>
                     <Ionicons name="chevron-forward" size={20} color={theme.colors.textDim} style={{ marginLeft: 'auto' }} />
-                </View>
+                </TouchableOpacity>
 
             </ScrollView>
         </SafeAreaView>
@@ -182,6 +219,11 @@ const styles = StyleSheet.create({
     rowLabel: {
         color: theme.colors.text,
         fontSize: 16,
+    },
+    rowSubLabel: {
+        color: theme.colors.primary,
+        fontSize: 12,
+        marginTop: 2,
     },
     divider: {
         height: 1,

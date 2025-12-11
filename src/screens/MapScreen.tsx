@@ -1,8 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import { useAppStore } from '../store';
+import * as Location from 'expo-location';
+import { useState, useEffect, useRef } from 'react';
 
 const DARK_MAP_STYLE = [
     {
@@ -108,23 +111,117 @@ const DARK_MAP_STYLE = [
 ];
 
 export const MapScreen = () => {
+    const feed = useAppStore(state => state.feed);
+    const mapRef = useRef<MapView>(null);
+    const postsWithLocation = feed.filter(p => p.locations && p.locations.length > 0);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                let { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== 'granted') return;
+
+                // Fast load
+                let location = await Location.getLastKnownPositionAsync({});
+                if (location) {
+                    const userRegion = {
+                        latitude: location.coords.latitude,
+                        longitude: location.coords.longitude,
+                        latitudeDelta: 0.05,
+                        longitudeDelta: 0.05,
+                    };
+                    mapRef.current?.animateToRegion(userRegion, 1000);
+                }
+
+                // Precise load
+                let currentLoc = await Location.getCurrentPositionAsync({});
+                if (currentLoc) {
+                    const userRegion = {
+                        latitude: currentLoc.coords.latitude,
+                        longitude: currentLoc.coords.longitude,
+                        latitudeDelta: 0.05,
+                        longitudeDelta: 0.05,
+                    };
+                    mapRef.current?.animateToRegion(userRegion, 1000);
+                }
+            } catch (e) {
+                console.log("Map Location Error", e);
+            }
+        })();
+    }, []);
+
+    const goToMyLocation = async () => {
+        try {
+            console.log("Requesting permissions...");
+            let { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert("Permission Denied", "Enable location permissions in settings.");
+                return;
+            }
+
+            console.log("Getting current position...");
+            // Use Highest accuracy
+            let currentLoc = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Highest
+            });
+
+            console.log("Got location:", currentLoc);
+            // Alert.alert("Debug", `Loc: ${currentLoc.coords.latitude.toFixed(4)}, ${currentLoc.coords.longitude.toFixed(4)}`);
+
+            const userRegion = {
+                latitude: currentLoc.coords.latitude,
+                longitude: currentLoc.coords.longitude,
+                latitudeDelta: 0.01, // Zoom in closer
+                longitudeDelta: 0.01,
+            };
+
+            if (mapRef.current) {
+                mapRef.current.animateToRegion(userRegion, 1000);
+            } else {
+                Alert.alert("Error", "Map not ready");
+            }
+        } catch (e) {
+            console.log("Map Location Error", e);
+            Alert.alert("Error", `Location failed: ${e}`);
+        }
+    };
+
     return (
         <View style={styles.container}>
             <MapView
+                ref={mapRef}
                 style={styles.map}
                 customMapStyle={DARK_MAP_STYLE}
+                showsUserLocation
                 initialRegion={{
-                    latitude: 37.78825,
-                    longitude: -122.4324,
+                    latitude: 34.0522, // Default to Los Angeles
+                    longitude: -118.2437,
                     latitudeDelta: 0.0922,
                     longitudeDelta: 0.0421,
                 }}
             >
+                {/* Meeting Spot Marker (Keep or Remove? Maybe keep as example event?) */}
                 <Marker
                     coordinate={{ latitude: 37.78825, longitude: -122.4324 }}
                     title="Meeting Spot"
-                    pinColor={theme.colors.primary}
+                    pinColor={theme.colors.warning}
                 />
+
+                {/* Post Markers */}
+                {postsWithLocation.flatMap(post =>
+                    post.locations!.map((loc, index) => (
+                        <Marker
+                            key={`${post.id}-${index}`}
+                            coordinate={{
+                                latitude: loc.latitude,
+                                longitude: loc.longitude
+                            }}
+                            title={post.user.username}
+                            description={post.caption}
+                            pinColor={theme.colors.primary}
+                        />
+                    ))
+                )}
             </MapView>
 
             <SafeAreaView style={styles.overlay} pointerEvents="box-none">
@@ -138,6 +235,12 @@ export const MapScreen = () => {
                         <Ionicons name="scan" size={24} color={theme.colors.white} />
                     </TouchableOpacity>
                 </View>
+
+                <View style={{ flex: 1 }} pointerEvents="none" />
+
+                <TouchableOpacity style={styles.myLocationButton} onPress={goToMyLocation}>
+                    <Ionicons name="locate" size={24} color={theme.colors.white} />
+                </TouchableOpacity>
 
                 <TouchableOpacity style={styles.directionsButton}>
                     <Text style={styles.directionsText}>Directions</Text>
@@ -183,6 +286,15 @@ const styles = StyleSheet.create({
         color: theme.colors.white,
         fontWeight: 'bold',
     },
+    myLocationButton: {
+        alignSelf: 'flex-end',
+        marginRight: 16,
+        marginBottom: 16,
+        backgroundColor: 'rgba(50,50,50,0.8)',
+        padding: 12,
+        borderRadius: 30,
+        elevation: 5,
+    },
     directionsButton: {
         flexDirection: 'row',
         alignSelf: 'center',
@@ -190,7 +302,7 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         paddingHorizontal: 32,
         borderRadius: 30,
-        marginBottom: 40,
+        marginBottom: 40, // Increased to account for tab bar if needed
         alignItems: 'center',
         gap: 8,
         elevation: 5,
