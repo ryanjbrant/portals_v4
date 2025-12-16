@@ -5,6 +5,7 @@
 import * as LoadingConstants from '../redux/LoadingStateConstants';
 
 // HDRI sources for lighting environment
+// HDRI sources for lighting environment
 const HDRI_SOURCES = {
     'studio-09': { uri: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr' },
     'studio-08': { uri: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr' },
