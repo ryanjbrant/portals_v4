@@ -130,8 +130,11 @@ function removeModelItem(state = {}, action) {
 // Add media item to the scene
 function addMediaItem(state = {}, action) {
   var media = newMediaItem(action.source, action.mediaType);
-  state[media.uuid] = media;
-  return state;
+  // Return a NEW object with the added item (Immutable update)
+  return {
+    ...state,
+    [media.uuid]: media
+  };
 }
 
 // Remove media item

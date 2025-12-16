@@ -27,7 +27,7 @@ import ARInitializationUI from './component/ARInitializationUI.js';
 import * as ModelData from './model/ModelItems';
 import * as PortalData from './model/PortalItems';
 import * as LightingData from './model/LightingItems';
-import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme } from './redux/actions';
+import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme, ARTrackingInitialized, addMedia } from './redux/actions';
 
 const kObjSelectMode = 1;
 const kPortalSelectMode = 2;
@@ -66,6 +66,7 @@ import Video from 'react-native-video';
 import { Svg, Circle, Line } from 'react-native-svg';
 import { startInAppRecording, stopInAppRecording, cancelInAppRecording } from 'react-native-nitro-screen-recorder';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 
 // Recording constants
 const MAX_DURATION = 15000; // 15 seconds max
@@ -500,6 +501,43 @@ export class App extends Component {
     );
   }
 
+  _onMediaButtonPress = async () => {
+    console.log('[App] _onMediaButtonPress: Button pressed');
+
+    // Skip explicit permission request as it might be hanging.
+    // launchImageLibraryAsync handles permissions automatically.
+
+    console.log('[App] _onMediaButtonPress: Launching ImagePicker...');
+    try {
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsEditing: true,
+        quality: 1,
+      });
+      console.log('[App] _onMediaButtonPress: Picker result:', result.canceled ? 'Canceled' : 'Success');
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const type = asset.type === 'video' ? 'VIDEO' : 'IMAGE';
+        const source = { uri: asset.uri };
+
+        console.log('[App] _onMediaButtonPress: Asset selected:', { type, uri: asset.uri });
+
+        // Dispatch action to add media to the scene
+        console.log('[App] _onMediaButtonPress: Dispatching addMedia action');
+        this.props.dispatchAddMedia(source, type);
+
+        // Optionally switch mode to NONE to close any open menu
+        this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_NONE, '');
+      } else {
+        console.log('[App] _onMediaButtonPress: No asset selected or canceled');
+      }
+    } catch (e) {
+      console.error('[App] _onMediaButtonPress: Error launching picker', e);
+      alert('Failed to launch media picker: ' + e.message);
+    }
+  };
+
   // Combined Bottom Controls (Picker, Toolbar, Record Button)
   _renderBottomControls() {
     const isPortals = this.props.listMode === UIConstants.LIST_MODE_PORTAL;
@@ -544,50 +582,50 @@ export class App extends Component {
             flexDirection: 'row',
             justifyContent: 'center',
             marginBottom: 20,
-            backgroundColor: 'rgba(0,0,0,0.0)', // Transparent container
+            backgroundColor: 'transparent',
             paddingVertical: 10,
             borderRadius: 20
           }}>
             {/* Objects Button */}
             <TouchableOpacity
               onPress={() => toggleMode(UIConstants.LIST_MODE_MODEL, UIConstants.LIST_TITLE_MODELS)}
-              style={{ alignItems: 'center', marginHorizontal: 15, opacity: this.props.listMode === UIConstants.LIST_MODE_MODEL ? 1 : 0.6 }}
+              style={{ alignItems: 'center', marginHorizontal: 12, opacity: this.props.listMode === UIConstants.LIST_MODE_MODEL ? 1 : 0.6 }}
             >
-              <Image
-                source={require('./res/btn_mode_objects.png')}
-                style={{ width: 40, height: 40 }}
-              />
+              <Ionicons name="cube-outline" size={32} color="white" style={{ marginBottom: 4 }} />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Objects</Text>
             </TouchableOpacity>
 
             {/* Portals Button */}
             <TouchableOpacity
               onPress={() => toggleMode(UIConstants.LIST_MODE_PORTAL, UIConstants.LIST_TITLE_PORTALS)}
-              style={{ alignItems: 'center', marginHorizontal: 15, opacity: this.props.listMode === UIConstants.LIST_MODE_PORTAL ? 1 : 0.6 }}
+              style={{ alignItems: 'center', marginHorizontal: 12, opacity: this.props.listMode === UIConstants.LIST_MODE_PORTAL ? 1 : 0.6 }}
             >
-              <Image
-                source={require('./res/btn_mode_portals.png')}
-                style={{ width: 40, height: 40 }}
-              />
+              <Ionicons name="aperture-outline" size={32} color="white" style={{ marginBottom: 4 }} />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Portals</Text>
+            </TouchableOpacity>
+
+            {/* Media Button */}
+            <TouchableOpacity
+              onPress={this._onMediaButtonPress}
+              style={{ alignItems: 'center', marginHorizontal: 12, opacity: 0.6 }}
+            >
+              <Ionicons name="images-outline" size={32} color="white" style={{ marginBottom: 4 }} />
+              <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Media</Text>
             </TouchableOpacity>
 
             {/* Effects Button */}
             <TouchableOpacity
               onPress={() => toggleMode(UIConstants.LIST_MODE_EFFECT, UIConstants.LIST_TITLE_EFFECTS)}
-              style={{ alignItems: 'center', marginHorizontal: 15, opacity: this.props.listMode === UIConstants.LIST_MODE_EFFECT ? 1 : 0.6 }}
+              style={{ alignItems: 'center', marginHorizontal: 12, opacity: this.props.listMode === UIConstants.LIST_MODE_EFFECT ? 1 : 0.6 }}
             >
-              <Image
-                source={require('./res/btn_mode_effects.png')}
-                style={{ width: 40, height: 40 }}
-              />
+              <Ionicons name="sparkles-outline" size={32} color="white" style={{ marginBottom: 4 }} />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Effects</Text>
             </TouchableOpacity>
 
             {/* Lighting Button */}
             <TouchableOpacity
               onPress={() => toggleMode(UIConstants.LIST_MODE_LIGHT, UIConstants.LIST_TITLE_LIGHT)}
-              style={{ alignItems: 'center', marginHorizontal: 15, opacity: this.props.listMode === UIConstants.LIST_MODE_LIGHT ? 1 : 0.6 }}
+              style={{ alignItems: 'center', marginHorizontal: 12, opacity: this.props.listMode === UIConstants.LIST_MODE_LIGHT ? 1 : 0.6 }}
             >
               <Ionicons name="sunny-outline" size={32} color="white" style={{ marginBottom: 4 }} />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Lighting</Text>
@@ -1134,6 +1172,7 @@ const mapDispatchToProps = (dispatch) => {
     dispatchChangePortalPhoto: (index, source) => dispatch(changePortalPhoto(index, source)),
     dispatchChangeItemClickState: (index, clickState, itemType) => dispatch(changeItemClickState(index, clickState, itemType)),
     dispatchChangeHdriTheme: (hdri) => dispatch(changeHdriTheme(hdri)),
+    dispatchAddMedia: (source, type) => dispatch(addMedia(source, type)),
   }
 }
 
