@@ -233,20 +233,46 @@ var ModelItemRender = createReactClass({
   _onPinch(pinchState, scaleFactor, source) {
     if (!this._isMounted) return;
 
-    var newScale = this.state.scale.map((x) => { return x * scaleFactor })
-
-    if (pinchState == 3) {
-      this.setState({
-        scale: newScale
-      });
-      this.props.onClickStateCallback(this.props.modelIDProps.uuid, pinchState, UIConstants.LIST_MODE_MODEL);
+    // State 1: Pinch Started - Capture initial scale
+    if (pinchState === 1) {
+      this._initialPinchScale = this.state.scale;
       return;
     }
 
-    if (this.arNodeRef) {
-      this.arNodeRef.setNativeProps({ scale: newScale });
+    // State 2: Pinch Moving - Apply via setNativeProps (Performance)
+    if (pinchState === 2) {
+      // Safety: If we missed state 1 (rare but possible), fallback to current state
+      const baseScale = this._initialPinchScale || this.state.scale;
+
+      const newScale = baseScale.map((x) => { return x * scaleFactor });
+
+      // Cache for the end event
+      this._lastPinchScale = newScale;
+
+      if (this.arNodeRef) {
+        this.arNodeRef.setNativeProps({ scale: newScale });
+      }
+      return; // check: ARComposer logic does not update state here
     }
-    //this.spotLight.setNativeProps({shadowFarZ: 6 * newScale[0]});
+
+    // State 3: Pinch Ended - Commit to State
+    if (pinchState === 3) {
+      // Use the last calculated scale from the gesture (State 2) to ensure continuity.
+      // If we use 'scaleFactor' here, it *should* be the final cumulative, but caching is safer against resets.
+      const finalScale = this._lastPinchScale || this.state.scale; // Fallback if no move occurred
+
+      this.setState({
+        scale: finalScale
+      });
+
+      // Notify parent
+      this.props.onClickStateCallback(this.props.modelIDProps.uuid, pinchState, UIConstants.LIST_MODE_MODEL);
+
+      // Cleanup
+      this._initialPinchScale = null;
+      this._lastPinchScale = null;
+      return;
+    }
   },
 
   _onError(uuid) {
