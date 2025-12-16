@@ -546,7 +546,7 @@ export class App extends Component {
 
         {/* 3. Record/Controls Row */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 100 }}>
-          {/* Cancel Button */}
+          {/* Cancel Button - visible when we have some recording */}
           {this.state.showConfirmButtons ? (
             <TouchableOpacity
               key="cancel_button"
@@ -559,63 +559,48 @@ export class App extends Component {
             <View style={{ width: 44, marginRight: 20 }} />
           )}
 
-          {/* Main Record Button or Confirm Button */}
+          {/* Main Record Button - Always visible to allow resume */}
+          <TouchableOpacity
+            key="record_button"
+            onPressIn={this.handleRecordPressIn}
+            onPressOut={this.handleRecordPressOut}
+            activeOpacity={1}
+            disabled={this.state.recordingProgress >= MAX_DURATION}
+          >
+            <Svg height="100" width="100" viewBox="0 0 100 100">
+              {/* Background circle */}
+              <Circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.3)" strokeWidth="6" fill="none" />
+              {/* Progress ring */}
+              {this.state.recordingProgress > 0 && (
+                <Circle cx="50" cy="50" r="45" stroke="#FF3050" strokeWidth="6" fill="none"
+                  strokeDasharray={circumference} strokeDashoffset={strokeDashoffset}
+                  strokeLinecap="round" rotation="-90" origin="50, 50" />
+              )}
+              {/* Cut markers */}
+              {this.state.pauseMarkers.map((markerDuration, i) => {
+                const markerProgress = markerDuration / MAX_DURATION;
+                const angle = markerProgress * 360 - 90;
+                const rad = (angle * Math.PI) / 180;
+                const x1 = 50 + 38 * Math.cos(rad);
+                const y1 = 50 + 38 * Math.sin(rad);
+                const x2 = 50 + 52 * Math.cos(rad);
+                const y2 = 50 + 52 * Math.sin(rad);
+                return <Line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="black" strokeWidth="2" />;
+              })}
+              {/* Inner Circle Red Fill when recording */}
+              <Circle cx="50" cy="50" r={this.state.isActivelyRecording ? "35" : "40"} fill="#FF3050" />
+            </Svg>
+          </TouchableOpacity>
+
+          {/* Confirm Button - visible when we have some recording */}
           {this.state.showConfirmButtons ? (
             <TouchableOpacity
               key="confirm_button"
               onPress={this.handleRecordConfirm}
-              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#FF3050', justifyContent: 'center', alignItems: 'center', marginLeft: 0 }} // Center it? No wait, this replaces the BIG button? 
-            // Wait, original design: Record button turns into nothing? and a small confirm button appears?
-            // Check original code:
-            // Confirm button was shown alongside the record button or replacing?
-            // Original: Cancel (left) -- Record (center) -- Confirm (right)
-            // When confirming: Record button is hidden? No, logic was complex.
-            // Let's stick to Record Button always visible, but maybe disabled?
-            // Actually, user wants a confirm button.
-            // Let's keep the CENTRAL circular button structure.
-            // If confirming, maybe we hide the record ring and show a confirm button? Or keep record ring as visual anchor?
-            // Let's just follow the previous confirmed logic: Cancel Left, Confirm Right.
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#FF3050', justifyContent: 'center', alignItems: 'center', marginLeft: 20 }}
             >
               <Text style={{ color: 'white', fontSize: 24 }}>✓</Text>
             </TouchableOpacity>
-          ) : (
-            /* Main Record Button with SVG Progress Ring */
-            <TouchableOpacity
-              key="record_button"
-              onPressIn={this.handleRecordPressIn}
-              onPressOut={this.handleRecordPressOut}
-              activeOpacity={1}
-              disabled={this.state.recordingProgress >= MAX_DURATION}
-            >
-              <Svg height="100" width="100" viewBox="0 0 100 100">
-                {/* Background circle */}
-                <Circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.3)" strokeWidth="6" fill="none" />
-                {/* Progress ring */}
-                {this.state.recordingProgress > 0 && (
-                  <Circle cx="50" cy="50" r="45" stroke="#FF3050" strokeWidth="6" fill="none"
-                    strokeDasharray={circumference} strokeDashoffset={strokeDashoffset}
-                    strokeLinecap="round" rotation="-90" origin="50, 50" />
-                )}
-                {/* Cut markers */}
-                {this.state.pauseMarkers.map((markerDuration, i) => {
-                  const markerProgress = markerDuration / MAX_DURATION;
-                  const angle = markerProgress * 360 - 90;
-                  const rad = (angle * Math.PI) / 180;
-                  const x1 = 50 + 38 * Math.cos(rad);
-                  const y1 = 50 + 38 * Math.sin(rad);
-                  const x2 = 50 + 52 * Math.cos(rad);
-                  const y2 = 50 + 52 * Math.sin(rad);
-                  return <Line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="black" strokeWidth="2" />;
-                })}
-                {/* Inner Circle Red Fill when recording */}
-                <Circle cx="50" cy="50" r={this.state.isActivelyRecording ? "35" : "40"} fill="#FF3050" />
-              </Svg>
-            </TouchableOpacity>
-          )}
-
-          {/* Right Spacer or empty */}
-          {this.state.showConfirmButtons ? (
-            <View style={{ width: 44, marginLeft: 20 }} /> // Spacer to balance Cancel
           ) : (
             <View style={{ width: 44, marginLeft: 20 }} />
           )}
@@ -659,18 +644,20 @@ export class App extends Component {
     }
 
     try {
-      // Start screen recording using nitro-screen-recorder
-      await startInAppRecording({
-        options: {
-          enableMic: true,
-          enableCamera: false,
-        },
-        onRecordingFinished: (file) => {
-          if (file && file.path) {
-            this.setState({ videoUrl: 'file://' + file.path });
-          }
-        },
-      });
+      // Start screen recording using nitro-screen-recorder ONLY IF STARTING NEW
+      if (this.state.recordingProgress === 0) {
+        await startInAppRecording({
+          options: {
+            enableMic: true,
+            enableCamera: false,
+          },
+          onRecordingFinished: (file) => {
+            if (file && file.path) {
+              this.setState({ videoUrl: 'file://' + file.path });
+            }
+          },
+        });
+      }
     } catch (error) {
       this._displayVideoRecordAlert("Recording Error", "Could not start recording: " + error.message);
       return;
