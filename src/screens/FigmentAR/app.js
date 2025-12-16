@@ -53,6 +53,7 @@ import {
   StatusBar,
   PermissionsAndroid,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 
@@ -64,12 +65,22 @@ import {
 import Share from 'react-native-share';
 import Video from 'react-native-video';
 import { Svg, Circle, Line } from 'react-native-svg';
-import { startInAppRecording, stopInAppRecording, cancelInAppRecording } from 'react-native-nitro-screen-recorder';
+import { NativeModules, findNodeHandle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { Audio } from 'expo-av';
+
+// Import Expo ArViewRecorder module
+import ArViewRecorder from '../../../modules/ar-view-recorder';
+
+const { VideoMerger } = NativeModules;
+
+// Debug: Log ArViewRecorder module
+console.log('[App] ArViewRecorder:', ArViewRecorder);
 
 // Recording constants
-const MAX_DURATION = 15000; // 15 seconds max
+const MAX_DURATION = 30000; // 30 seconds max recording time
 
 // AR Scene that's rendered on the MAIN Screen. App state changes propagate to figment.js via redux 
 var InitialScene = require('./figment');
@@ -125,11 +136,18 @@ export class App extends Component {
       writeAccessPermission: false,
       readAccessPermission: false,
       screenshot_count: 0,
-      // Hold-to-record state
       recordingProgress: 0, // Current recording progress in ms
       isActivelyRecording: false, // True while finger is held down
       pauseMarkers: [], // Array of pause marker positions (milliseconds)
       showConfirmButtons: false, // Show confirm/delete after recording
+      recordingSegments: [], // Array of video segment paths for stitching
+      isStitching: false, // Loading state while stitching videos
+      // Scrubber UI state
+      frameThumbnails: [], // Array of base64 thumbnail images
+      scrubberPosition: 0, // Current scrub position (0-1)
+      coverFrameIndex: 0, // Selected cover frame index
+      isExtractingFrames: false, // Loading state for frame extraction
+      videoDuration: 0, // Video duration in seconds
     };
 
     this._onBackgroundTap = this._onBackgroundTap.bind(this);
@@ -160,15 +178,12 @@ export class App extends Component {
     return (
       <View style={localStyles.flex}>
         <StatusBar hidden={true} />
+        {/* CRITICAL: Use memoized viroAppProps from state to prevent AR scene reload */}
         <ViroARSceneNavigator style={localStyles.arView}
           apiKey="YOUR-API-KEY-HERE"
           initialScene={{ scene: InitialScene }}
           ref={this._setARNavigatorRef}
-          viroAppProps={{
-            loadingObjectCallback: this._onListItemLoaded,
-            clickStateCallback: this._onItemClickedInScene,
-            onBackgroundTap: this._onBackgroundTap
-          }} />
+          viroAppProps={this.state.viroAppProps} />
 
         {/* Close button - top left */}
         {!isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
@@ -194,38 +209,45 @@ export class App extends Component {
         {/* 2D UI rendered to enable the user changing background for Portals - hide during recording */}
         {!isRecordingInProgress && this._renderPhotosSelector()}
 
-        {/* Timeline (Top) */}
-        {this._renderRecord()}
+        {/* Timeline (Top) - hide on share screen */}
+        {this.props.currentScreen !== UIConstants.SHOW_SHARE_SCREEN && this._renderRecord()}
 
-        {/* Bottom Controls (Picker + Toolbar + Record Button) - Flexbox Container */}
-        {this._renderBottomControls()}
+        {/* Bottom Controls (Picker + Toolbar + Record Button) - hide on share screen */}
+        {this.props.currentScreen !== UIConstants.SHOW_SHARE_SCREEN && this._renderBottomControls()}
       </View>
     );
   }
 
   async requestAudioPermission() {
-    if (Platform.OS !== 'android') return;
     try {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-        {
-          'title': 'Figment AR Audio Permission',
-          'message': 'Figment AR App needs to access your audio ' +
-            'so you can record videos with audio of ' +
-            'your augmented scenes.'
-        }
-      )
-      if (granted == PermissionsAndroid.RESULTS.GRANTED) {
+      if (Platform.OS === 'ios') {
+        // iOS: Use expo-av for microphone permission
+        const { status } = await Audio.requestPermissionsAsync();
+        console.log('[App] iOS audio permission status:', status);
         this.setState({
-          audioPermission: true,
+          audioPermission: status === 'granted',
         });
+        return status === 'granted';
       } else {
+        // Android: Use PermissionsAndroid
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            'title': 'Figment AR Audio Permission',
+            'message': 'Figment AR App needs to access your audio ' +
+              'so you can record videos with audio of ' +
+              'your augmented scenes.'
+          }
+        );
+        const hasPermission = granted === PermissionsAndroid.RESULTS.GRANTED;
         this.setState({
-          cameraPermission: false,
+          audioPermission: hasPermission,
         });
+        return hasPermission;
       }
     } catch (err) {
-      console.warn("[PermissionsAndroid]" + err)
+      console.warn("[requestAudioPermission] Error:", err);
+      return false;
     }
   }
 
@@ -431,6 +453,7 @@ export class App extends Component {
             <Video ref={(ref) => { this.player = ref }}
               source={{ uri: this.state.videoUrl }} paused={!this.state.playPreview}
               repeat={false} style={localStyles.backgroundVideo}
+              onLoad={(data) => { this.setState({ videoDuration: data.duration }); }}
               onEnd={() => { this.setState({ playPreview: false }) }} />
           )}
 
@@ -448,38 +471,362 @@ export class App extends Component {
           )}
 
           {/* Close button -> Takes user back to main screen */}
-          <View style={{ position: 'absolute', left: 20, top: 20, width: 30, height: 30 }}>
-            <ShareScreenButton onPress={() => { this.props.dispatchDisplayUIScreen(UIConstants.SHOW_MAIN_SCREEN) }}
-              buttonState={'off'}
-              stateImageArray={[require("./res/btn_close.png"), require("./res/btn_close.png")]}
-              style={localStyles.previewScreenButtonClose} />
+          <View style={{ position: 'absolute', left: 20, top: 60, width: 44, height: 44 }}>
+            <TouchableOpacity
+              onPress={() => { this.props.dispatchDisplayUIScreen(UIConstants.SHOW_MAIN_SCREEN) }}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: 'rgba(0,0,0,0.4)',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
           </View>
 
-          {/* Button to save media to camera roll */}
-          <View style={{ position: 'absolute', left: 20, bottom: 20, width: 40, height: 40 }}>
-            <ShareScreenButton onPress={() => { this._saveToCameraRoll() }}
-              buttonState={this.state.haveSavedMedia ? 'on' : 'off'}
-              stateImageArray={[require("./res/btn_saved.png"), require("./res/btn_save.png")]}
-              style={localStyles.previewScreenButtonShare} />
-          </View>
-
-          {/* Save to media operation success indicator */}
-          {renderIf(this.state.haveSavedMedia,
-            <SuccessAnimation onPress={() => { }}
-              stateImageArray={[require("./res/icon_success.png")]}
-              style={localStyles.previewSavedSuccess} />
-          )}
-
-          {/* Share button -> Opens Share Action Sheet to enable user to share media to their social media destination of choice */}
-          <View style={{ position: 'absolute', left: 85, bottom: 20, width: 40, height: 40 }}>
-            <ShareScreenButton onPress={() => { this._openShareActionSheet() }}
-              buttonState={'off'}
-              stateImageArray={[require("./res/btn_share.png"), require("./res/btn_share.png")]}
-              style={localStyles.previewScreenButtonShare} />
-          </View>
+          {/* Premium Bottom Bar with Scrubber */}
+          {this._renderVideoScrubber()}
         </View>
       )
     }
+  }
+
+  // Premium Apple-style video scrubber component
+  _renderVideoScrubber() {
+    const { frameThumbnails, isExtractingFrames, scrubberPosition, coverFrameIndex, previewType } = this.state;
+
+    // Only show for video previews
+    if (previewType !== kPreviewTypeVideo) {
+      return this._renderPhotoBottomBar();
+    }
+
+    return (
+      <View style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingBottom: 40, // Safe area
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+      }}>
+        {/* Frame Thumbnails Strip - Connected, Full Width, Scrubable */}
+        <View
+          style={{
+            marginHorizontal: 16,
+            marginTop: 16,
+            height: 70,
+            borderRadius: 12,
+            backgroundColor: 'rgba(255,255,255,0.1)',
+            overflow: 'hidden',
+          }}
+          onStartShouldSetResponder={() => true}
+          onMoveShouldSetResponder={() => true}
+          onResponderGrant={(e) => this._handleScrubStart(e)}
+          onResponderMove={(e) => this._handleScrubMove(e)}
+          onResponderRelease={(e) => this._handleScrubEnd(e)}
+        >
+          {isExtractingFrames ? (
+            // Loading skeleton
+            <View style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14 }}>Preparing timeline...</Text>
+            </View>
+          ) : frameThumbnails.length === 0 ? (
+            // Empty state
+            <View style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>No preview frames available</Text>
+            </View>
+          ) : (
+            // Actual thumbnails - connected, no gaps
+            <View style={{ flex: 1, flexDirection: 'row' }}>
+              {frameThumbnails.map((uri, index) => {
+                const isSelected = index === coverFrameIndex;
+                return (
+                  <View
+                    key={index}
+                    style={{
+                      flex: 1,
+                      height: 70,
+                      borderWidth: isSelected ? 2 : 0,
+                      borderColor: '#007AFF',
+                    }}
+                  >
+                    <Image
+                      source={{ uri }}
+                      style={{
+                        flex: 1,
+                        width: '100%',
+                        height: '100%',
+                      }}
+                      resizeMode="cover"
+                    />
+                  </View>
+                );
+              })}
+              {/* Scrub indicator */}
+              <View style={{
+                position: 'absolute',
+                left: `${scrubberPosition * 100}%`,
+                top: 0,
+                bottom: 0,
+                width: 3,
+                backgroundColor: 'white',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.5,
+                shadowRadius: 4,
+              }} />
+            </View>
+          )}
+        </View>
+
+        {/* Action Buttons Row */}
+        <View style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginHorizontal: 16,
+          marginTop: 16,
+          marginBottom: 8,
+        }}>
+          {/* Left: Save & Share */}
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity
+              onPress={() => this._saveToCameraRoll()}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: this.state.haveSavedMedia ? 'rgba(52,199,89,0.3)' : 'rgba(255,255,255,0.15)',
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderRadius: 12,
+                marginRight: 10,
+              }}
+            >
+              <Ionicons
+                name={this.state.haveSavedMedia ? 'checkmark-circle' : 'download-outline'}
+                size={20}
+                color={this.state.haveSavedMedia ? '#34C759' : 'white'}
+              />
+              <Text style={{
+                color: this.state.haveSavedMedia ? '#34C759' : 'white',
+                fontSize: 15,
+                fontWeight: '600',
+                marginLeft: 6,
+              }}>
+                {this.state.haveSavedMedia ? 'Saved' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => this._openShareActionSheet()}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: 'rgba(255,255,255,0.15)',
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderRadius: 12,
+              }}
+            >
+              <Ionicons name="share-outline" size={20} color="white" />
+              <Text style={{
+                color: 'white',
+                fontSize: 15,
+                fontWeight: '600',
+                marginLeft: 6,
+              }}>Share</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Right: Set Cover */}
+          <TouchableOpacity
+            onPress={() => this._setCoverFrame()}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#007AFF',
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+              borderRadius: 12,
+            }}
+          >
+            <Ionicons name="layers-outline" size={20} color="white" />
+            <Text style={{
+              color: 'white',
+              fontSize: 15,
+              fontWeight: '600',
+              marginLeft: 6,
+            }}>Set Cover</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // Bottom bar for photo previews (simpler)
+  _renderPhotoBottomBar() {
+    return (
+      <View style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingBottom: 40,
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        flexDirection: 'row',
+        justifyContent: 'center',
+      }}>
+        <TouchableOpacity
+          onPress={() => this._saveToCameraRoll()}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: this.state.haveSavedMedia ? 'rgba(52,199,89,0.3)' : 'rgba(255,255,255,0.15)',
+            paddingHorizontal: 24,
+            paddingVertical: 14,
+            borderRadius: 14,
+            marginRight: 12,
+          }}
+        >
+          <Ionicons
+            name={this.state.haveSavedMedia ? 'checkmark-circle' : 'download-outline'}
+            size={22}
+            color={this.state.haveSavedMedia ? '#34C759' : 'white'}
+          />
+          <Text style={{
+            color: this.state.haveSavedMedia ? '#34C759' : 'white',
+            fontSize: 16,
+            fontWeight: '600',
+            marginLeft: 8,
+          }}>
+            {this.state.haveSavedMedia ? 'Saved' : 'Save'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => this._openShareActionSheet()}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: '#007AFF',
+            paddingHorizontal: 24,
+            paddingVertical: 14,
+            borderRadius: 14,
+          }}
+        >
+          <Ionicons name="share-outline" size={22} color="white" />
+          <Text style={{
+            color: 'white',
+            fontSize: 16,
+            fontWeight: '600',
+            marginLeft: 8,
+          }}>Share</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Set the selected frame as cover
+  _setCoverFrame() {
+    const { coverFrameIndex, frameThumbnails } = this.state;
+    if (frameThumbnails.length > coverFrameIndex) {
+      console.log('[App] Cover frame set to index:', coverFrameIndex);
+      // TODO: Implement actual cover frame saving logic
+      Alert.alert('Cover Set', `Frame ${coverFrameIndex + 1} will be used as the video cover.`);
+    }
+  }
+
+  // Extract frames from video for scrubber timeline
+  async _extractFramesForScrubber(videoUrl) {
+    try {
+      console.log('[App] Starting frame extraction for:', videoUrl);
+
+      // Small delay to ensure video file is ready
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const frameResult = await ArViewRecorder.extractFrames(videoUrl, 12);
+      console.log('[App] Frame extraction complete:', JSON.stringify(frameResult));
+
+      if (frameResult && frameResult.frames && frameResult.frames.length > 0) {
+        console.log('[App] Setting', frameResult.frames.length, 'thumbnails');
+        this.setState({
+          frameThumbnails: frameResult.frames,
+          isExtractingFrames: false,
+        });
+      } else {
+        console.warn('[App] No frames returned from extraction');
+        this.setState({ isExtractingFrames: false });
+      }
+    } catch (error) {
+      console.error('[App] Frame extraction error:', error);
+      this.setState({ isExtractingFrames: false });
+    }
+  }
+
+  // Handle scrub start - pause video and cache initial state
+  _handleScrubStart(e) {
+    // Cache the timeline layout and starting position
+    e.target.measure((x, y, width, height, pageXOffset, pageYOffset) => {
+      this._timelineLayout = { width, pageXOffset };
+    });
+    // Store initial touch position and current scrubber position
+    this._scrubStartX = e.nativeEvent.pageX;
+    this._scrubStartPosition = this.state.scrubberPosition;
+    // Pause video when starting to scrub
+    this.setState({ playPreview: false });
+  }
+
+  // Handle scrub move - update position based on drag delta (relative movement)
+  _handleScrubMove(e) {
+    if (!this._timelineLayout || !this._timelineLayout.width) return;
+
+    const { width } = this._timelineLayout;
+    // Calculate how much finger has moved since start
+    const dragDelta = e.nativeEvent.pageX - this._scrubStartX;
+    // Convert to position delta (0-1 range)
+    const positionDelta = dragDelta / width;
+    // Apply to starting position
+    const newPosition = Math.max(0, Math.min(1, this._scrubStartPosition + positionDelta));
+
+    // Update scrubber position and cover frame
+    const frameCount = this.state.frameThumbnails.length;
+    const frameIndex = Math.floor(newPosition * frameCount);
+    const clampedIndex = Math.min(Math.max(0, frameIndex), frameCount - 1);
+
+    // Seek video to this position
+    if (this.player && this.state.videoDuration > 0) {
+      this.player.seek(newPosition * this.state.videoDuration);
+    }
+
+    this.setState({
+      scrubberPosition: newPosition,
+      coverFrameIndex: clampedIndex,
+    });
+  }
+
+  // Handle scrub end
+  _handleScrubEnd(e) {
+    // Video stays paused so user can see frame for poster selection
+    this._scrubStartX = null;
+    this._scrubStartPosition = null;
   }
 
   // This menu shows up over the AR view at bottom left side of the screen, centered vertically and consists of 3 buttons
@@ -776,59 +1123,93 @@ export class App extends Component {
     });
   }
 
-  // Handle Record Press In - Start recording when user presses down
+  // Handle Record Press In - Start or resume recording AR scene when user presses down
   async handleRecordPressIn() {
+    // If we're already actively recording (not paused), ignore
+    if (this.state.isActivelyRecording) {
+      console.log('[App] Already actively recording, ignoring press');
+      return;
+    }
     if (this.state.recordingProgress >= MAX_DURATION) return;
 
-    // Check permissions
+    // Check and request audio permissions (MUST await before recording)
     if (!this.state.audioPermission) {
-      this.requestAudioPermission();
+      console.log('[App] Requesting audio permission...');
+      const granted = await this.requestAudioPermission();
+      if (!granted) {
+        console.warn('[App] Audio permission denied, cannot record');
+        Alert.alert('Permission Required', 'Microphone permission is required to record video.');
+        return;
+      }
     }
 
     try {
-      // Start screen recording using nitro-screen-recorder ONLY IF STARTING NEW
-      if (this.state.recordingProgress === 0) {
-        await startInAppRecording({
-          options: {
-            enableMic: true,
-            enableCamera: false,
-          },
-          onRecordingFinished: (file) => {
-            if (file && file.path) {
-              this.setState({ videoUrl: 'file://' + file.path });
-            }
-          },
-        });
-      }
-    } catch (error) {
-      this._displayVideoRecordAlert("Recording Error", "Could not start recording: " + error.message);
-      return;
-    }
-
-    // Set recording state
-    this.setState({
-      isActivelyRecording: true,
-      showConfirmButtons: false,
-      recordStartTimeInMillis: Date.now(),
-    });
-
-    // Start progress timer
-    this._recordingTimer = TimerMixin.setInterval(() => {
-      const elapsed = Date.now() - this.state.recordStartTimeInMillis;
-      const newProgress = this.state.recordingProgress + elapsed;
-
-      if (newProgress >= MAX_DURATION) {
-        this.setState({ recordingProgress: MAX_DURATION });
-        this.handleRecordPressOut();
+      // Check if we have an active session that's paused
+      if (this._hasActiveSession) {
+        // Resume the paused session
+        console.log('[App] Resuming paused recording...');
+        const result = await ArViewRecorder.resumeRecording();
+        console.log('[App] ArViewRecorder.resumeRecording result:', JSON.stringify(result));
       } else {
-        this.setState({
-          recordingProgress: newProgress,
-          recordStartTimeInMillis: Date.now(),
-        });
-      }
-    }, 50);
+        // Start a new recording session
+        const recordingId = Date.now();
+        const recordingFile = `ar_recording_${recordingId}`;
+        this._currentRecordingFile = recordingFile;
 
-    this.props.dispatchDisplayUIScreen(UIConstants.SHOW_RECORDING_SCREEN);
+        console.log('[App] Starting new ArViewRecorder session:', recordingFile);
+
+        if (ArViewRecorder && ArViewRecorder.startRecording) {
+          const viewTag = findNodeHandle(this._arNavigator);
+          console.log('[App] ViroARSceneNavigator view tag:', viewTag);
+
+          if (viewTag) {
+            const result = await ArViewRecorder.startRecording(viewTag, recordingFile);
+            console.log('[App] ArViewRecorder.startRecording result:', JSON.stringify(result));
+            this._hasActiveSession = true;
+          } else {
+            console.warn('[App] Could not get view tag for ViroARSceneNavigator');
+            throw new Error('Could not get view tag');
+          }
+        } else {
+          console.warn('[App] ArViewRecorder not available');
+          throw new Error('ArViewRecorder not available');
+        }
+      }
+
+      // Track recording start time for this segment
+      this._recordingStartTime = Date.now();
+      this._isRecording = true;
+
+      // Update visual state
+      this.setState({
+        isActivelyRecording: true,
+        showConfirmButtons: false,
+        recordStartTimeInMillis: this._recordingStartTime,
+      });
+
+      // Store progress at segment start to add to it
+      this._segmentStartProgress = this.state.recordingProgress;
+
+      // Start progress timer with reduced update frequency (200ms) to minimize re-renders during recording
+      this._recordingTimer = TimerMixin.setInterval(() => {
+        const elapsedThisSegment = Date.now() - this._recordingStartTime;
+        const totalProgress = this._segmentStartProgress + elapsedThisSegment;
+
+        if (totalProgress >= MAX_DURATION) {
+          this.setState({ recordingProgress: MAX_DURATION });
+          this.handleRecordPressOut();
+        } else {
+          this.setState({ recordingProgress: totalProgress });
+        }
+      }, 200);
+
+      this.props.dispatchDisplayUIScreen(UIConstants.SHOW_RECORDING_SCREEN);
+
+    } catch (error) {
+      console.error('[App] Recording start/resume error:', error);
+      this._isRecording = false;
+      this._displayVideoRecordAlert("Recording Error", "Could not start/resume recording: " + error.message);
+    }
   }
 
   // Stopwatch at the top while recording
@@ -863,76 +1244,127 @@ export class App extends Component {
     });
   }
 
-  // Handle Record Press Out - Pause recording visually when user lifts finger
-  // NOTE: Recording continues in background - only stopped on confirm
-  handleRecordPressOut() {
+  // Handle Record Press Out - Pause recording when user lifts finger
+  async handleRecordPressOut() {
     if (!this.state.isActivelyRecording) return;
 
-    // Stop progress timer (but recording continues in background)
+    // Stop progress timer
     if (this._recordingTimer) {
       TimerMixin.clearInterval(this._recordingTimer);
       this._recordingTimer = null;
     }
 
-    // Add pause marker at current progress
-    const newMarkers = [...this.state.pauseMarkers, this.state.recordingProgress];
+    // Minimum recording segment time (to avoid accidental taps)
+    const MIN_SEGMENT_DURATION = 300; // ms
+    const segmentDuration = Date.now() - this.state.recordStartTimeInMillis;
 
-    // DON'T stop recording here - just pause the UI
-    this.setState({
-      isActivelyRecording: false,
-      pauseMarkers: newMarkers,
-      showConfirmButtons: true,
-    });
+    if (segmentDuration < MIN_SEGMENT_DURATION) {
+      const waitTime = MIN_SEGMENT_DURATION - segmentDuration;
+      console.log(`[App] Waiting ${waitTime}ms for minimum recording duration...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
 
-    this.props.dispatchDisplayUIScreen(UIConstants.SHOW_MAIN_SCREEN);
-  }
-
-  // Handle confirm button - stop recording and navigate to share screen
-  async handleRecordConfirm() {
+    // Pause the recording (keeps session open)
+    this._isRecording = false;
     try {
-      const file = await stopInAppRecording();
+      console.log('[App] Pausing video recording...');
 
-      if (file && file.path) {
-        const videoUrl = 'file://' + file.path;
-        this.setState({
-          videoUrl: videoUrl,
-          showConfirmButtons: false,
-          haveSavedMedia: false,
-          playPreview: true,
-          previewType: kPreviewTypeVideo,
-          recordingProgress: 0,
-          pauseMarkers: [],
-        }, () => {
-          this.props.dispatchDisplayUIScreen(UIConstants.SHOW_SHARE_SCREEN);
-        });
-      } else if (this.state.videoUrl) {
-        this.setState({
-          showConfirmButtons: false,
-          haveSavedMedia: false,
-          playPreview: true,
-          previewType: kPreviewTypeVideo,
-          recordingProgress: 0,
-          pauseMarkers: [],
-        }, () => {
-          this.props.dispatchDisplayUIScreen(UIConstants.SHOW_SHARE_SCREEN);
-        });
-      } else {
-        Alert.alert('Recording Error', 'No video was recorded.');
-        this.handleRecordCancel();
+      if (ArViewRecorder && ArViewRecorder.pauseRecording) {
+        const result = await ArViewRecorder.pauseRecording();
+        console.log('[App] ArViewRecorder.pauseRecording result:', JSON.stringify(result));
       }
+
+      // Add a pause marker at current progress
+      this.setState((prevState) => ({
+        isActivelyRecording: false,
+        pauseMarkers: [...prevState.pauseMarkers, prevState.recordingProgress],
+        showConfirmButtons: true,
+      }));
+
     } catch (error) {
-      Alert.alert('Recording Error', 'Failed to save recording.');
-      this.handleRecordCancel();
+      console.error('[App] Pause recording error:', error);
+      this.setState({
+        isActivelyRecording: false,
+        showConfirmButtons: true,
+      });
     }
   }
 
-  // Handle cancel button - cancel recording and reset state
-  async handleRecordCancel() {
-    try {
-      await cancelInAppRecording();
-    } catch (error) {
-      // May fail if no recording in progress
+  // Handle confirm button - finalize recording and navigate to share screen
+  async handleRecordConfirm() {
+    // Check if there's an active recording session to stop
+    if (!this._hasActiveSession) {
+      Alert.alert('Recording Error', 'No recording session to finalize.');
+      this.handleRecordCancel();
+      return;
     }
+
+    this.setState({ isStitching: true }); // Show loading indicator
+
+    try {
+      console.log('[App] Finalizing recording...');
+
+      // Stop the recording session to get the final video file
+      const result = await ArViewRecorder.stopRecording();
+      console.log('[App] ArViewRecorder.stopRecording result:', JSON.stringify(result));
+
+      this._hasActiveSession = false;
+
+      // Get the video path
+      const videoPath = result.url || result.path;
+      if (!videoPath) {
+        throw new Error('No video path returned');
+      }
+
+      const finalUrl = videoPath.startsWith('file://') ? videoPath : 'file://' + videoPath;
+      console.log('[App] Final video:', finalUrl);
+
+      this.setState({
+        videoUrl: finalUrl,
+        showConfirmButtons: false,
+        haveSavedMedia: false,
+        playPreview: true,
+        previewType: kPreviewTypeVideo,
+        recordingProgress: 0,
+        pauseMarkers: [],
+        isStitching: false,
+        isExtractingFrames: true, // Start loading state
+        frameThumbnails: [], // Clear previous thumbnails
+        coverFrameIndex: 0,
+      }, () => {
+        this.props.dispatchDisplayUIScreen(UIConstants.SHOW_SHARE_SCREEN);
+      });
+
+      // Extract frames for scrubber (moved outside setState callback)
+      this._extractFramesForScrubber(finalUrl);
+    } catch (error) {
+      console.error('[App] Finalize recording error:', error);
+      this.setState({ isStitching: false });
+      this._hasActiveSession = false;
+      Alert.alert('Recording Error', 'Failed to finalize recording: ' + error.message);
+    }
+  }
+
+  // Handle cancel button - reset state and discard recording
+  async handleRecordCancel() {
+    // Clear any pending timer
+    if (this._recordingTimer) {
+      TimerMixin.clearInterval(this._recordingTimer);
+      this._recordingTimer = null;
+    }
+
+    // Stop and discard any active recording session
+    if (this._hasActiveSession) {
+      try {
+        await ArViewRecorder.stopRecording();
+        console.log('[App] Recording session discarded');
+      } catch (e) {
+        console.log('[App] Error stopping recording on cancel:', e);
+      }
+      this._hasActiveSession = false;
+    }
+
+    this._isRecording = false;
 
     this.setState({
       recordingProgress: 0,
@@ -940,7 +1372,10 @@ export class App extends Component {
       showConfirmButtons: false,
       videoUrl: null,
       isActivelyRecording: false,
+      isStitching: false,
     });
+
+    this.props.dispatchDisplayUIScreen(UIConstants.SHOW_MAIN_SCREEN);
   }
 
   _saveToCameraRoll() {

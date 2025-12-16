@@ -1,4 +1,6 @@
 PODS:
+  - ArViewRecorder (1.0.0):
+    - ExpoModulesCore
   - EXApplication (7.0.8):
     - ExpoModulesCore
   - EXAV (16.0.8):
@@ -2167,6 +2169,7 @@ PODS:
     - ZXingObjC/Core
 
 DEPENDENCIES:
+  - ArViewRecorder (from `../modules/ar-view-recorder/ios`)
   - EXApplication (from `../node_modules/expo-auth-session/node_modules/expo-application/ios`)
   - EXAV (from `../node_modules/expo-av/ios`)
   - EXConstants (from `../node_modules/expo-constants/ios`)
@@ -2277,6 +2280,8 @@ SPEC REPOS:
     - ZXingObjC
 
 EXTERNAL SOURCES:
+  ArViewRecorder:
+    :path: "../modules/ar-view-recorder/ios"
   EXApplication:
     :path: "../node_modules/expo-auth-session/node_modules/expo-application/ios"
   EXAV:
@@ -2484,6 +2489,7 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
+  ArViewRecorder: 02bc429245945b3518e1b64279b1f0a7405960b2
   EXApplication: 13420f8139864183f8a04fd6099077bdf8cfb186
   EXAV: c2de1057f4d9b0bcbdd908c6f2dcff48ece36f2b
   EXConstants: 42beb731d147822313b2340b8bb9ebe7a38a3762
