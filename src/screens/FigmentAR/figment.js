@@ -65,6 +65,19 @@ export class figment extends Component {
 
   componentDidMount() {
     console.log('[Figment] componentDidMount - Initializing materials');
+
+    // Check and Enable Scene Semantics
+    if (this.props.arSceneNavigator && this.props.arSceneNavigator.isSemanticModeSupported) {
+      this.props.arSceneNavigator.isSemanticModeSupported().then((result) => {
+        console.log('[Figment] Scene Semantics Supported:', result.supported);
+        if (result.supported) {
+          this.props.arSceneNavigator.setSemanticModeEnabled(true);
+          console.log('[Figment] Semantic Mode Enabled');
+        }
+      }).catch(err => {
+        console.log('[Figment] Scene Semantics Check Error:', err);
+      });
+    }
   }
 
   render() {
