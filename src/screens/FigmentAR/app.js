@@ -634,49 +634,32 @@ export class App extends Component {
 
   // Handle Record Press In - Start recording when user presses down
   async handleRecordPressIn() {
-    console.log('[FigmentAR] handleRecordPressIn called');
-    console.log('[FigmentAR] Current recordingProgress:', this.state.recordingProgress);
-    console.log('[FigmentAR] MAX_DURATION:', MAX_DURATION);
-
-    if (this.state.recordingProgress >= MAX_DURATION) {
-      console.log('[FigmentAR] Max duration reached, returning');
-      return;
-    }
+    if (this.state.recordingProgress >= MAX_DURATION) return;
 
     // Check permissions
     if (!this.state.audioPermission) {
-      console.log('[FigmentAR] Requesting audio permission');
       this.requestAudioPermission();
     }
 
     try {
       // Start screen recording using nitro-screen-recorder
-      console.log('[FigmentAR] Calling startInAppRecording...');
       await startInAppRecording({
         options: {
           enableMic: true,
-          enableCamera: false, // Required: disable camera for screen-only recording
+          enableCamera: false,
         },
         onRecordingFinished: (file) => {
-          console.log('[FigmentAR] onRecordingFinished callback, file:', file);
           if (file && file.path) {
-            // Store the video URL when recording finishes
-            this.setState({
-              videoUrl: 'file://' + file.path,
-            });
-            console.log('[FigmentAR] Video saved to:', file.path);
+            this.setState({ videoUrl: 'file://' + file.path });
           }
         },
       });
-      console.log('[FigmentAR] startInAppRecording started successfully');
     } catch (error) {
-      console.error('[FigmentAR] startInAppRecording failed:', error);
       this._displayVideoRecordAlert("Recording Error", "Could not start recording: " + error.message);
       return;
     }
 
     // Set recording state
-    console.log('[FigmentAR] Setting isActivelyRecording: true');
     this.setState({
       isActivelyRecording: true,
       showConfirmButtons: false,
@@ -684,24 +667,21 @@ export class App extends Component {
     });
 
     // Start progress timer
-    console.log('[FigmentAR] Starting progress timer');
     this._recordingTimer = TimerMixin.setInterval(() => {
       const elapsed = Date.now() - this.state.recordStartTimeInMillis;
       const newProgress = this.state.recordingProgress + elapsed;
 
       if (newProgress >= MAX_DURATION) {
-        console.log('[FigmentAR] Max duration reached in timer');
         this.setState({ recordingProgress: MAX_DURATION });
-        this.handleRecordPressOut(); // Force stop at max
+        this.handleRecordPressOut();
       } else {
         this.setState({
           recordingProgress: newProgress,
-          recordStartTimeInMillis: Date.now(), // Reset for next interval
+          recordStartTimeInMillis: Date.now(),
         });
       }
     }, 50);
 
-    console.log('[FigmentAR] Dispatching SHOW_RECORDING_SCREEN');
     this.props.dispatchDisplayUIScreen(UIConstants.SHOW_RECORDING_SCREEN);
   }
 
@@ -740,31 +720,20 @@ export class App extends Component {
   // Handle Record Press Out - Pause recording visually when user lifts finger
   // NOTE: Recording continues in background - only stopped on confirm
   handleRecordPressOut() {
-    console.log('[FigmentAR] handleRecordPressOut called');
-    console.log('[FigmentAR] isActivelyRecording:', this.state.isActivelyRecording);
-    console.log('[FigmentAR] recordingProgress:', this.state.recordingProgress);
-
-    if (!this.state.isActivelyRecording) {
-      console.log('[FigmentAR] Not actively recording, returning early');
-      return;
-    }
+    if (!this.state.isActivelyRecording) return;
 
     // Stop progress timer (but recording continues in background)
     if (this._recordingTimer) {
-      console.log('[FigmentAR] Pausing recording timer (recording continues in background)');
       TimerMixin.clearInterval(this._recordingTimer);
       this._recordingTimer = null;
     }
 
     // Add pause marker at current progress
     const newMarkers = [...this.state.pauseMarkers, this.state.recordingProgress];
-    console.log('[FigmentAR] New pause markers:', newMarkers);
 
     // DON'T stop recording here - just pause the UI
-    // Recording continues running in background until confirm is pressed
-    console.log('[FigmentAR] Pausing visually - recording continues in background');
     this.setState({
-      isActivelyRecording: false, // Visually paused
+      isActivelyRecording: false,
       pauseMarkers: newMarkers,
       showConfirmButtons: true,
     });
@@ -774,72 +743,51 @@ export class App extends Component {
 
   // Handle confirm button - stop recording and navigate to share screen
   async handleRecordConfirm() {
-    console.log('[FigmentAR] handleRecordConfirm called');
-    console.log('[FigmentAR] Current videoUrl:', this.state.videoUrl);
-    console.log('[FigmentAR] recordingProgress:', this.state.recordingProgress);
-
     try {
-      // Stop recording and get the file
-      console.log('[FigmentAR] Calling stopInAppRecording...');
       const file = await stopInAppRecording();
-      console.log('[FigmentAR] stopInAppRecording returned:', file);
 
       if (file && file.path) {
         const videoUrl = 'file://' + file.path;
-        console.log('[FigmentAR] Video saved, navigating to share screen:', videoUrl);
         this.setState({
           videoUrl: videoUrl,
           showConfirmButtons: false,
           haveSavedMedia: false,
           playPreview: true,
           previewType: kPreviewTypeVideo,
-          recordingProgress: 0, // Reset for next recording
+          recordingProgress: 0,
+          pauseMarkers: [],
+        }, () => {
+          this.props.dispatchDisplayUIScreen(UIConstants.SHOW_SHARE_SCREEN);
+        });
+      } else if (this.state.videoUrl) {
+        this.setState({
+          showConfirmButtons: false,
+          haveSavedMedia: false,
+          playPreview: true,
+          previewType: kPreviewTypeVideo,
+          recordingProgress: 0,
           pauseMarkers: [],
         }, () => {
           this.props.dispatchDisplayUIScreen(UIConstants.SHOW_SHARE_SCREEN);
         });
       } else {
-        console.log('[FigmentAR] stopInAppRecording returned no file');
-        // Check if videoUrl was set by callback
-        if (this.state.videoUrl) {
-          console.log('[FigmentAR] Using videoUrl from callback:', this.state.videoUrl);
-          this.setState({
-            showConfirmButtons: false,
-            haveSavedMedia: false,
-            playPreview: true,
-            previewType: kPreviewTypeVideo,
-            recordingProgress: 0,
-            pauseMarkers: [],
-          }, () => {
-            this.props.dispatchDisplayUIScreen(UIConstants.SHOW_SHARE_SCREEN);
-          });
-        } else {
-          console.log('[FigmentAR] No video file available');
-          Alert.alert('Recording Error', 'No video was recorded.');
-          this.handleRecordCancel();
-        }
+        Alert.alert('Recording Error', 'No video was recorded.');
+        this.handleRecordCancel();
       }
     } catch (error) {
-      console.error('[FigmentAR] handleRecordConfirm error:', error);
-      Alert.alert('Recording Error', 'Failed to save recording: ' + error.message);
+      Alert.alert('Recording Error', 'Failed to save recording.');
       this.handleRecordCancel();
     }
   }
 
   // Handle cancel button - cancel recording and reset state
   async handleRecordCancel() {
-    console.log('[FigmentAR] handleRecordCancel called');
-
     try {
-      // Cancel the recording without saving
-      console.log('[FigmentAR] Calling cancelInAppRecording...');
       await cancelInAppRecording();
-      console.log('[FigmentAR] Recording cancelled successfully');
     } catch (error) {
-      console.log('[FigmentAR] cancelInAppRecording error (may be expected):', error);
+      // May fail if no recording in progress
     }
 
-    // Reset state
     this.setState({
       recordingProgress: 0,
       pauseMarkers: [],
@@ -847,7 +795,6 @@ export class App extends Component {
       videoUrl: null,
       isActivelyRecording: false,
     });
-    console.log('[FigmentAR] Recording state reset');
   }
 
   _saveToCameraRoll() {
