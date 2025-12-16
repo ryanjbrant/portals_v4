@@ -239,38 +239,27 @@ var ModelItemRender = createReactClass({
       return;
     }
 
-    // State 2: Pinch Moving - Apply via setNativeProps (Performance)
+    // State 2: Pinch Moving - Update State Continuously
     if (pinchState === 2) {
-      // Safety: If we missed state 1 (rare but possible), fallback to current state
-      const baseScale = this._initialPinchScale || this.state.scale;
-
-      const newScale = baseScale.map((x) => { return x * scaleFactor });
-
-      // Cache for the end event
-      this._lastPinchScale = newScale;
-
-      if (this.arNodeRef) {
-        this.arNodeRef.setNativeProps({ scale: newScale });
+      // Ensure we have a base scale (handle missed state 1)
+      if (!this._initialPinchScale) {
+        this._initialPinchScale = this.state.scale;
       }
-      return; // check: ARComposer logic does not update state here
+
+      const newScale = this._initialPinchScale.map((x) => { return x * scaleFactor });
+
+      // Update state immediately (matches ARComposer "perfect" behavior)
+      this.setState({ scale: newScale });
+      return;
     }
 
-    // State 3: Pinch Ended - Commit to State
+    // State 3: Pinch Ended - Cleanup
     if (pinchState === 3) {
-      // Use the last calculated scale from the gesture (State 2) to ensure continuity.
-      // If we use 'scaleFactor' here, it *should* be the final cumulative, but caching is safer against resets.
-      const finalScale = this._lastPinchScale || this.state.scale; // Fallback if no move occurred
+      // No scale update here - state is already up to date from the last State 2 event.
+      // This prevents the "snap" caused by re-applying logic on release.
 
-      this.setState({
-        scale: finalScale
-      });
-
-      // Notify parent
-      this.props.onClickStateCallback(this.props.modelIDProps.uuid, pinchState, UIConstants.LIST_MODE_MODEL);
-
-      // Cleanup
       this._initialPinchScale = null;
-      this._lastPinchScale = null;
+      this.props.onClickStateCallback(this.props.modelIDProps.uuid, pinchState, UIConstants.LIST_MODE_MODEL);
       return;
     }
   },
