@@ -11,7 +11,6 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 
 import { connect } from 'react-redux';
-import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen } from './redux/actions';
 import TimerMixin from 'react-timer-mixin';
 
 import * as LoadingConstants from './redux/LoadingStateConstants';
@@ -27,6 +26,8 @@ import PhotosSelector from './component/PhotosSelector';
 import ARInitializationUI from './component/ARInitializationUI.js';
 import * as ModelData from './model/ModelItems';
 import * as PortalData from './model/PortalItems';
+import * as LightingData from './model/LightingItems';
+import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme } from './redux/actions';
 
 const kObjSelectMode = 1;
 const kPortalSelectMode = 2;
@@ -64,6 +65,7 @@ import Share from 'react-native-share';
 import Video from 'react-native-video';
 import { Svg, Circle, Line } from 'react-native-svg';
 import { startInAppRecording, stopInAppRecording, cancelInAppRecording } from 'react-native-nitro-screen-recorder';
+import { Ionicons } from '@expo/vector-icons';
 
 // Recording constants
 const MAX_DURATION = 15000; // 15 seconds max
@@ -139,8 +141,10 @@ export class App extends Component {
   }
 
   _onBackgroundTap() {
+    console.log('[App] _onBackgroundTap called. Current listMode:', this.props.listMode);
     // Dispatch action to hide the menu (set mode to NONE)
     if (this.props.listMode !== UIConstants.LIST_MODE_NONE) {
+      console.log('[App] Dispatching LIST_MODE_NONE');
       this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_NONE, '');
     }
   }
@@ -159,7 +163,11 @@ export class App extends Component {
           apiKey="YOUR-API-KEY-HERE"
           initialScene={{ scene: InitialScene }}
           ref={this._setARNavigatorRef}
-          viroAppProps={this.state.viroAppProps} />
+          viroAppProps={{
+            loadingObjectCallback: this._onListItemLoaded,
+            clickStateCallback: this._onItemClickedInScene,
+            onBackgroundTap: this._onBackgroundTap
+          }} />
 
         {/* Close button - top left */}
         {!isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
@@ -497,11 +505,12 @@ export class App extends Component {
     const isPortals = this.props.listMode === UIConstants.LIST_MODE_PORTAL;
     const isEffects = this.props.listMode === UIConstants.LIST_MODE_EFFECT;
     const isModels = this.props.listMode === UIConstants.LIST_MODE_MODEL;
+    const isLighting = this.props.listMode === UIConstants.LIST_MODE_LIGHT;
 
     // Check if we should show the non-recording UI (Picker + Toolbar)
     const showSelectionUI = !this.state.isActivelyRecording && !this.state.showConfirmButtons && !this.state.showPhotosSelector && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN;
 
-    const shouldShowPicker = showSelectionUI && (isPortals || isEffects || isModels);
+    const shouldShowPicker = showSelectionUI && (isPortals || isEffects || isModels || isLighting);
 
     // SVG Progress logic
     const circumference = 2 * Math.PI * 45;
@@ -539,10 +548,22 @@ export class App extends Component {
             paddingVertical: 10,
             borderRadius: 20
           }}>
+            {/* Objects Button */}
+            <TouchableOpacity
+              onPress={() => toggleMode(UIConstants.LIST_MODE_MODEL, UIConstants.LIST_TITLE_MODELS)}
+              style={{ alignItems: 'center', marginHorizontal: 15, opacity: this.props.listMode === UIConstants.LIST_MODE_MODEL ? 1 : 0.6 }}
+            >
+              <Image
+                source={require('./res/btn_mode_objects.png')}
+                style={{ width: 40, height: 40 }}
+              />
+              <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Objects</Text>
+            </TouchableOpacity>
+
             {/* Portals Button */}
             <TouchableOpacity
               onPress={() => toggleMode(UIConstants.LIST_MODE_PORTAL, UIConstants.LIST_TITLE_PORTALS)}
-              style={{ alignItems: 'center', marginHorizontal: 20, opacity: this.props.listMode === UIConstants.LIST_MODE_PORTAL ? 1 : 0.6 }}
+              style={{ alignItems: 'center', marginHorizontal: 15, opacity: this.props.listMode === UIConstants.LIST_MODE_PORTAL ? 1 : 0.6 }}
             >
               <Image
                 source={require('./res/btn_mode_portals.png')}
@@ -554,7 +575,7 @@ export class App extends Component {
             {/* Effects Button */}
             <TouchableOpacity
               onPress={() => toggleMode(UIConstants.LIST_MODE_EFFECT, UIConstants.LIST_TITLE_EFFECTS)}
-              style={{ alignItems: 'center', marginHorizontal: 20, opacity: this.props.listMode === UIConstants.LIST_MODE_EFFECT ? 1 : 0.6 }}
+              style={{ alignItems: 'center', marginHorizontal: 15, opacity: this.props.listMode === UIConstants.LIST_MODE_EFFECT ? 1 : 0.6 }}
             >
               <Image
                 source={require('./res/btn_mode_effects.png')}
@@ -563,16 +584,13 @@ export class App extends Component {
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Effects</Text>
             </TouchableOpacity>
 
-            {/* Objects Button */}
+            {/* Lighting Button */}
             <TouchableOpacity
-              onPress={() => toggleMode(UIConstants.LIST_MODE_MODEL, UIConstants.LIST_TITLE_MODELS)}
-              style={{ alignItems: 'center', marginHorizontal: 20, opacity: this.props.listMode === UIConstants.LIST_MODE_MODEL ? 1 : 0.6 }}
+              onPress={() => toggleMode(UIConstants.LIST_MODE_LIGHT, UIConstants.LIST_TITLE_LIGHT)}
+              style={{ alignItems: 'center', marginHorizontal: 15, opacity: this.props.listMode === UIConstants.LIST_MODE_LIGHT ? 1 : 0.6 }}
             >
-              <Image
-                source={require('./res/btn_mode_objects.png')}
-                style={{ width: 40, height: 40 }}
-              />
-              <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Objects</Text>
+              <Ionicons name="sunny-outline" size={32} color="white" style={{ marginBottom: 4 }} />
+              <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Lighting</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -858,14 +876,13 @@ export class App extends Component {
   _onListPressed(index) {
     if (this.props.listMode == UIConstants.LIST_MODE_MODEL) {
       this.props.dispatchAddModel(index);
-    }
-
-    if (this.props.listMode == UIConstants.LIST_MODE_PORTAL) {
+    } else if (this.props.listMode == UIConstants.LIST_MODE_PORTAL) {
       this.props.dispatchAddPortal(index);
-    }
-
-    if (this.props.listMode == UIConstants.LIST_MODE_EFFECT) {
+    } else if (this.props.listMode == UIConstants.LIST_MODE_EFFECT) {
       this.props.dispatchToggleEffectSelection(index);
+    } else if (this.props.listMode == UIConstants.LIST_MODE_LIGHT) {
+      var lightingArray = LightingData.getLightingArray();
+      this.props.dispatchChangeHdriTheme(lightingArray[index].name);
     }
   }
 
@@ -884,6 +901,10 @@ export class App extends Component {
   // dispatch this event to redux -> which results in context menu appearing on top left
   _onItemClickedInScene(index, clickState, itemType) {
     this.props.dispatchChangeItemClickState(index, clickState, itemType);
+    // Hide menu when interacting with an object
+    if (this.props.listMode !== UIConstants.LIST_MODE_NONE) {
+      this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_NONE, '');
+    }
   }
 
   // Load data source for listview based on listview modes
@@ -894,6 +915,8 @@ export class App extends Component {
       return this._constructListArrayModel(PortalData.getPortalArray(), this.props.portalItems);
     } else if (this.props.listMode == UIConstants.LIST_MODE_EFFECT) {
       return this.props.effectItems;
+    } else if (this.props.listMode == UIConstants.LIST_MODE_LIGHT) {
+      return this._constructListArrayModel(LightingData.getLightingArray(), []);
     }
   }
 
@@ -1110,6 +1133,7 @@ const mapDispatchToProps = (dispatch) => {
     dispatchSwitchListMode: (listMode, listTitle) => dispatch(switchListMode(listMode, listTitle)),
     dispatchChangePortalPhoto: (index, source) => dispatch(changePortalPhoto(index, source)),
     dispatchChangeItemClickState: (index, clickState, itemType) => dispatch(changeItemClickState(index, clickState, itemType)),
+    dispatchChangeHdriTheme: (hdri) => dispatch(changeHdriTheme(hdri)),
   }
 }
 

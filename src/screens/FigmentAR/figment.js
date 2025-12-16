@@ -23,8 +23,10 @@ import {
   ViroMaterials,
   ViroAmbientLight,
   ViroDirectionalLight,
-  ViroSpotLight
+  ViroSpotLight,
+  ViroLightingEnvironment
 } from '@reactvision/react-viro';
+import * as LightingData from './model/LightingItems';
 
 
 export class figment extends Component {
@@ -81,19 +83,36 @@ export class figment extends Component {
     return (
       <ViroARScene ref={component => { this.arSceneRef = component }} physicsWorld={{ gravity: [0, -9.81, 0] }} postProcessEffects={[this.props.postProcessEffects]}
         onTrackingUpdated={this._onTrackingUpdated}>
-        <ViroAmbientLight color="#ffffff" intensity={20} />
+        {this.props.selectedHdri && LightingData.getHDRISource(this.props.selectedHdri) && (
+          <ViroLightingEnvironment
+            source={LightingData.getHDRISource(this.props.selectedHdri)}
+            onLoadStart={() => console.log('[Figment] HDRI Loading:', this.props.selectedHdri)}
+            onLoadEnd={() => console.log('[Figment] HDRI Loaded:', this.props.selectedHdri)}
+            onError={(event) => console.log('[Figment] HDRI Error:', event.nativeEvent, this.props.selectedHdri)}
+          />
+        )}
 
-        {/* DirectionalLight with the direction away from the user, pointed upwards, to light up the "face" of the model */}
+        {/* Soft ambient fill light - Matched to ARComposer */}
+        <ViroAmbientLight color="#ffffff" intensity={150} />
+        <ViroAmbientLight color="#ffffff" intensity={200} />
+
+        {/* DirectionalLight (Restored per user request to work in tandem) */}
         <ViroDirectionalLight color="#ffffff" direction={[0, -1, -.2]} />
 
-        {/* Spotlight on top of the model to highlight this model*/}
+        {/* Spotlight with Shadows - Matched to ARComposer (Top Down) */}
         <ViroSpotLight
           innerAngle={5}
-          outerAngle={90}
-          direction={[0, 1, 0]}
-          position={[0, -7, 0]}
+          outerAngle={25}
+          direction={[0, -1, -.2]}
+          position={[0, 5, 1]}
           color="#ffffff"
-          intensity={250} />
+          castsShadow={true}
+          shadowMapSize={2048}
+          shadowNearZ={1}
+          shadowFarZ={10}
+          shadowOpacity={0.5}
+        />
+
         {models}
         {portals}
         {effects}
@@ -239,6 +258,7 @@ function selectProps(store) {
     portalItems: store.arobjects.portalItems,
     effectItems: store.arobjects.effectItems,
     postProcessEffects: store.arobjects.postProcessEffects,
+    selectedHdri: store.ui.selectedHdri,
   };
 }
 

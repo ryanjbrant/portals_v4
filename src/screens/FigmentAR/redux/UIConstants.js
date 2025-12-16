@@ -17,3 +17,5 @@ export const LIST_MODE_EFFECT = 'LIST_MODE_EFFECT'
 export const LIST_TITLE_MODELS = 'Objects';
 export const LIST_TITLE_PORTALS = 'Portals';
 export const LIST_TITLE_EFFECTS = 'Effects';
+export const LIST_MODE_LIGHT = 'LIST_MODE_LIGHT';
+export const LIST_TITLE_LIGHT = 'Lighting';

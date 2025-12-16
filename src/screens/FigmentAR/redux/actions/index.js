@@ -13,8 +13,8 @@ var nextImageId = 0;
  * Redux actions used to change app state based on events in the app
  */
 
- // action to change the visible UI screen
- // uiScreenToShow - toggles between SHOW_RECORDING_SCREEN, SHOW_SHARE_SCREEN and SHOW_MAIN_SCREEN
+// action to change the visible UI screen
+// uiScreenToShow - toggles between SHOW_RECORDING_SCREEN, SHOW_SHARE_SCREEN and SHOW_MAIN_SCREEN
 export function displayUIScreen(uiScreenToShow) {
   return {
     type: 'DISPLAY_UI_SCREEN',
@@ -25,39 +25,39 @@ export function displayUIScreen(uiScreenToShow) {
 // action to add, to the AR Scene, the model at the given index from data model at path: js/model/ModelItems.js
 export function addModelWithIndex(index) {
   return {
-      type:'ADD_MODEL',
-      index: index,
+    type: 'ADD_MODEL',
+    index: index,
   }
 }
 
 // action to remove model with given UUID from AR Scene
 export function removeModelWithUUID(uuid) {
   return {
-      type:'REMOVE_MODEL',
-      uuid: uuid,
+    type: 'REMOVE_MODEL',
+    uuid: uuid,
   }
 }
 
 // action to add, to the AR Scene, the portal at the given index from data model at path: js/model/PortalItems.js
 export function addPortalWithIndex(index) {
   return {
-      type:'ADD_PORTAL',
-      index: index,
+    type: 'ADD_PORTAL',
+    index: index,
   }
 }
 
 // action to remove Portal with given UUID from AR Scene
 export function removePortalWithUUID(uuid) {
   return {
-      type:'REMOVE_PORTAL',
-      uuid: uuid,
+    type: 'REMOVE_PORTAL',
+    uuid: uuid,
   }
 }
 
 // action to remove everything from the AR Scene
 export function removeAll() {
   return {
-    type:'REMOVE_ALL',
+    type: 'REMOVE_ALL',
   }
 }
 
@@ -128,6 +128,13 @@ export function ARTrackingInitialized(trackingNormal) {
   return {
     type: 'AR_TRACKING_INITIALIZED',
     trackingNormal: trackingNormal,
+  };
+}
+
+export function changeHdriTheme(hdri) {
+  return {
+    type: 'CHANGE_HDRI_THEME',
+    hdri: hdri,
   };
 }
 

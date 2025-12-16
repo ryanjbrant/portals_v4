@@ -18,6 +18,7 @@ const initialState = {
   currentItemClickState: '',
   currentEffectSelectionIndex: 0,
   arTrackingInitialized: false,
+  selectedHdri: 'studio-09',
 }
 
 function ui(state = initialState, action) {
@@ -55,6 +56,11 @@ function ui(state = initialState, action) {
         ...state,
         arTrackingInitialized: action.trackingNormal,
       }
+    case 'CHANGE_HDRI_THEME':
+      return {
+        ...state,
+        selectedHdri: action.hdri,
+      };
     default:
       return state;
   }
