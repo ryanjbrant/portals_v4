@@ -15,10 +15,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default class FigmentScreenWrapper extends Component {
     render() {
         return (
-            <SafeAreaView style={{ flex: 1 }} edges={['right', 'left', 'bottom']}>
+            <SafeAreaView style={{ flex: 1 }} edges={['right', 'left']}>
                 <View style={{ flex: 1 }}>
                     <Provider store={store}>
-                        <App />
+                        <App {...this.props} />
                     </Provider>
                 </View>
             </SafeAreaView>

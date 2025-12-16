@@ -79,7 +79,6 @@ export class App extends Component {
     super(props);
 
     this._renderShareScreen = this._renderShareScreen.bind(this);
-    this._renderButtonLeftMenu = this._renderButtonLeftMenu.bind(this);
     this._renderRecord = this._renderRecord.bind(this);
     this.handleRecordPressIn = this.handleRecordPressIn.bind(this);
     this.handleRecordPressOut = this.handleRecordPressOut.bind(this);
@@ -147,23 +146,23 @@ export class App extends Component {
           ref={this._setARNavigatorRef}
           viroAppProps={this.state.viroAppProps} />
 
+        {/* Close button - top left */}
+        {!isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
+          <TouchableOpacity
+            onPress={() => this.props.navigation?.goBack?.()}
+            style={{ position: 'absolute', top: 50, left: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}
+          >
+            <Text style={{ color: 'white', fontSize: 20 }}>✕</Text>
+          </TouchableOpacity>
+        )}
+
         {/* AR Initialization animation - hide during recording */}
         {!isRecordingInProgress && (
           <ARInitializationUI style={{ position: 'absolute', top: 20, left: 0, right: 0, width: '100%', height: 140, flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center' }} />
         )}
 
-        {/* ListView at the bottom of the screen - hide during recording */}
-        {renderIf(this.props.currentScreen != UIConstants.SHOW_SHARE_SCREEN && !isRecordingInProgress,
-          <View style={localStyles.listView}>
-            <FigmentListView items={this._getListItems()} onPress={this._onListPressed} />
-          </View>
-        )}
-
         {/* 2D UI buttons on top right of the app - hide during recording */}
         {!isRecordingInProgress && this._renderContextMenu()}
-
-        {/* This menu contains the buttons on bottom left corner - hide during recording */}
-        {!isRecordingInProgress && this._renderButtonLeftMenu()}
 
         {/* 2D UI for sharing rendered after user finishes taking a video / screenshot */}
         {this._renderShareScreen()}
@@ -171,8 +170,11 @@ export class App extends Component {
         {/* 2D UI rendered to enable the user changing background for Portals - hide during recording */}
         {!isRecordingInProgress && this._renderPhotosSelector()}
 
-        {/* Buttons and their behavior for recording videos and screenshots - always shown */}
+        {/* Timeline (Top) */}
         {this._renderRecord()}
+
+        {/* Bottom Controls (Picker + Toolbar + Record Button) - Flexbox Container */}
+        {this._renderBottomControls()}
       </View>
     );
   }
@@ -458,73 +460,93 @@ export class App extends Component {
 
   // This menu shows up over the AR view at bottom left side of the screen, centered vertically and consists of 3 buttons
   // to toggle listview contents between Portals, Effects and Objects.
-  _renderButtonLeftMenu() {
-    var buttons = [];
-    // Portal mode button
-    buttons.push(
-      <ButtonComponent key="button_portals"
-        onPress={() => { this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_PORTAL, UIConstants.LIST_TITLE_PORTALS) }}
-        buttonState={(this.props.listMode == UIConstants.LIST_MODE_PORTAL) ? 'on' : 'off'}
-        stateImageArray={[require("./res/btn_mode_portals_on.png"), require("./res/btn_mode_portals.png")]}
-        style={localStyles.screenIcon} selected={(this.props.listMode == UIConstants.LIST_MODE_PORTAL)}
-      />);
 
-    // Effect mode button
-    buttons.push(
-      <ButtonComponent key="button_effects"
-        onPress={() => { this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_EFFECT, UIConstants.LIST_TITLE_EFFECTS) }}
-        buttonState={(this.props.listMode == UIConstants.LIST_MODE_EFFECT) ? 'on' : 'off'}
-        stateImageArray={[require("./res/btn_mode_effects_on.png"), require("./res/btn_mode_effects.png")]}
-        style={localStyles.screenIcon} selected={(this.props.listMode == UIConstants.LIST_MODE_EFFECT)}
-      />);
 
-    // Objects mode button
-    buttons.push(
-      <ButtonComponent key="button_models"
-        onPress={() => { this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_MODEL, UIConstants.LIST_TITLE_MODELS) }}
-        buttonState={(this.props.listMode == UIConstants.LIST_MODE_MODEL) ? 'on' : 'off'}
-        stateImageArray={[require("./res/btn_mode_objects_on.png"), require("./res/btn_mode_objects.png")]}
-        style={localStyles.screenIcon} selected={(this.props.listMode == UIConstants.LIST_MODE_MODEL)}
-      />);
-
-    // Show these buttons only if we are in main screen or while recording -> Buttons not rendered when in share screen or when manipulating individual portals
-    if (this.props.currentScreen == UIConstants.SHOW_MAIN_SCREEN || this.props.currentScreen == UIConstants.SHOW_RECORDING_SCREEN) {
-      if (this.state.showPhotosSelector == false) {
-        return (
-          <View style={{ position: 'absolute', flexDirection: 'column', justifyContent: 'space-around', left: 10, bottom: 100, width: 70, height: 160, flex: 1 }}>
-            {buttons}
-          </View>
-        );
-      }
-    }
-    return null;
-  }
-
-  // Render UI for Video Recording and taking Screenshots
+  // Render Top Timeline for Recording
   _renderRecord() {
-    var recordViews = [];
-    // Recording progress display at top
+    // Only render if recording or confirming
+    if (!this.state.isActivelyRecording && !this.state.showConfirmButtons) return null;
+
     const progressSeconds = Math.floor(this.state.recordingProgress / 1000);
     const progressText = `00:${progressSeconds.toString().padStart(2, '0')}`;
 
-    if (this.state.isActivelyRecording || this.state.showConfirmButtons) {
-      recordViews.push(
-        <View key="record_timeline" style={{ position: 'absolute', backgroundColor: '#00000066', left: 0, right: 0, top: 0, height: 34, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={localStyles.recordingTimeText}>{progressText}</Text>
-        </View>
-      );
-    }
+    return (
+      <View key="record_timeline" style={{ position: 'absolute', backgroundColor: '#00000066', left: 0, right: 0, top: 0, height: 34, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={localStyles.recordingTimeText}>{progressText}</Text>
+      </View>
+    );
+  }
 
-    if (this.props.currentScreen != UIConstants.SHOW_SHARE_SCREEN && this.state.showPhotosSelector != true) {
-      // Calculate SVG progress ring values
-      const circumference = 2 * Math.PI * 45;
-      const progress = this.state.recordingProgress / MAX_DURATION;
-      const strokeDashoffset = circumference * (1 - progress);
+  // Combined Bottom Controls (Picker, Toolbar, Record Button)
+  _renderBottomControls() {
+    const isPortals = this.props.listMode === UIConstants.LIST_MODE_PORTAL;
+    const isEffects = this.props.listMode === UIConstants.LIST_MODE_EFFECT;
+    const isModels = this.props.listMode === UIConstants.LIST_MODE_MODEL;
 
-      recordViews.push(
-        <View key="record_controls" style={{ position: 'absolute', flex: 1, flexDirection: 'row', left: 0, right: 0, bottom: 80, justifyContent: 'center', alignItems: 'center', height: 100 }}>
+    // Check if we should show the non-recording UI (Picker + Toolbar)
+    const showSelectionUI = !this.state.isActivelyRecording && !this.state.showConfirmButtons && !this.state.showPhotosSelector && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN;
 
-          {/* Cancel Button - Show after recording */}
+    const shouldShowPicker = showSelectionUI && (isPortals || isEffects || isModels);
+
+    // SVG Progress logic
+    const circumference = 2 * Math.PI * 45;
+    const progress = this.state.recordingProgress / MAX_DURATION;
+    const strokeDashoffset = circumference * (1 - progress);
+
+    return (
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', paddingBottom: 40, flexDirection: 'column', justifyContent: 'flex-end', pointerEvents: 'box-none' }}>
+
+        {/* 1. Picker Container */}
+        {shouldShowPicker && (
+          <View style={{ backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 16, paddingVertical: 12, marginBottom: 25, maxWidth: '90%', overflow: 'hidden' }}>
+            <FigmentListView items={this._getListItems()} onPress={this._onListPressed} />
+          </View>
+        )}
+
+        {/* 2. Toolbar */}
+        {showSelectionUI && (
+          <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 25, paddingHorizontal: 20, paddingVertical: 10, marginBottom: 25 }}>
+            {/* Portals */}
+            <TouchableOpacity
+              onPress={() => { this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_PORTAL, UIConstants.LIST_TITLE_PORTALS) }}
+              style={{ alignItems: 'center', marginHorizontal: 15, opacity: isPortals ? 1 : 0.6 }}
+            >
+              <Image
+                source={isPortals ? require("./res/btn_mode_portals_on.png") : require("./res/btn_mode_portals.png")}
+                style={{ width: 40, height: 40 }}
+              />
+              <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Portals</Text>
+            </TouchableOpacity>
+
+            {/* Effects */}
+            <TouchableOpacity
+              onPress={() => { this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_EFFECT, UIConstants.LIST_TITLE_EFFECTS) }}
+              style={{ alignItems: 'center', marginHorizontal: 15, opacity: isEffects ? 1 : 0.6 }}
+            >
+              <Image
+                source={isEffects ? require("./res/btn_mode_effects_on.png") : require("./res/btn_mode_effects.png")}
+                style={{ width: 40, height: 40 }}
+              />
+              <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Effects</Text>
+            </TouchableOpacity>
+
+            {/* Objects */}
+            <TouchableOpacity
+              onPress={() => { this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_MODEL, UIConstants.LIST_TITLE_MODELS) }}
+              style={{ alignItems: 'center', marginHorizontal: 15, opacity: isModels ? 1 : 0.6 }}
+            >
+              <Image
+                source={isModels ? require("./res/btn_mode_objects_on.png") : require("./res/btn_mode_objects.png")}
+                style={{ width: 40, height: 40 }}
+              />
+              <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Objects</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* 3. Record/Controls Row */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 100 }}>
+          {/* Cancel Button */}
           {this.state.showConfirmButtons ? (
             <TouchableOpacity
               key="cancel_button"
@@ -537,75 +559,70 @@ export class App extends Component {
             <View style={{ width: 44, marginRight: 20 }} />
           )}
 
-          {/* Main Record Button with SVG Progress Ring */}
-          <TouchableOpacity
-            key="record_button"
-            onPressIn={this.handleRecordPressIn}
-            onPressOut={this.handleRecordPressOut}
-            activeOpacity={1}
-            disabled={this.state.recordingProgress >= MAX_DURATION}
-          >
-            <Svg height="100" width="100" viewBox="0 0 100 100">
-              {/* Background circle */}
-              <Circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.3)" strokeWidth="6" fill="none" />
-
-              {/* Progress ring */}
-              {this.state.recordingProgress > 0 && (
-                <Circle
-                  cx="50" cy="50" r="45"
-                  stroke="#FF3050"
-                  strokeWidth="6"
-                  fill="none"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={strokeDashoffset}
-                  strokeLinecap="round"
-                  rotation="-90"
-                  origin="50, 50"
-                />
-              )}
-
-              {/* Cut markers */}
-              {this.state.pauseMarkers.map((markerDuration, i) => {
-                const markerProgress = markerDuration / MAX_DURATION;
-                const angle = markerProgress * 360 - 90;
-                const rad = (angle * Math.PI) / 180;
-                const x1 = 50 + 38 * Math.cos(rad);
-                const y1 = 50 + 38 * Math.sin(rad);
-                const x2 = 50 + 52 * Math.cos(rad);
-                const y2 = 50 + 52 * Math.sin(rad);
-                return <Line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="white" strokeWidth="2" />;
-              })}
-
-              {/* Center circle - changes while recording */}
-              <Circle
-                cx="50" cy="50" r={this.state.isActivelyRecording ? 35 : 40}
-                fill={this.state.isActivelyRecording ? "#FF3050" : "white"}
-              />
-            </Svg>
-          </TouchableOpacity>
-
-          {/* Confirm Button - Show after recording */}
+          {/* Main Record Button or Confirm Button */}
           {this.state.showConfirmButtons ? (
             <TouchableOpacity
               key="confirm_button"
               onPress={this.handleRecordConfirm}
-              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#FF3050', justifyContent: 'center', alignItems: 'center', marginLeft: 20 }}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#FF3050', justifyContent: 'center', alignItems: 'center', marginLeft: 0 }} // Center it? No wait, this replaces the BIG button? 
+            // Wait, original design: Record button turns into nothing? and a small confirm button appears?
+            // Check original code:
+            // Confirm button was shown alongside the record button or replacing?
+            // Original: Cancel (left) -- Record (center) -- Confirm (right)
+            // When confirming: Record button is hidden? No, logic was complex.
+            // Let's stick to Record Button always visible, but maybe disabled?
+            // Actually, user wants a confirm button.
+            // Let's keep the CENTRAL circular button structure.
+            // If confirming, maybe we hide the record ring and show a confirm button? Or keep record ring as visual anchor?
+            // Let's just follow the previous confirmed logic: Cancel Left, Confirm Right.
             >
               <Text style={{ color: 'white', fontSize: 24 }}>✓</Text>
             </TouchableOpacity>
           ) : (
-            <View key="screenshot_container" style={{ marginLeft: 20 }}>
-              {renderIf(!this.state.isActivelyRecording,
-                <TouchableOpacity onPress={() => { this._takeScreenshot() }} style={{ width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }}>
-                  <Image source={require("./res/btn_camera.png")} style={{ width: 44, height: 44 }} />
-                </TouchableOpacity>
-              )}
-            </View>
+            /* Main Record Button with SVG Progress Ring */
+            <TouchableOpacity
+              key="record_button"
+              onPressIn={this.handleRecordPressIn}
+              onPressOut={this.handleRecordPressOut}
+              activeOpacity={1}
+              disabled={this.state.recordingProgress >= MAX_DURATION}
+            >
+              <Svg height="100" width="100" viewBox="0 0 100 100">
+                {/* Background circle */}
+                <Circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.3)" strokeWidth="6" fill="none" />
+                {/* Progress ring */}
+                {this.state.recordingProgress > 0 && (
+                  <Circle cx="50" cy="50" r="45" stroke="#FF3050" strokeWidth="6" fill="none"
+                    strokeDasharray={circumference} strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round" rotation="-90" origin="50, 50" />
+                )}
+                {/* Cut markers */}
+                {this.state.pauseMarkers.map((markerDuration, i) => {
+                  const markerProgress = markerDuration / MAX_DURATION;
+                  const angle = markerProgress * 360 - 90;
+                  const rad = (angle * Math.PI) / 180;
+                  const x1 = 50 + 38 * Math.cos(rad);
+                  const y1 = 50 + 38 * Math.sin(rad);
+                  const x2 = 50 + 52 * Math.cos(rad);
+                  const y2 = 50 + 52 * Math.sin(rad);
+                  return <Line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="black" strokeWidth="2" />;
+                })}
+                {/* Inner Circle Red Fill when recording */}
+                <Circle cx="50" cy="50" r={this.state.isActivelyRecording ? "35" : "40"} fill="#FF3050" />
+              </Svg>
+            </TouchableOpacity>
+          )}
+
+          {/* Right Spacer or empty */}
+          {this.state.showConfirmButtons ? (
+            <View style={{ width: 44, marginLeft: 20 }} /> // Spacer to balance Cancel
+          ) : (
+            <View style={{ width: 44, marginLeft: 20 }} />
           )}
         </View>
-      );
-    }
-    return recordViews;
+
+      </View>
+    );
   }
 
   _takeScreenshot() {
@@ -912,17 +929,11 @@ var localStyles = StyleSheet.create({
     flex: 1,
   },
   arView: {
-    flex: 1,
-  },
-  listView: {
-    flex: 1,
-    height: 72,
-    width: '100%',
     position: 'absolute',
-    justifyContent: 'center',
-    alignItems: 'center',
+    top: 0,
+    left: 0,
+    right: 0,
     bottom: 0,
-    backgroundColor: '#000000aa'
   },
   topPhotoBar: {
     backgroundColor: '#000000aa',

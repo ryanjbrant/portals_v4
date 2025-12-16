@@ -52,6 +52,7 @@ class FigmentListView extends Component {
     return (
       <FlatList
         horizontal={true}
+        style={{ height: 55, flexGrow: 0 }}
         contentContainerStyle={styles.listViewContainer}
         data={this.props.items}
         renderItem={this._renderItem}
@@ -65,7 +66,7 @@ class FigmentListView extends Component {
   _renderItem({ item, index }) {
     // item is the data object, index is index
     return (
-      <View style={{ marginLeft: 10 }}>
+      <View style={{ paddingHorizontal: 5 }}>
         <ListViewItem onPress={this._onListItemPressed(index)}
           key={item.icon_img + this.props.currentSelectedEffect}
           stateImageArray={[item.icon_img]}
@@ -122,7 +123,7 @@ function selectProps(store) {
 }
 var styles = StyleSheet.create({
   listViewContainer: {
-    height: 72,
+    height: 55, // Just enough for 53px icons + 1px buffer if needed
   },
   photo: {
     height: 53,
@@ -131,13 +132,13 @@ var styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 5,
-    marginTop: 10,
+    marginTop: 0,
   },
   photoSelection: {
     position: 'absolute',
     height: 53,
     width: 56.8,
-    marginTop: 10,
+    marginTop: 0,
   },
   submitText: {
     color: '#fff',

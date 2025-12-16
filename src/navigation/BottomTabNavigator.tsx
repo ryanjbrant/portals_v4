@@ -9,6 +9,8 @@ import { ShopScreen } from '../screens/ShopScreen';
 import { ComposerNavigator } from './ComposerNavigator';
 import { MapScreen } from '../screens/MapScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { ARComposerScreen } from '../screens/Composer/ARComposerScreen';
+import FigmentScreenWrapper from '../screens/FigmentAR/FigmentScreenWrapper';
 import { View, TouchableOpacity, Platform, Animated, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -74,6 +76,7 @@ export const BottomTabNavigator = () => {
             screenOptions={({ route, navigation }) => ({
                 headerShown: false,
                 tabBarStyle: {
+                    display: route.name === 'Figment' ? 'none' : 'flex',
                     backgroundColor: theme.colors.background,
                     borderTopColor: theme.colors.border,
                     height: Platform.OS === 'ios' ? 60 + insets.bottom : 70,
@@ -94,6 +97,10 @@ export const BottomTabNavigator = () => {
                         return <ComposeButton navigation={navigation} />;
                     } else if (route.name === 'Map') {
                         iconName = focused ? 'map' : 'map-outline';
+                    } else if (route.name === 'AR') {
+                        iconName = focused ? 'cube' : 'cube-outline';
+                    } else if (route.name === 'Figment') {
+                        iconName = focused ? 'aperture' : 'aperture-outline';
                     } else if (route.name === 'Me') {
                         iconName = focused ? 'person' : 'person-outline';
                         return (
@@ -135,6 +142,8 @@ export const BottomTabNavigator = () => {
                 options={{ tabBarLabel: () => null }}
             />
             <Tab.Screen name="Map" component={MapScreen} />
+            <Tab.Screen name="AR" component={ARComposerScreen} />
+            <Tab.Screen name="Figment" component={FigmentScreenWrapper} />
             <Tab.Screen
                 name="Me"
                 component={ProfileScreen}
