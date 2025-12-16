@@ -266,10 +266,10 @@ var ModelItemRender = createReactClass({
 
   _onError(uuid) {
     return () => {
-      this.props.loadCallback(uuid, LoadConstants.ERROR);
+      console.log('[ModelItemRender] Error loading model:', uuid);
+      this.props.onLoadCallback(uuid, LoadConstants.ERROR);
       //this.props.arSceneNavigator.viroAppProps.loadingObjectCallback(index, LoadingConstants.LOAD_ERROR);
     };
-
   },
 
   _onObjectLoadStart(uuid) {
