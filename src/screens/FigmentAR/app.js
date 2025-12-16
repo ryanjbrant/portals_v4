@@ -518,47 +518,78 @@ export class App extends Component {
   };
 
   _launchPicker = async (mediaTypes) => {
-    console.log('[App] _launchPicker: Launching ImagePicker with types:', mediaTypes);
     try {
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: mediaTypes,
         allowsEditing: false, // Disabled to ensure Videos are selectable
         quality: 1,
       });
-      console.log('[App] _launchPicker: Picker result:', result.canceled ? 'Canceled' : 'Success');
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         const type = asset.type === 'video' ? 'VIDEO' : 'IMAGE';
         const source = { uri: asset.uri };
 
-        console.log('[App] _launchPicker: Asset selected:', { type, uri: asset.uri, width: asset.width, height: asset.height });
+        console.log('[App] _launchPicker: Asset selected:', { type, width: asset.width, height: asset.height });
 
-        // Calculate Aspect Ratio
-        let width = 1; // Default 1 meter width
-        let height = 1;
-        if (asset.width && asset.height) {
-          height = asset.height / asset.width;
+        // If Image, we can calculate or use getSize
+        if (type === 'IMAGE') {
+          let width = 1;
+          let height = 1;
+          if (asset.width && asset.height) {
+            height = asset.height / asset.width;
+            this._finishAddMedia(source, type, width, height);
+          } else {
+            // Fallback for Image
+            Image.getSize(asset.uri, (w, h) => {
+              if (w && h) height = h / w;
+              this._finishAddMedia(source, type, width, height);
+            }, () => {
+              this._finishAddMedia(source, type, width, height);
+            });
+          }
+        } else {
+          // VIDEO: If metadata missing, USE PROBE
+          if (asset.width && asset.height) {
+            let height = asset.height / asset.width;
+            this._finishAddMedia(source, type, 1, height);
+          } else {
+            console.log('[App] Video metadata missing, triggering probe...');
+            this.setState({ videoProbeUri: asset.uri });
+          }
         }
-
-        // Dispatch action to add media to the scene
-        // Adding a delay to ensure ImagePicker dismisses cleanly before heavy AR render
-        setTimeout(() => {
-          console.log('[App] _launchPicker: Dispatching addMedia action');
-          this.props.dispatchAddMedia(source, type, width, height); // Pass dimensions
-
-          // Optionally switch mode to NONE to close any open menu
-          this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_NONE, '');
-        }, 500);
-
-      } else {
-        console.log('[App] _launchPicker: No asset selected or canceled');
       }
     } catch (e) {
-      console.error('[App] _launchPicker: Error launching picker', e);
-      alert('Failed to launch media picker: ' + e.message);
+      console.error('[App] Error:', e);
     }
   };
+
+  _onVideoProbeLoad = (data) => {
+    console.log('[App] Video Probe Loaded:', data.naturalSize);
+    const { width, height } = data.naturalSize;
+    const ratio = (width && height) ? (height / width) : 1.777; // Default to 16:9 vertical if weird
+
+    this._finishAddMedia({ uri: this.state.videoProbeUri }, 'VIDEO', 1, ratio);
+    this.setState({ videoProbeUri: null }); // Clear probe
+  };
+
+  _onVideoProbeError = (data) => {
+    console.warn('[App] Video Probe Failed:', data);
+    // Fallback
+    this._finishAddMedia({ uri: this.state.videoProbeUri }, 'VIDEO', 1, 1.777);
+    this.setState({ videoProbeUri: null });
+  };
+
+  _finishAddMedia = (source, type, width, height) => {
+    // Dispatch action to add media to the scene
+    // Adding a delay to ensure ImagePicker dismisses cleanly before heavy AR render
+    setTimeout(() => {
+      console.log('[App] _finishAddMedia dispatching:', { width, height });
+      this.props.dispatchAddMedia(source, type, width, height); // Pass dimensions
+      this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_NONE, '');
+    }, 500);
+  };
+
 
   // Combined Bottom Controls (Picker, Toolbar, Record Button)
   _renderBottomControls() {
@@ -1194,7 +1225,7 @@ const mapDispatchToProps = (dispatch) => {
     dispatchChangePortalPhoto: (index, source) => dispatch(changePortalPhoto(index, source)),
     dispatchChangeItemClickState: (index, clickState, itemType) => dispatch(changeItemClickState(index, clickState, itemType)),
     dispatchChangeHdriTheme: (hdri) => dispatch(changeHdriTheme(hdri)),
-    dispatchAddMedia: (source, type) => dispatch(addMedia(source, type)),
+    dispatchAddMedia: (source, type, width, height) => dispatch(addMedia(source, type, width, height)),
   }
 }
 
