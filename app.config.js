@@ -18,7 +18,12 @@ export default {
         ios: {
             supportsTablet: true,
             bundleIdentifier: "com.h3m.portals",
-            deploymentTarget: "17.0"
+            deploymentTarget: "17.0",
+            infoPlist: {
+                NSPhotoLibraryUsageDescription: "The app accesses your photos to let you import media into the AR scene.",
+                NSCameraUsageDescription: "The app uses your camera for AR.",
+                NSMicrophoneUsageDescription: "The app uses your microphone for recording AR videos."
+            }
         },
         android: {
             package: "com.h3m.portals",

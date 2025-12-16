@@ -25,7 +25,16 @@ export const ProfileGalleryScreen = () => {
     }, []);
 
     const route = useRoute<any>();
-    const { initialTab } = route.params || {};
+    const { initialTab, userId } = route.params || {};
+
+    const targetUserId = userId || currentUser?.id;
+    const isSelf = targetUserId === currentUser?.id;
+
+    // Fetch feed if empty? Ideally fetch specifically for user
+    React.useEffect(() => {
+        if (feed.length === 0) fetchFeed();
+        if (isSelf) fetchDrafts();
+    }, [isSelf]);
 
     const [activeTab, setActiveTab] = useState<GalleryTab>(initialTab || 'posts');
 
@@ -42,21 +51,34 @@ export const ProfileGalleryScreen = () => {
     const getTabContent = () => {
         switch (activeTab) {
             case 'posts':
-                // For mock purposes, using all posts or filtering by user is fine. 
-                // Let's assume some posts are mine.
-                return feed.filter(p => p.userId === currentUser.id || p.userId === 'u1');
+                // Filter by target user
+                return feed.filter(p => p.userId === targetUserId);
             case 'artifacts':
                 // Mock artifacts - just subset of posts to show differentiation
                 return feed.slice(0, 2);
             case 'likes':
-                // Posts I have liked
-                return feed.filter(p => p.isLiked);
+            // Posts I have liked
+            case 'likes':
+                // Ideally backend would filter, for now filter if we have the data
+                // If viewing others, we might not have their likes unless fetched.
+                // Assuming feed has all data for demo:
+                return feed.filter(p => p.isLiked); // This logic might be flawed for "Other User's Likes", assumes "isLiked" is global? No, isLiked usually means "Current User Liked This".
+            // Logic Gap: We don't have "User X's Liked Posts".
+            // For MVP: Only show Likes tab if isSelf.
+
             case 'drafts':
-                return drafts;
+                return isSelf ? drafts : [];
             default:
                 return [];
         }
     };
+
+    // Hide Likes/Drafts for others if needed. 
+    // Usually Likes are public, but "isLiked" property on a post object usually means "Checked by viewer".
+    // We would need a "fetchLikesForUser(uid)".
+    // For this MVP, let's hide Likes tab for others to avoid confusion or show empty.
+
+    // Actually, "Posts" is the main thing.
 
     const data = getTabContent();
 
@@ -127,14 +149,19 @@ export const ProfileGalleryScreen = () => {
 
                     navigation.navigate('ComposerEditor', {
                         draftData: loadedDraft?.sceneData,
-                        draftTitle: item.title || "Untitled"
+                        draftTitle: item.title || "Untitled",
+                        draftId: item.id // Pass ID for versioning/collab
                     });
                 } catch (e) {
                     Alert.alert("Error", "Could not load draft.");
                     setIsLoadingDraft(false);
                 }
             } else {
-                navigation.navigate('ComposerEditor', { draftData: item.sceneData, draftTitle: item.title || "Untitled" });
+                navigation.navigate('ComposerEditor', {
+                    draftData: item.sceneData,
+                    draftTitle: item.title || "Untitled",
+                    draftId: item.id
+                });
             }
         } else {
             navigation.navigate('PostFeed', {
@@ -191,6 +218,9 @@ export const ProfileGalleryScreen = () => {
     const renderItem = ({ item, index }: { item: any, index: number }) => {
         const isSelected = selectedIds.has(item.id);
 
+        // Disable selection for non-self
+        const enableSelection = isSelf;
+
         // Common Selection Overlay
         const SelectionOverlay = () => (
             <View style={styles.selectionOverlay}>
@@ -207,7 +237,7 @@ export const ProfileGalleryScreen = () => {
                 <TouchableOpacity
                     style={[styles.draftItem, isSelectionMode && { opacity: 0.9 }]}
                     onPress={() => handleItemPress(item, index)}
-                    onLongPress={() => handleLongPress(item)}
+                    onLongPress={() => isSelf && handleLongPress(item)}
                     delayLongPress={200}
                 >
                     {item.coverImage ? (
@@ -231,7 +261,7 @@ export const ProfileGalleryScreen = () => {
             <TouchableOpacity
                 style={[styles.gridItem, isSelectionMode && { opacity: 0.9 }]}
                 onPress={() => handleItemPress(item, index)}
-                onLongPress={() => handleLongPress(item)}
+                onLongPress={() => isSelf && handleLongPress(item)}
                 delayLongPress={200}
             >
                 <Image
@@ -287,7 +317,9 @@ export const ProfileGalleryScreen = () => {
                     <>
                         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
                             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-                            <Text style={styles.headerTitle}>{currentUser.username}</Text>
+                            <Text style={styles.headerTitle}>
+                                {isSelf ? currentUser.username : (route.params?.username || "Gallery")}
+                            </Text>
                         </TouchableOpacity>
                         <TouchableOpacity><Ionicons name="stats-chart" size={24} color={theme.colors.text} /></TouchableOpacity>
                     </>
@@ -297,8 +329,8 @@ export const ProfileGalleryScreen = () => {
             <View style={styles.tabs}>
                 <TabIcon tab="posts" icon="grid" />
                 <TabIcon tab="artifacts" icon="diamond" />
-                <TabIcon tab="likes" icon="heart" />
-                <TabIcon tab="drafts" icon="documents-outline" />
+                {isSelf && <TabIcon tab="likes" icon="heart" />}
+                {isSelf && <TabIcon tab="drafts" icon="documents-outline" />}
             </View>
 
             <FlatList
@@ -450,7 +482,5 @@ const styles = StyleSheet.create({
         right: 6,
         zIndex: 10,
     },
-    draftInfo: { padding: 8 },
-    draftTitle: { color: theme.colors.text, fontSize: 13, fontWeight: '600', marginBottom: 2 },
-    draftDate: { color: theme.colors.textDim, fontSize: 11 }
+    draftInfo: { padding: 8 }
 });

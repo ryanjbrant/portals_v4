@@ -19,3 +19,5 @@ export const LIST_TITLE_PORTALS = 'Portals';
 export const LIST_TITLE_EFFECTS = 'Effects';
 export const LIST_MODE_LIGHT = 'LIST_MODE_LIGHT';
 export const LIST_TITLE_LIGHT = 'Lighting';
+export const LIST_MODE_MEDIA = 'LIST_MODE_MEDIA';
+export const LIST_TITLE_MEDIA = 'Media';

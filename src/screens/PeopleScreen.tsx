@@ -12,6 +12,10 @@ export const PeopleScreen = () => {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
     const initialTab = route.params?.tab || 'Friends';
+    const targetUserId = route.params?.userId || useAppStore.getState().currentUser?.id;
+    const currentUser = useAppStore(state => state.currentUser);
+    const isSelf = targetUserId === currentUser?.id;
+
     const [activeTab, setActiveTab] = useState(initialTab);
     const [search, setSearch] = useState('');
 
@@ -26,16 +30,25 @@ export const PeopleScreen = () => {
     // Filter Users based on Tab
     const getTabUsers = () => {
         let filteredIds: string[] = [];
-        switch (activeTab) {
-            case 'Team': filteredIds = relationships.team; break;
-            case 'Invites': filteredIds = relationships.invites; break;
-            case 'Friends': filteredIds = relationships.friends; break; // Or use USERS for discovery? 'Friends' usually means your friends. For Discovery maybe 'All'? 
-            // For now, let's treat 'Friends' as 'All Users' or 'My Friends'? 
-            // The mockup suggests 'Friends' is a list. I'll make it 'My Friends' + maybe suggestions if empty?
-            // Actually, for the demo to feel populated, I'll return ALL USERS if the list is empty, or just specific mock friends.
-            // Let's stick to strict Friends list from store (u3).
-            case 'Following': filteredIds = relationships.following; break;
-            default: filteredIds = [];
+
+        // If viewing someone else, we don't have their relationships in store.
+        // For MVP Demo: Mock return some users so the list isn't empty.
+        if (!isSelf) {
+            // Mock data for others: simply return a subset of USERS excluding self
+            // In real app: await fetchUserRelationships(targetUserId)
+            const allIds = USERS.map(u => u.id).filter(id => id !== targetUserId);
+            filteredIds = allIds.slice(0, 3); // Just show 3 random people as followers/following
+
+            // Allow searching full directory if tab is Friends/Following to simulate "Network"
+        } else {
+            // Viewing Self
+            switch (activeTab) {
+                case 'Team': filteredIds = relationships.team; break;
+                case 'Invites': filteredIds = relationships.invites; break;
+                case 'Friends': filteredIds = relationships.friends; break;
+                case 'Following': filteredIds = relationships.following; break;
+                default: filteredIds = [];
+            }
         }
 
         // If tab is 'Friends' and we want to show "Suggested" if empty, we can handle that.

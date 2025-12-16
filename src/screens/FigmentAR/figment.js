@@ -14,6 +14,7 @@ import * as UIConstants from './redux/UIConstants';
 import ModelItemRender from './component/ModelItemRender';
 import PortalItemRender from './component/PortalItemRender';
 import EffectItemRender from './component/EffectItemRender';
+import MediaItemRender from './component/MediaItemRender';
 import { ARTrackingInitialized, switchListMode } from './redux/actions';
 
 
@@ -170,8 +171,27 @@ export class figment extends Component {
         }
         objBitMask++;
       });
-
     }
+
+    // Render Media Items
+    let mediaKeys = Object.keys(this.props.mediaItems);
+    // console.log('[Figment] _renderModels: Media keys count:', mediaKeys.length);
+    for (let i = 0; i < mediaKeys.length; i++) {
+      let key = mediaKeys[i];
+      let mediaItem = this.props.mediaItems[key];
+      // We can reuse the same bitmask logic or simplified one
+      if (!mediaItem.hidden) {
+        console.log('[Figment] Rendering Media Item:', mediaItem.uuid);
+        renderedObjects.push((
+          <MediaItemRender
+            key={mediaItem.uuid}
+            mediaItem={mediaItem}
+          // Add callbacks if needed, e.g. for selection
+          />
+        ));
+      }
+    }
+
     return renderedObjects;
   }
 
@@ -279,6 +299,7 @@ function selectProps(store) {
   return {
     modelItems: store.arobjects.modelItems,
     portalItems: store.arobjects.portalItems,
+    mediaItems: store.arobjects.mediaItems, // Added
     effectItems: store.arobjects.effectItems,
     postProcessEffects: store.arobjects.postProcessEffects,
     selectedHdri: store.ui.selectedHdri,

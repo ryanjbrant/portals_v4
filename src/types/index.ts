@@ -84,4 +84,6 @@ export interface Draft {
     sceneId?: string;
     updatedAt?: string;
     createdAt?: string;
+    collaborators?: string[]; // List of User IDs
+    ownerId?: string; // Original creator ID
 }

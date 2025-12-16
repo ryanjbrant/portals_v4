@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRoute } from '@react-navigation/native';
 import { AuthService } from '../services/auth';
@@ -18,6 +19,7 @@ export const ProfileScreen = () => {
     const currentUser = useAppStore(state => state.currentUser);
     const notifications = useAppStore(state => state.notifications);
     const hasUnread = notifications.some(n => !n.read);
+    const insets = useSafeAreaInsets();
 
     // Params: userId can be passed to view others. If null, view self.
     const targetUserId = route.params?.userId || currentUser?.id;
@@ -88,15 +90,20 @@ export const ProfileScreen = () => {
                 style={styles.background}
             />
 
-            {isSelf && (
-                <SafeAreaView style={styles.topNav}>
-                    <View style={{ flex: 1 }} />
+            <SafeAreaView style={[styles.topNav, !isSelf && { justifyContent: 'space-between' }]}>
+                {!isSelf && (
+                    <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
+                        <Ionicons name="chevron-back" size={26} color={theme.colors.white} />
+                    </TouchableOpacity>
+                )}
+                {isSelf && <View style={{ flex: 1 }} />}
+                {isSelf && (
                     <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Activity')}>
                         <Ionicons name="notifications-outline" size={26} color={theme.colors.white} />
                         {hasUnread && <View style={styles.redDot} />}
                     </TouchableOpacity>
-                </SafeAreaView>
-            )}
+                )}
+            </SafeAreaView>
 
             <ScrollView contentContainerStyle={styles.content}>
                 <View style={styles.header}>
@@ -114,12 +121,12 @@ export const ProfileScreen = () => {
 
                     {/* Stats Row */}
                     <View style={styles.statsContainer}>
-                        <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Following' })}>
+                        <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Following', userId: profileUser.id })}>
                             <Text style={styles.statNumber}>{profileUser.following}</Text>
                             <Text style={styles.statLabel}>Following</Text>
                         </TouchableOpacity>
                         <View style={styles.statDivider} />
-                        <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Followers' })}>
+                        <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Followers', userId: profileUser.id })}>
                             <Text style={styles.statNumber}>{profileUser.followers}</Text>
                             <Text style={styles.statLabel}>Followers</Text>
                         </TouchableOpacity>
@@ -162,7 +169,7 @@ export const ProfileScreen = () => {
 
                     {/* Gallery or Private Lock */}
                     {(isSelf || !profileUser.isPrivate || (profileUser.isPrivate && isFollowing)) ? (
-                        <TouchableOpacity style={styles.galleryButton} onPress={() => navigation.navigate('ProfileGallery')}>
+                        <TouchableOpacity style={styles.galleryButton} onPress={() => navigation.navigate('ProfileGallery', { userId: profileUser.id, username: profileUser.username })}>
                             <LinearGradient
                                 colors={[theme.colors.primary, theme.colors.primary]}
                                 start={{ x: 0, y: 0 }}

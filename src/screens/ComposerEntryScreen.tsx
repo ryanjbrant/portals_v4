@@ -114,10 +114,12 @@ export const ComposerEntryScreen = () => {
                             renderItem={({ item }) => {
                                 if (item.id === 'new') {
                                     return (
-                                        <TouchableOpacity style={styles.newCard} onPress={() => navigation.navigate('ComposerEditor')}>
-                                            <Ionicons name="add-circle" size={40} color={theme.colors.text} />
-                                            <Text style={styles.cardText}>New {activeTab === 'Drafts' ? 'Project' : 'Collab'}</Text>
-                                        </TouchableOpacity>
+                                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                                            <TouchableOpacity style={styles.newCard} onPress={() => navigation.navigate('ComposerEditor')}>
+                                                <Ionicons name="cube" size={32} color={theme.colors.text} />
+                                                <Text style={styles.cardText}>3D Editor</Text>
+                                            </TouchableOpacity>
+                                        </View>
                                     )
                                 }
                                 return renderDraft({ item });

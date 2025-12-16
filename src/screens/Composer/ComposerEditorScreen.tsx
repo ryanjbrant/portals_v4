@@ -17,11 +17,11 @@ import { EditorContent } from './EditorContent';
 import { Asset } from 'expo-asset';
 
 const HDRI_MAPS = [
-    { id: '01', name: 'Studio', source: require('../../../assets/hdri/01.jpg') },
-    { id: '02', name: 'Outdoor', source: require('../../../assets/hdri/02.jpg') },
-    { id: '03', name: 'Sunset', source: require('../../../assets/hdri/03.jpg') },
-    { id: '04', name: 'Night', source: require('../../../assets/hdri/04.jpg') },
-    { id: '05', name: 'Bright', source: require('../../../assets/hdri/05.jpg') },
+    { id: '01', name: 'Studio', source: require('../../../assets/hdri/StudioGlow.jpg') },
+    { id: '02', name: 'Broad', source: require('../../../assets/hdri/SoftboxStudio.jpg') },
+    { id: '03', name: 'Glows', source: require('../../../assets/hdri/TwoGlows.jpg') },
+    { id: '04', name: 'Stripes', source: require('../../../assets/hdri/Stripes.jpg') },
+    { id: '05', name: 'Window', source: require('../../../assets/hdri/OverheadWindowWithStripes.jpg') },
 ];
 import { Svg, Circle, Line } from 'react-native-svg';
 

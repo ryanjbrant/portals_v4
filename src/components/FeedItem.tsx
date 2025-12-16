@@ -12,6 +12,18 @@ const { width, height } = Dimensions.get('window');
 // Height correction for tab bar
 const SCREEN_HEIGHT = height - 80;
 
+const getRelativeTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
+
+    if (diffInSeconds < 60) return 'now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d`;
+    return `${Math.floor(diffInSeconds / 604800)}w`;
+};
+
 interface FeedItemProps {
     post: Post;
     onCommentPress: () => void;
@@ -117,8 +129,18 @@ export const FeedItem = ({ post, onCommentPress }: FeedItemProps) => {
 
             {/* Bottom Info Overlay */}
             <View style={styles.bottomContainer}>
-                <Text style={styles.username}>@{post.user.username} • {post.date}</Text>
+                <View style={styles.userInfoRow}>
+                    <Text style={styles.username}>@{post.user.username}</Text>
+                    <Text style={styles.dateText}>• {getRelativeTime(post.date)}</Text>
+                </View>
                 <Text style={styles.caption} numberOfLines={3}>{post.caption}</Text>
+                {post.tags && post.tags.length > 0 && (
+                    <View style={styles.tagsContainer}>
+                        {post.tags.map((tag, i) => (
+                            <Text key={i} style={styles.tagText}>#{tag}</Text>
+                        ))}
+                    </View>
+                )}
             </View>
         </View>
     );
@@ -189,7 +211,34 @@ const styles = StyleSheet.create({
         color: theme.colors.white,
         fontWeight: '700',
         fontSize: 16,
+        textShadowColor: 'rgba(0,0,0,0.5)',
+        textShadowOffset: { width: 1, height: 1 },
+        textShadowRadius: 2,
+    },
+    userInfoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
         marginBottom: 8,
+        gap: 8,
+    },
+    dateText: {
+        color: 'rgba(255,255,255,0.7)',
+        fontSize: 13,
+        fontWeight: '500',
+        textShadowColor: 'rgba(0,0,0,0.5)',
+        textShadowOffset: { width: 1, height: 1 },
+        textShadowRadius: 2,
+    },
+    tagsContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginTop: 8,
+        gap: 6,
+    },
+    tagText: {
+        color: theme.colors.primary, // Or white/dim based on preference. Primary feels "tagged".
+        fontSize: 13,
+        fontWeight: '600',
         textShadowColor: 'rgba(0,0,0,0.5)',
         textShadowOffset: { width: 1, height: 1 },
         textShadowRadius: 2,
