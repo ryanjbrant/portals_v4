@@ -103,6 +103,8 @@ var ModelItemRender = createReactClass({
         position={this.state.position}
         scale={this.state.scale}
         rotation={this.state.rotation}
+        onPinch={this._onPinch}
+        onRotate={this._onRotate}
         onDrag={() => { }}
         dragType="FixedToWorld">
 
