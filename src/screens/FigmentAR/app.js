@@ -128,6 +128,21 @@ export class App extends Component {
       pauseMarkers: [], // Array of pause marker positions (milliseconds)
       showConfirmButtons: false, // Show confirm/delete after recording
     };
+
+    this._onBackgroundTap = this._onBackgroundTap.bind(this);
+    // Update viroAppProps to include onBackgroundTap
+    this.state.viroAppProps = {
+      loadingObjectCallback: this._onListItemLoaded,
+      clickStateCallback: this._onItemClickedInScene,
+      onBackgroundTap: this._onBackgroundTap
+    };
+  }
+
+  _onBackgroundTap() {
+    // Dispatch action to hide the menu (set mode to NONE)
+    if (this.props.listMode !== UIConstants.LIST_MODE_NONE) {
+      this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_NONE, '');
+    }
   }
 
   // This render() function renders the AR Scene in <ViroARSceneNavigator> with the <ViroARScene> defined in figment.js
@@ -493,50 +508,68 @@ export class App extends Component {
     const progress = this.state.recordingProgress / MAX_DURATION;
     const strokeDashoffset = circumference * (1 - progress);
 
-    return (
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', paddingBottom: 40, flexDirection: 'column', justifyContent: 'flex-end', pointerEvents: 'box-none' }}>
+    const toggleMode = (mode, title) => {
+      // If tapping the already active mode, toggle it OFF (hide menu)
+      if (this.props.listMode === mode) {
+        this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_NONE, '');
+      } else {
+        // Otherwise switch to the new mode
+        this.props.dispatchSwitchListMode(mode, title);
+      }
+    };
 
-        {/* 1. Picker Container */}
-        {shouldShowPicker && (
+    return (
+      <View style={{ position: 'absolute', bottom: 130, left: 0, right: 0, alignItems: 'center' }}>
+
+        {/* 1. Picker Container - Only show if mode is NOT NONE */}
+        {shouldShowPicker && this.props.listMode !== UIConstants.LIST_MODE_NONE && (
           <View style={{ backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 16, paddingVertical: 12, marginBottom: 25, maxWidth: '90%', overflow: 'hidden' }}>
             <FigmentListView items={this._getListItems()} onPress={this._onListPressed} />
           </View>
         )}
 
         {/* 2. Toolbar */}
-        {showSelectionUI && (
-          <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 25, paddingHorizontal: 20, paddingVertical: 10, marginBottom: 25 }}>
-            {/* Portals */}
+        {/* Only show toolbar if NOT recording (verified: this method is only called if !isRecordingInProgress or handled in render) */}
+        {!this.state.isActivelyRecording && this.state.recordingProgress === 0 && (
+          <View style={{
+            flexDirection: 'row',
+            justifyContent: 'center',
+            marginBottom: 20,
+            backgroundColor: 'rgba(0,0,0,0.0)', // Transparent container
+            paddingVertical: 10,
+            borderRadius: 20
+          }}>
+            {/* Portals Button */}
             <TouchableOpacity
-              onPress={() => { this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_PORTAL, UIConstants.LIST_TITLE_PORTALS) }}
-              style={{ alignItems: 'center', marginHorizontal: 15, opacity: isPortals ? 1 : 0.6 }}
+              onPress={() => toggleMode(UIConstants.LIST_MODE_PORTAL, UIConstants.LIST_TITLE_PORTALS)}
+              style={{ alignItems: 'center', marginHorizontal: 20, opacity: this.props.listMode === UIConstants.LIST_MODE_PORTAL ? 1 : 0.6 }}
             >
               <Image
-                source={isPortals ? require("./res/btn_mode_portals_on.png") : require("./res/btn_mode_portals.png")}
+                source={require('./res/btn_mode_portals.png')}
                 style={{ width: 40, height: 40 }}
               />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Portals</Text>
             </TouchableOpacity>
 
-            {/* Effects */}
+            {/* Effects Button */}
             <TouchableOpacity
-              onPress={() => { this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_EFFECT, UIConstants.LIST_TITLE_EFFECTS) }}
-              style={{ alignItems: 'center', marginHorizontal: 15, opacity: isEffects ? 1 : 0.6 }}
+              onPress={() => toggleMode(UIConstants.LIST_MODE_EFFECT, UIConstants.LIST_TITLE_EFFECTS)}
+              style={{ alignItems: 'center', marginHorizontal: 20, opacity: this.props.listMode === UIConstants.LIST_MODE_EFFECT ? 1 : 0.6 }}
             >
               <Image
-                source={isEffects ? require("./res/btn_mode_effects_on.png") : require("./res/btn_mode_effects.png")}
+                source={require('./res/btn_mode_effects.png')}
                 style={{ width: 40, height: 40 }}
               />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Effects</Text>
             </TouchableOpacity>
 
-            {/* Objects */}
+            {/* Objects Button */}
             <TouchableOpacity
-              onPress={() => { this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_MODEL, UIConstants.LIST_TITLE_MODELS) }}
-              style={{ alignItems: 'center', marginHorizontal: 15, opacity: isModels ? 1 : 0.6 }}
+              onPress={() => toggleMode(UIConstants.LIST_MODE_MODEL, UIConstants.LIST_TITLE_MODELS)}
+              style={{ alignItems: 'center', marginHorizontal: 20, opacity: this.props.listMode === UIConstants.LIST_MODE_MODEL ? 1 : 0.6 }}
             >
               <Image
-                source={isModels ? require("./res/btn_mode_objects_on.png") : require("./res/btn_mode_objects.png")}
+                source={require('./res/btn_mode_objects.png')}
                 style={{ width: 40, height: 40 }}
               />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Objects</Text>

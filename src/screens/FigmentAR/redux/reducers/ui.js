@@ -8,17 +8,17 @@
  *
  */
 
- import *  as UIConstants from '../UIConstants';
+import *  as UIConstants from '../UIConstants';
 
- const initialState = {
+const initialState = {
   currentScreen: UIConstants.SHOW_MAIN_SCREEN,
-  listMode: UIConstants.LIST_MODE_MODEL,
+  listMode: UIConstants.LIST_MODE_NONE,
   listTitle: UIConstants.LIST_TITLE_MODELS,
   currentItemSelectionIndex: -1,
   currentItemClickState: '',
   currentEffectSelectionIndex: 0,
   arTrackingInitialized: false,
- }
+}
 
 function ui(state = initialState, action) {
   switch (action.type) {
@@ -53,7 +53,7 @@ function ui(state = initialState, action) {
     case 'AR_TRACKING_INITIALIZED':
       return {
         ...state,
-        arTrackingInitialized:action.trackingNormal,
+        arTrackingInitialized: action.trackingNormal,
       }
     default:
       return state;

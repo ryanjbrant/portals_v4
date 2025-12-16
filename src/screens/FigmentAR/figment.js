@@ -14,7 +14,8 @@ import * as UIConstants from './redux/UIConstants';
 import ModelItemRender from './component/ModelItemRender';
 import PortalItemRender from './component/PortalItemRender';
 import EffectItemRender from './component/EffectItemRender';
-import { ARTrackingInitialized } from './redux/actions';
+import { ARTrackingInitialized, switchListMode } from './redux/actions';
+
 
 import {
   ViroARScene,
@@ -25,16 +26,7 @@ import {
   ViroSpotLight
 } from '@reactvision/react-viro';
 
-import renderIf from './helpers/renderIf';
 
-
-/**
- * AR Scene shown in the App. All 3D Viro Components handled and rendered here.
- * ViroComponents (Objects, Portals, Effects) added, removed, manipulated using 2D RN UI components via redux.
- * Objects - 3D animating objects (OBJ, VRX)
- * Portals - Represent an entry way into virtual world where the virtual world can be a 360 image / video or a 2D image / video
- * Effects - Add interesting effects in the AR Scene such as Particle Emitters (fireworks, smoke, bubble, etc) or Post Processing effects (black & white, sepia, etc.)
- */
 export class figment extends Component {
 
   constructor(props) {
@@ -55,6 +47,17 @@ export class figment extends Component {
     this._onLoadCallback = this._onLoadCallback.bind(this);
     this._onModelsClickStateCallback = this._onModelsClickStateCallback.bind(this);
     this._onPortalsClickStateCallback = this._onPortalsClickStateCallback.bind(this);
+    this._onSceneClick = this._onSceneClick.bind(this);
+  }
+
+  // ... (existing helper methods)
+
+  _onSceneClick() {
+    console.log('[Figment] Background clicked - calling onBackgroundTap from props');
+    // Clear the list mode via app callback
+    if (this.props.arSceneNavigator && this.props.arSceneNavigator.viroAppProps && this.props.arSceneNavigator.viroAppProps.onBackgroundTap) {
+      this.props.arSceneNavigator.viroAppProps.onBackgroundTap();
+    }
   }
 
   componentDidMount() {
@@ -243,6 +246,7 @@ function selectProps(store) {
 const mapDispatchToProps = (dispatch) => {
   return {
     dispatchARTrackingInitialized: (trackingNormal) => dispatch(ARTrackingInitialized(trackingNormal)),
+    dispatchSwitchListMode: (listMode, listTitle) => dispatch(switchListMode(listMode, listTitle)),
   }
 }
 module.exports = connect(selectProps, mapDispatchToProps)(figment);
