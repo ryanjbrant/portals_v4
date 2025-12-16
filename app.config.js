@@ -21,6 +21,7 @@ export default {
             deploymentTarget: "17.0"
         },
         android: {
+            package: "com.h3m.portals",
             adaptiveIcon: {
                 foregroundImage: "./assets/adaptive-icon.png",
                 backgroundColor: "#ffffff"
