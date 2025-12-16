@@ -24,7 +24,8 @@ import {
   ViroAmbientLight,
   ViroDirectionalLight,
   ViroSpotLight,
-  ViroLightingEnvironment
+  ViroLightingEnvironment,
+  ViroQuad
 } from '@reactvision/react-viro';
 import * as LightingData from './model/LightingItems';
 
@@ -99,18 +100,27 @@ export class figment extends Component {
         {/* DirectionalLight (Restored per user request to work in tandem) */}
         <ViroDirectionalLight color="#ffffff" direction={[0, -1, -.2]} />
 
-        {/* Spotlight with Shadows - Matched to ARComposer (Top Down) */}
+        {/* Spotlight with Shadows - Tuned for Photo Realistic Soft Shadows */}
         <ViroSpotLight
           innerAngle={5}
-          outerAngle={25}
+          outerAngle={45}
           direction={[0, -1, -.2]}
-          position={[0, 5, 1]}
+          position={[0, 8, 0]}
           color="#ffffff"
           castsShadow={true}
-          shadowMapSize={2048}
-          shadowNearZ={1}
-          shadowFarZ={10}
-          shadowOpacity={0.5}
+          shadowMapSize={4096}
+          shadowNearZ={2}
+          shadowFarZ={15}
+          shadowOpacity={0.3}
+        />
+
+        {/* Global Shadow Receiver Plane (Invisible, catches shadows) */}
+        <ViroQuad
+          position={[0, -1.0, 0]}
+          rotation={[-90, 0, 0]}
+          width={100}
+          height={100}
+          arShadowReceiver={true}
         />
 
         {models}
