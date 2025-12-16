@@ -29,6 +29,7 @@ function uuidv4() {
 const initialState = {
   modelItems: {},
   portalItems: {},
+  mediaItems: {}, // Added for user-selected photos/videos
   effectItems: EffectData.getInitEffectArray(),
   postProcessEffects: EffectsConstants.EFFECT_NONE,
 }
@@ -38,73 +39,30 @@ function newModelItem(indexToCreate) {
   return { uuid: uuidv4(), selected: false, loading: LoadingConstants.NONE, index: indexToCreate };
 }
 
-// action to change state of individual ListView items between NONE, LOADING, ERROR, LOADED (path: js/redux/LoadingStateConstants.js)
-function changeLoadState(state = {}, action) {
-  switch (action.type) {
-    case 'CHANGE_MODEL_LOAD_STATE':
-      return {
-        ...state,
-        loading: action.loadState,
-      };
-    default:
-      return state;
-  }
+// Creates a new media item (video/image)
+function newMediaItem(source, type) {
+  return {
+    uuid: uuidv4(),
+    selected: false,
+    loading: LoadingConstants.LOADED, // Assumed loaded as it's local
+    source: source,
+    type: type,
+    scale: [1, 1, 1],
+    position: [0, 0, -1]
+  };
 }
 
-// change the background of a given portal (identified by uuid) in the scene.
-function changePortalPhoto(state = {}, action) {
-  switch (action.type) {
-    case 'CHANGE_PORTAL_PHOTO':
-      if (state[action.uuid] != null || state[action.uuid] != undefined) {
-        var model = state[action.uuid];
-        var newModel = { ...model };
-        newModel.portal360Image = { ...action.photoSource };
-        state[action.uuid] = newModel;
-      }
-      return state;
-    default:
-      return state;
-  }
-}
+// ... (existing helpers)
 
-// change effect selection in the Effects Listview (changes which effect has pink border around it)
-function modifyEffectSelection(state = [], action) {
-  switch (action.type) {
-    case 'TOGGLE_EFFECT_SELECTED':
-      var effectToggleArray = [];
-      // for each effect in the listview, set selected = false for everything, except for the selected index (action.index)
-      for (var i = 0; i < state.length; i++) {
-        if (i != action.index) {
-          state[i].selected = false;
-        } else {
-          if (!state[i].selected) {
-            state[i].selected = true;
-          } // else if this effect was already selected; do nothing
-        }
-        effectToggleArray.push(state[i]);
-      }
-      return effectToggleArray;
-    case 'REMOVE_ALL':
-      // reset selected = false for every effect
-      var effectToggleArray = [];
-      for (var i = 0; i < state.length; i++) {
-        state[i].selected = false;
-        effectToggleArray.push(state[i]);
-      }
-      return effectToggleArray;
-  }
-}
-
-// Add model at the given index to the AR Scene
-function addModelItem(state = {}, action) {
-  var model = newModelItem(action.index);
-  state[model.uuid] = model;
+// Add media item to the scene
+function addMediaItem(state = {}, action) {
+  var media = newMediaItem(action.source, action.mediaType);
+  state[media.uuid] = media;
   return state;
 }
 
-// Remove model with given UUID from the AR Scene
-// Instead of deleting, mark as hidden to avoid native crash on unmount
-function removeModelItem(state = {}, action) {
+// Remove media item
+function removeMediaItem(state = {}, action) {
   if (state[action.uuid] != null && state[action.uuid] != undefined) {
     let newState = { ...state };
     newState[action.uuid] = { ...state[action.uuid], hidden: true };
@@ -113,7 +71,8 @@ function removeModelItem(state = {}, action) {
   return state;
 }
 
-// Mark all items as hidden
+// ... (existing helpers)
+
 function hideAllItems(state = {}) {
   let newState = {};
   Object.keys(state).forEach((key) => {
@@ -124,16 +83,7 @@ function hideAllItems(state = {}) {
   return newState;
 }
 
-// Change state of individual ListView items between NONE, LOADING, ERROR, LOADED
-function modifyLoadState(state = {}, action) {
-  if (state[action.uuid] != null || state[action.uuid] != undefined) {
-    var model = state[action.uuid];
-    var newModel = { ...model };
-    newModel.loading = action.loadState;
-    state[action.uuid] = newModel;
-  }
-  return state;
-}
+// ... (existing modifyLoadState)
 
 function arobjects(state = initialState, action) {
   switch (action.type) {
@@ -147,6 +97,17 @@ function arobjects(state = initialState, action) {
       return {
         ...state,
         modelItems: { ...removeModelItem(state.modelItems, action) },
+      }
+    case 'ADD_MEDIA':
+      console.log('[Reducer] ADD_MEDIA: Adding item');
+      return {
+        ...state,
+        mediaItems: { ...addMediaItem(state.mediaItems, action) },
+      }
+    case 'REMOVE_MEDIA':
+      return {
+        ...state,
+        mediaItems: { ...removeMediaItem(state.mediaItems, action) },
       }
     case 'ADD_PORTAL':
       return {
@@ -167,6 +128,7 @@ function arobjects(state = initialState, action) {
         modelItems: hideAllItems(state.modelItems),
         effectItems: updatedEffects.slice(0),
         postProcessEffects: EffectsConstants.EFFECT_NONE,
+        mediaItems: hideAllItems(state.mediaItems), // Clean up media too
       }
     case 'CHANGE_MODEL_LOAD_STATE':
       return {
