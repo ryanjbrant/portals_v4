@@ -61,6 +61,25 @@ export function removeAll() {
   }
 }
 
+// action to add a media item (video/image) to the scene
+export function addMedia(source, mediaType, width, height) {
+  console.log('[Actions] addMedia called:', { source, mediaType, width, height });
+  return {
+    type: 'ADD_MEDIA',
+    source: source,
+    mediaType: mediaType,
+    width: width,
+    height: height,
+  }
+}
+
+export function removeMediaWithUUID(uuid) {
+  return {
+    type: 'REMOVE_MEDIA',
+    uuid: uuid,
+  }
+}
+
 // action to select model at index, in the listview from data model at path: js/model/ModelItems.js
 export function toggleModelSelection(index) {
   return {

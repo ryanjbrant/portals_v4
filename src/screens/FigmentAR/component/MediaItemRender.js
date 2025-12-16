@@ -32,9 +32,9 @@ var MediaItemRender = createReactClass({
 
     componentDidMount() {
         console.log('[MediaItemRender] componentDidMount:', this.props.mediaItem.uuid);
+        this._isMounted = true;
         // Logic to initialize position/rotation if needed
         // Currently using defaults from Redux store which are passed via props or state
-        // (Actually, the parent figment.js passes props, but we might want local state for interaction)
 
         // Initialize with props if available
         if (this.props.mediaItem) {
@@ -43,6 +43,17 @@ var MediaItemRender = createReactClass({
                 position: this.props.mediaItem.position || [0, 0, -1],
             });
         }
+
+        // CRITICAL: Force re-render after 100ms to fix Viro batching visibility issue
+        setTimeout(() => {
+            if (this._isMounted) {
+                this.forceUpdate();
+            }
+        }, 100);
+    },
+
+    componentWillUnmount() {
+        this._isMounted = false;
     },
 
     _onPinch(pinchState, scaleFactor, source) {
@@ -109,8 +120,8 @@ var MediaItemRender = createReactClass({
                         source={mediaItem.source}
                         loop={true}
                         placeholderSource={require("../../../../assets/icon.png")}
-                        width={1}
-                        height={1}
+                        width={mediaItem.width || 1}
+                        height={mediaItem.height || 1}
                         onClick={this.props.onClick}
                         onLoadStart={this._onLoadStart}
                         onLoadEnd={this._onLoadEnd}
@@ -119,8 +130,8 @@ var MediaItemRender = createReactClass({
                 ) : (
                     <ViroImage
                         source={mediaItem.source}
-                        width={1}
-                        height={1}
+                        width={mediaItem.width || 1}
+                        height={mediaItem.height || 1}
                         onClick={this.props.onClick}
                         onLoadStart={this._onLoadStart}
                         onLoadEnd={this._onLoadEnd}

@@ -40,7 +40,7 @@ function newModelItem(indexToCreate) {
 }
 
 // Creates a new media item (video/image)
-function newMediaItem(source, type) {
+function newMediaItem(source, type, width, height) {
   return {
     uuid: uuidv4(),
     selected: false,
@@ -48,7 +48,9 @@ function newMediaItem(source, type) {
     source: source,
     type: type,
     scale: [1, 1, 1],
-    position: [0, 0, -1]
+    position: [0, 0, -1],
+    width: width || 1, // Default 1
+    height: height || 1 // Default 1
   };
 }
 
@@ -129,7 +131,7 @@ function removeModelItem(state = {}, action) {
 
 // Add media item to the scene
 function addMediaItem(state = {}, action) {
-  var media = newMediaItem(action.source, action.mediaType);
+  var media = newMediaItem(action.source, action.mediaType, action.width, action.height);
   // Return a NEW object with the added item (Immutable update)
   return {
     ...state,

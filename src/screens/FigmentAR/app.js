@@ -501,39 +501,61 @@ export class App extends Component {
     );
   }
 
-  _onMediaButtonPress = async () => {
-    console.log('[App] _onMediaButtonPress: Button pressed');
+  _onMediaButtonPress = () => {
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: ['Cancel', 'Photo', 'Video'],
+        cancelButtonIndex: 0,
+      },
+      (buttonIndex) => {
+        if (buttonIndex === 1) {
+          this._launchPicker(['images']);
+        } else if (buttonIndex === 2) {
+          this._launchPicker(['videos']);
+        }
+      }
+    );
+  };
 
-    // Skip explicit permission request as it might be hanging.
-    // launchImageLibraryAsync handles permissions automatically.
-
-    console.log('[App] _onMediaButtonPress: Launching ImagePicker...');
+  _launchPicker = async (mediaTypes) => {
+    console.log('[App] _launchPicker: Launching ImagePicker with types:', mediaTypes);
     try {
       let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images', 'videos'],
-        allowsEditing: true,
+        mediaTypes: mediaTypes,
+        allowsEditing: false, // Disabled to ensure Videos are selectable
         quality: 1,
       });
-      console.log('[App] _onMediaButtonPress: Picker result:', result.canceled ? 'Canceled' : 'Success');
+      console.log('[App] _launchPicker: Picker result:', result.canceled ? 'Canceled' : 'Success');
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         const type = asset.type === 'video' ? 'VIDEO' : 'IMAGE';
         const source = { uri: asset.uri };
 
-        console.log('[App] _onMediaButtonPress: Asset selected:', { type, uri: asset.uri });
+        console.log('[App] _launchPicker: Asset selected:', { type, uri: asset.uri, width: asset.width, height: asset.height });
+
+        // Calculate Aspect Ratio
+        let width = 1; // Default 1 meter width
+        let height = 1;
+        if (asset.width && asset.height) {
+          height = asset.height / asset.width;
+        }
 
         // Dispatch action to add media to the scene
-        console.log('[App] _onMediaButtonPress: Dispatching addMedia action');
-        this.props.dispatchAddMedia(source, type);
+        // Adding a delay to ensure ImagePicker dismisses cleanly before heavy AR render
+        setTimeout(() => {
+          console.log('[App] _launchPicker: Dispatching addMedia action');
+          this.props.dispatchAddMedia(source, type, width, height); // Pass dimensions
 
-        // Optionally switch mode to NONE to close any open menu
-        this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_NONE, '');
+          // Optionally switch mode to NONE to close any open menu
+          this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_NONE, '');
+        }, 500);
+
       } else {
-        console.log('[App] _onMediaButtonPress: No asset selected or canceled');
+        console.log('[App] _launchPicker: No asset selected or canceled');
       }
     } catch (e) {
-      console.error('[App] _onMediaButtonPress: Error launching picker', e);
+      console.error('[App] _launchPicker: Error launching picker', e);
       alert('Failed to launch media picker: ' + e.message);
     }
   };
