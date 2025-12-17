@@ -133,7 +133,7 @@ export const ProfileScreen = () => {
                         <View style={styles.statDivider} />
                         <View style={styles.statItem}>
                             <Text style={styles.statNumber}>{profileUser.flames}</Text>
-                            <Text style={styles.statLabel}>Flames</Text>
+                            <Text style={styles.statLabel}>Fuel</Text>
                         </View>
                     </View>
 

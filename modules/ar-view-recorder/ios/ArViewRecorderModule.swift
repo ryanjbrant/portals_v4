@@ -1,6 +1,7 @@
 import ExpoModulesCore
 import UIKit
 import AVFoundation
+import ARKit
 
 public class ArViewRecorderModule: Module {
   private var assetWriter: AVAssetWriter?
@@ -19,7 +20,7 @@ public class ArViewRecorderModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ArViewRecorder")
 
-    // Start recording the AR view (captures root view since AR is fullscreen)
+    // Start recording the AR view (captures specific view by tag)
     AsyncFunction("startRecording") { (viewTag: Int, fileName: String, promise: Promise) in
       DispatchQueue.main.async { [weak self] in
         guard let self = self else {
@@ -32,15 +33,37 @@ public class ArViewRecorderModule: Module {
           return
         }
 
-        // Get the root view directly - React Native view tags are not compatible with UIKit's viewWithTag
-        // Since the AR scene is fullscreen, we capture the root view which contains the AR content
+        // Find the specific view using React Native's tag system
+        // The viewTag corresponds to the ViroARSceneNavigator which is what we want to capture
         guard let window = self.getKeyWindow(),
               let rootView = window.rootViewController?.view else {
           promise.reject("VIEW_NOT_FOUND", "Could not find root view")
           return
         }
+        
+        // Try to find the specific view by tag (React Native tags are stored as view.tag)
+        var targetView: UIView? = nil
+        
+        // First try to find by tag directly in the hierarchy
+        if let foundView = rootView.viewWithTag(viewTag) {
+          targetView = foundView
+          NSLog("[ArViewRecorder] Found view by tag: %d", viewTag)
+        } else {
+          // Look for ViroARSceneNavigator view in hierarchy
+          // The AR view typically has a specific subview structure
+          targetView = self.findARView(in: rootView)
+          if targetView != nil {
+            NSLog("[ArViewRecorder] Found AR view in hierarchy")
+          }
+        }
+        
+        // If no specific view found, fall back to root but log warning
+        if targetView == nil {
+          NSLog("[ArViewRecorder] WARNING: Could not find AR view, falling back to root view (will include UI)")
+          targetView = rootView
+        }
 
-        self.targetView = rootView
+        self.targetView = targetView
         self.currentViewTag = viewTag
 
         // Set up output file
@@ -413,5 +436,32 @@ public class ArViewRecorderModule: Module {
     } else {
       return UIApplication.shared.keyWindow
     }
+  }
+  
+  // Find the AR view in the view hierarchy
+  // ViroARSceneNavigator uses views with class names starting with "VRT" or containing "AR"
+  private func findARView(in view: UIView) -> UIView? {
+    let className = String(describing: type(of: view))
+    
+    // Look for ViroReact views (VRTARSceneNavigator, VRTScene, etc.) or ARKit views
+    if className.hasPrefix("VRT") || className.contains("ARSCNView") || className.contains("ViroARSceneNavigator") {
+      NSLog("[ArViewRecorder] Found AR view type: %@", className)
+      return view
+    }
+    
+    // Also check for ARSCNView which is the underlying ARKit view
+    if let arView = view as? ARSCNView {
+      NSLog("[ArViewRecorder] Found ARSCNView directly")
+      return arView
+    }
+    
+    // Recursively search subviews
+    for subview in view.subviews {
+      if let found = findARView(in: subview) {
+        return found
+      }
+    }
+    
+    return nil
   }
 }

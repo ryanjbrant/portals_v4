@@ -1142,28 +1142,32 @@ export class App extends Component {
   }
 
   _onMediaButtonPress = () => {
+    console.log('[App] Media button pressed');
     ActionSheetIOS.showActionSheetWithOptions(
       {
         options: ['Cancel', 'Photo', 'Video'],
         cancelButtonIndex: 0,
       },
       (buttonIndex) => {
+        console.log('[App] ActionSheet option selected:', buttonIndex);
         if (buttonIndex === 1) {
-          this._launchPicker(['images']);
+          this._launchPicker('images');
         } else if (buttonIndex === 2) {
-          this._launchPicker(['videos']);
+          this._launchPicker('videos');
         }
       }
     );
   };
 
   _launchPicker = async (mediaTypes) => {
+    console.log('[App] _launchPicker called with mediaTypes:', mediaTypes);
     try {
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: mediaTypes,
         allowsEditing: false, // Disabled to ensure Videos are selectable
         quality: 1,
       });
+      console.log('[App] ImagePicker result:', result.canceled ? 'canceled' : 'selected');
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
