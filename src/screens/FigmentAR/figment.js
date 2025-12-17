@@ -159,6 +159,11 @@ export class figment extends Component {
       Object.keys(modelItems).forEach(function (currentKey) {
         // Keep rendering items to prevent unmount crash - hidden items will set visible=false
         if (modelItems[currentKey] != null && modelItems[currentKey] != undefined) {
+          // Get animations for this model from viroAppProps
+          const uuid = modelItems[currentKey].uuid;
+          const objectAnimations = root.props.arSceneNavigator?.viroAppProps?.objectAnimations || {};
+          const modelAnimations = objectAnimations[uuid] || {};
+
           renderedObjects.push(
             <ModelItemRender key={modelItems[currentKey].uuid}
               modelIDProps={modelItems[currentKey]}
@@ -166,7 +171,8 @@ export class figment extends Component {
               onLoadCallback={root._onLoadCallback}
               onClickStateCallback={root._onModelsClickStateCallback}
               bitMask={Math.pow(2, objBitMask)}
-              isHidden={modelItems[currentKey].hidden === true} />
+              isHidden={modelItems[currentKey].hidden === true}
+              objectAnimations={modelAnimations} />
           );
         }
         objBitMask++;

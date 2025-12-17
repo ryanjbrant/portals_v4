@@ -24,10 +24,13 @@ import ShareScreenButton from './component/ShareScreenButtonComponent';
 import FigmentListView from './component/FigmentListView';
 import PhotosSelector from './component/PhotosSelector';
 import ARInitializationUI from './component/ARInitializationUI.js';
+import AnimationPanel from './component/AnimationPanel';
 import * as ModelData from './model/ModelItems';
 import * as PortalData from './model/PortalItems';
 import * as LightingData from './model/LightingItems';
-import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme, ARTrackingInitialized, addMedia } from './redux/actions';
+import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme, ARTrackingInitialized, addMedia, setSceneTitle, loadScene } from './redux/actions';
+import { serializeFigmentScene } from './helpers/FigmentSceneSerializer';
+import { useAppStore } from '../../store';
 
 const kObjSelectMode = 1;
 const kPortalSelectMode = 2;
@@ -115,6 +118,9 @@ export class App extends Component {
     this.requestAudioPermission = this.requestAudioPermission.bind(this);
     this.requestWriteAccessPermission = this.requestWriteAccessPermission.bind(this);
     this.requestReadAccessPermission = this.requestReadAccessPermission.bind(this);
+    this._handleRename = this._handleRename.bind(this);
+    this._handleSaveDraft = this._handleSaveDraft.bind(this);
+    this._handleNewScene = this._handleNewScene.bind(this);
 
     this.state = {
       currentModeSelected: kObjSelectMode,
@@ -148,15 +154,38 @@ export class App extends Component {
       coverFrameIndex: 0, // Selected cover frame index
       isExtractingFrames: false, // Loading state for frame extraction
       videoDuration: 0, // Video duration in seconds
+      isMenuOpen: false, // Dropdown menu visibility
+      showContextualMenu: false, // Contextual settings menu visibility
+      objectAnimations: {}, // { [uuid]: { bounce: { active, intensity }, rotate: { active, intensity, axis }... } }
     };
 
     this._onBackgroundTap = this._onBackgroundTap.bind(this);
+    this._onUpdateObjectAnimation = this._onUpdateObjectAnimation.bind(this);
     // Update viroAppProps to include onBackgroundTap
     this.state.viroAppProps = {
       loadingObjectCallback: this._onListItemLoaded,
       clickStateCallback: this._onItemClickedInScene,
-      onBackgroundTap: this._onBackgroundTap
+      onBackgroundTap: this._onBackgroundTap,
+      onUpdateAnimation: this._onUpdateObjectAnimation,
     };
+  }
+
+  componentDidMount() {
+    // Check if draft data was passed via navigation params
+    const { route } = this.props;
+    const draftData = route?.params?.draftData;
+    const draftTitle = route?.params?.draftTitle;
+
+    if (draftData) {
+      console.log('[App] Loading draft scene:', draftTitle);
+      // Load the scene data into Redux
+      this.props.dispatchLoadScene(draftData);
+
+      // Set the scene title if provided
+      if (draftTitle) {
+        this.props.dispatchSetSceneTitle(draftTitle);
+      }
+    }
   }
 
   _onBackgroundTap() {
@@ -166,6 +195,174 @@ export class App extends Component {
       console.log('[App] Dispatching LIST_MODE_NONE');
       this.props.dispatchSwitchListMode(UIConstants.LIST_MODE_NONE, '');
     }
+    // Close dropdown if open
+    if (this.state.isMenuOpen) {
+      this.setState({ isMenuOpen: false });
+    }
+  }
+
+  // Handle animation update for selected object
+  _onUpdateObjectAnimation(type, params, active) {
+    const uuid = this.props.currentItemSelectionIndex;
+    if (uuid === -1) return;
+
+    console.log('[App] Animation update:', type, params, active, 'for UUID:', uuid);
+
+    this.setState(prevState => {
+      const currentAnims = prevState.objectAnimations[uuid] || {};
+      const typeAnims = currentAnims[type] || { active: false, intensity: 1.0 };
+
+      const newTypeAnims = {
+        ...typeAnims,
+        ...params,
+        active,
+      };
+
+      return {
+        objectAnimations: {
+          ...prevState.objectAnimations,
+          [uuid]: {
+            ...currentAnims,
+            [type]: newTypeAnims,
+          },
+        },
+        // Update viroAppProps to trigger re-render with new animations
+        viroAppProps: {
+          ...prevState.viroAppProps,
+          objectAnimations: {
+            ...prevState.objectAnimations,
+            [uuid]: {
+              ...currentAnims,
+              [type]: newTypeAnims,
+            },
+          },
+        },
+      };
+    });
+  }
+
+  // Handle rename scene
+  _handleRename() {
+    Alert.prompt(
+      "Rename Scene",
+      "Enter a new name for your scene",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "OK",
+          onPress: (name) => {
+            if (name && name.trim()) {
+              this.props.dispatchSetSceneTitle(name.trim());
+            }
+          }
+        }
+      ],
+      "plain-text",
+      this.props.sceneTitle || "Untitled Scene"
+    );
+  }
+
+  // Handle save draft
+  async _handleSaveDraft() {
+    try {
+      // Serialize the current scene from Redux state
+      const arobjects = {
+        modelItems: this.props.modelItems,
+        portalItems: this.props.portalItems,
+        mediaItems: this.props.mediaItems,
+        effectItems: this.props.effectItems,
+        postProcessEffects: this.props.postProcessEffects,
+      };
+      const ui = {
+        sceneTitle: this.props.sceneTitle,
+        selectedHdri: this.props.selectedHdri,
+      };
+
+      const sceneData = serializeFigmentScene(arobjects, ui);
+      console.log('[App] Serialized scene for draft:', sceneData);
+
+      // Check if scene has any content
+      if (sceneData.objects.length === 0) {
+        Alert.alert('Empty Scene', 'Add some objects before saving a draft.');
+        return;
+      }
+
+      // Prompt for name if untitled
+      const proceedToSave = async (title) => {
+        sceneData.title = title;
+
+        // Take a screenshot for cover image (optional, can be null)
+        let coverImageUri = null;
+        try {
+          if (this._arNavigator?.sceneNavigator?.takeScreenshot) {
+            const screenshot = await this._arNavigator.sceneNavigator.takeScreenshot('draft_cover', false);
+            if (screenshot?.success && screenshot?.url) {
+              coverImageUri = 'file://' + screenshot.url;
+            }
+          }
+        } catch (e) {
+          console.warn('[App] Screenshot failed:', e);
+        }
+
+        // Save to store
+        await useAppStore.getState().saveDraft(sceneData, coverImageUri);
+        Alert.alert('Draft Saved', `"${title}" has been saved.`, [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Navigate to profile/drafts if navigation available
+              if (this.props.navigation?.navigate) {
+                this.props.navigation.navigate('ProfileGallery', { initialTab: 'drafts' });
+              }
+            }
+          }
+        ]);
+      };
+
+      if (!this.props.sceneTitle || this.props.sceneTitle === 'Untitled Scene') {
+        Alert.prompt(
+          "Name Your Scene",
+          "Enter a name for this draft:",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Save",
+              onPress: (name) => {
+                const title = name?.trim() || 'Untitled Scene';
+                this.props.dispatchSetSceneTitle(title);
+                proceedToSave(title);
+              }
+            }
+          ],
+          "plain-text",
+          ""
+        );
+      } else {
+        proceedToSave(this.props.sceneTitle);
+      }
+    } catch (error) {
+      console.error('[App] Save draft error:', error);
+      Alert.alert('Save Error', 'Failed to save draft: ' + error.message);
+    }
+  }
+
+  // Handle new scene
+  _handleNewScene() {
+    Alert.alert(
+      'New Scene',
+      'Start a new scene? This will clear all current objects.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'New Scene',
+          style: 'destructive',
+          onPress: () => {
+            this.props.dispatchRemoveAll();
+            this.props.dispatchSetSceneTitle('Untitled Scene');
+          }
+        }
+      ]
+    );
   }
 
   // This render() function renders the AR Scene in <ViroARSceneNavigator> with the <ViroARScene> defined in figment.js
@@ -185,19 +382,82 @@ export class App extends Component {
           ref={this._setARNavigatorRef}
           viroAppProps={this.state.viroAppProps} />
 
-        {/* Close button - top left */}
+        {/* Header - Close button + Scene Title with dropdown */}
         {!isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
-          <TouchableOpacity
-            onPress={() => this.props.navigation?.goBack?.()}
-            style={{ position: 'absolute', top: 50, left: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}
-          >
-            <Text style={{ color: 'white', fontSize: 20 }}>✕</Text>
-          </TouchableOpacity>
+          <View style={{ position: 'absolute', top: 50, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 }}>
+            {/* Close button */}
+            <TouchableOpacity
+              onPress={() => this.props.navigation?.goBack?.()}
+              style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}
+            >
+              <Text style={{ color: 'white', fontSize: 20 }}>✕</Text>
+            </TouchableOpacity>
+
+            {/* Scene Title + Dropdown */}
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <TouchableOpacity
+                onPress={() => this.setState({ isMenuOpen: !this.state.isMenuOpen })}
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}
+              >
+                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>{this.props.sceneTitle || 'Untitled Scene'}</Text>
+                <Ionicons name={this.state.isMenuOpen ? 'chevron-up' : 'chevron-down'} size={16} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Spacer to balance the close button */}
+            <View style={{ width: 40 }} />
+          </View>
         )}
+
+        {/* Dropdown Menu */}
+        {this.state.isMenuOpen && !isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
+          <View style={{ position: 'absolute', top: 100, left: 0, right: 0, alignItems: 'center', zIndex: 100 }}>
+            <View style={{ backgroundColor: 'rgba(30,30,30,0.95)', borderRadius: 12, overflow: 'hidden', minWidth: 180 }}>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.1)' }}
+                onPress={() => {
+                  this.setState({ isMenuOpen: false });
+                  this._handleRename();
+                }}
+              >
+                <Ionicons name="pencil-outline" size={20} color="white" />
+                <Text style={{ color: 'white', marginLeft: 12, fontSize: 16 }}>Rename</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.1)' }}
+                onPress={() => {
+                  this.setState({ isMenuOpen: false });
+                  this._handleSaveDraft();
+                }}
+              >
+                <Ionicons name="save-outline" size={20} color="white" />
+                <Text style={{ color: 'white', marginLeft: 12, fontSize: 16 }}>Save Draft</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', padding: 14 }}
+                onPress={() => {
+                  this.setState({ isMenuOpen: false });
+                  this._handleNewScene();
+                }}
+              >
+                <Ionicons name="add-circle-outline" size={20} color="white" />
+                <Text style={{ color: 'white', marginLeft: 12, fontSize: 16 }}>New Scene</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Animation Panel - show only when contextual menu is explicitly opened */}
+        <AnimationPanel
+          visible={this.state.showContextualMenu}
+          onClose={() => this.setState({ showContextualMenu: false })}
+          currentAnimations={this.props.currentItemSelectionIndex !== -1 ? (this.state.objectAnimations[this.props.currentItemSelectionIndex] || {}) : {}}
+          onUpdateAnimation={(type, params, active) => this._onUpdateObjectAnimation(type, params, active)}
+        />
 
         {/* AR Initialization animation - hide during recording */}
         {!isRecordingInProgress && (
-          <ARInitializationUI style={{ position: 'absolute', top: 20, left: 0, right: 0, width: '100%', height: 140, flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center' }} />
+          <ARInitializationUI style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }} />
         )}
 
         {/* 2D UI buttons on top right of the app - hide during recording */}
@@ -652,25 +912,25 @@ export class App extends Component {
             </TouchableOpacity>
           </View>
 
-          {/* Right: Set Cover */}
+          {/* Right: Publish to Feed */}
           <TouchableOpacity
-            onPress={() => this._setCoverFrame()}
+            onPress={() => this._handlePublish()}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              backgroundColor: '#007AFF',
-              paddingHorizontal: 16,
+              backgroundColor: '#FF3050',
+              paddingHorizontal: 20,
               paddingVertical: 12,
               borderRadius: 12,
             }}
           >
-            <Ionicons name="layers-outline" size={20} color="white" />
+            <Ionicons name="arrow-forward" size={20} color="white" />
             <Text style={{
               color: 'white',
               fontSize: 15,
               fontWeight: '600',
               marginLeft: 6,
-            }}>Set Cover</Text>
+            }}>Publish</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -752,6 +1012,39 @@ export class App extends Component {
       // TODO: Implement actual cover frame saving logic
       Alert.alert('Cover Set', `Frame ${coverFrameIndex + 1} will be used as the video cover.`);
     }
+  }
+
+  // Handle publish button - navigate to PostDetailsScreen (full publish form)
+  _handlePublish() {
+    const { videoUrl, frameThumbnails, coverFrameIndex } = this.state;
+    const { navigation } = this.props;
+
+    // Get cover image from selected frame or first frame
+    const coverImage = frameThumbnails.length > 0
+      ? frameThumbnails[coverFrameIndex || 0]
+      : null;
+
+    // Serialize the current scene
+    const scene = serializeFigmentScene(
+      this.props.modelItems,
+      this.props.portalItems,
+      this.props.effectItems,
+      this.props.mediaItems,
+      this.state.sceneTitle || 'Untitled Scene'
+    );
+
+    console.log('[App] Publishing scene with:', {
+      hasVideo: !!videoUrl,
+      hasCover: !!coverImage,
+      objectCount: Object.keys(this.props.modelItems || {}).length,
+    });
+
+    // Navigate to PostDetails with full form (tags, channels, people, locations)
+    navigation.navigate('PostDetails', {
+      videoUri: videoUrl,
+      coverImage: coverImage,
+      sceneData: scene,
+    });
   }
 
   // Extract frames from video for scrubber timeline
@@ -1035,7 +1328,7 @@ export class App extends Component {
 
         {/* 3. Record/Controls Row */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 100 }}>
-          {/* Cancel Button - visible when we have some recording */}
+          {/* Left side: Cancel or Contextual */}
           {this.state.showConfirmButtons ? (
             <TouchableOpacity
               key="cancel_button"
@@ -1045,7 +1338,13 @@ export class App extends Component {
               <Text style={{ color: 'white', fontSize: 24 }}>✕</Text>
             </TouchableOpacity>
           ) : (
-            <View style={{ width: 44, marginRight: 20 }} />
+            <TouchableOpacity
+              key="contextual_button"
+              onPress={() => this.setState({ showContextualMenu: !this.state.showContextualMenu })}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', marginRight: 20 }}
+            >
+              <Ionicons name="settings-outline" size={22} color="white" />
+            </TouchableOpacity>
           )}
 
           {/* Main Record Button - Always visible to allow resume */}
@@ -1081,7 +1380,7 @@ export class App extends Component {
             </Svg>
           </TouchableOpacity>
 
-          {/* Confirm Button - visible when we have some recording */}
+          {/* Right side: Confirm or Filters */}
           {this.state.showConfirmButtons ? (
             <TouchableOpacity
               key="confirm_button"
@@ -1091,7 +1390,13 @@ export class App extends Component {
               <Text style={{ color: 'white', fontSize: 24 }}>✓</Text>
             </TouchableOpacity>
           ) : (
-            <View style={{ width: 44, marginLeft: 20 }} />
+            <TouchableOpacity
+              key="filters_button"
+              onPress={() => toggleMode(UIConstants.LIST_MODE_EFFECT, UIConstants.LIST_TITLE_EFFECTS)}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', marginLeft: 20 }}
+            >
+              <Ionicons name="color-wand-outline" size={22} color="white" />
+            </TouchableOpacity>
           )}
         </View>
 
@@ -1634,13 +1939,17 @@ function selectProps(store) {
   return {
     modelItems: store.arobjects.modelItems,
     portalItems: store.arobjects.portalItems,
+    mediaItems: store.arobjects.mediaItems,
     effectItems: store.arobjects.effectItems,
+    postProcessEffects: store.arobjects.postProcessEffects,
     currentScreen: store.ui.currentScreen,
     listMode: store.ui.listMode,
     listTitle: store.ui.listTitle,
     currentItemSelectionIndex: store.ui.currentItemSelectionIndex,
     currentItemClickState: store.ui.currentItemClickState,
     currentSelectedItemType: store.ui.currentSelectedItemType,
+    sceneTitle: store.ui.sceneTitle,
+    selectedHdri: store.ui.selectedHdri,
   };
 }
 
@@ -1661,6 +1970,8 @@ const mapDispatchToProps = (dispatch) => {
     dispatchChangeItemClickState: (index, clickState, itemType) => dispatch(changeItemClickState(index, clickState, itemType)),
     dispatchChangeHdriTheme: (hdri) => dispatch(changeHdriTheme(hdri)),
     dispatchAddMedia: (source, type, width, height) => dispatch(addMedia(source, type, width, height)),
+    dispatchSetSceneTitle: (title) => dispatch(setSceneTitle(title)),
+    dispatchLoadScene: (sceneData) => dispatch(loadScene(sceneData)),
   }
 }
 

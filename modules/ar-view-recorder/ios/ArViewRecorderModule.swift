@@ -19,7 +19,7 @@ public class ArViewRecorderModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ArViewRecorder")
 
-    // Start recording a specific view by its React Native tag
+    // Start recording the AR view (captures root view since AR is fullscreen)
     AsyncFunction("startRecording") { (viewTag: Int, fileName: String, promise: Promise) in
       DispatchQueue.main.async { [weak self] in
         guard let self = self else {
@@ -32,14 +32,15 @@ public class ArViewRecorderModule: Module {
           return
         }
 
-        // Find the view by React Native tag
-        guard let rootView = self.getKeyWindow()?.rootViewController?.view,
-              let view = rootView.viewWithTag(viewTag) else {
-          promise.reject("VIEW_NOT_FOUND", "Could not find view with tag \(viewTag)")
+        // Get the root view directly - React Native view tags are not compatible with UIKit's viewWithTag
+        // Since the AR scene is fullscreen, we capture the root view which contains the AR content
+        guard let window = self.getKeyWindow(),
+              let rootView = window.rootViewController?.view else {
+          promise.reject("VIEW_NOT_FOUND", "Could not find root view")
           return
         }
 
-        self.targetView = view
+        self.targetView = rootView
         self.currentViewTag = viewTag
 
         // Set up output file
@@ -55,8 +56,8 @@ public class ArViewRecorderModule: Module {
         do {
           let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
 
-          let width = Int(view.bounds.width * view.contentScaleFactor)
-          let height = Int(view.bounds.height * view.contentScaleFactor)
+          let width = Int(rootView.bounds.width * rootView.contentScaleFactor)
+          let height = Int(rootView.bounds.height * rootView.contentScaleFactor)
 
           // Ensure even dimensions
           let evenWidth = width % 2 == 0 ? width : width - 1

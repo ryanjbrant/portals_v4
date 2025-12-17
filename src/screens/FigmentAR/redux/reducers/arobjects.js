@@ -216,6 +216,53 @@ function arobjects(state = initialState, action) {
         postProcessEffects: EffectsConstants.EFFECT_NONE,
         mediaItems: hideAllItems(state.mediaItems),
       }
+    case 'LOAD_SCENE':
+      // Rebuild state from saved draft data
+      // action.sceneData contains { objects: [...], effects, hdri, etc }
+      const loadedModels = {};
+      const loadedPortals = {};
+      const loadedMedia = {};
+
+      if (action.sceneData?.objects) {
+        action.sceneData.objects.forEach(obj => {
+          if (obj.type === 'viro_model') {
+            loadedModels[obj.id] = {
+              uuid: obj.id,
+              selected: obj.selected || false,
+              loading: LoadingConstants.LOADED,
+              index: obj.modelIndex,
+            };
+          } else if (obj.type === 'viro_portal') {
+            loadedPortals[obj.id] = {
+              uuid: obj.id,
+              selected: obj.selected || false,
+              loading: LoadingConstants.LOADED,
+              index: obj.portalIndex,
+              portal360Image: obj.portal360Image,
+            };
+          } else if (obj.type === 'image' || obj.type === 'video') {
+            loadedMedia[obj.id] = {
+              uuid: obj.id,
+              selected: false,
+              loading: LoadingConstants.LOADED,
+              source: { uri: obj.uri },
+              type: obj.type.toUpperCase(),
+              position: obj.position || [0, 0, -1],
+              scale: obj.scale || [1, 1, 1],
+              width: obj.width || 1,
+              height: obj.height || 1,
+            };
+          }
+        });
+      }
+
+      return {
+        ...state,
+        modelItems: loadedModels,
+        portalItems: loadedPortals,
+        mediaItems: loadedMedia,
+        postProcessEffects: action.sceneData?.postProcessEffects || EffectsConstants.EFFECT_NONE,
+      }
     case 'CHANGE_MODEL_LOAD_STATE':
       return {
         ...state,

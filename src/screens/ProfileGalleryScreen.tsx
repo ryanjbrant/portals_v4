@@ -119,46 +119,34 @@ export const ProfileGalleryScreen = () => {
 
         if (activeTab === 'drafts') {
             // Lazy Load Scene Data if missing
-            if (!item.sceneData && item.sceneId) {
+            let sceneData = item.sceneData;
+            if (!sceneData && item.sceneId) {
                 try {
                     setIsLoadingDraft(true);
-                    // Use store action to fetch and update local state (or just return data)
-                    // Since loadDraft updates the store's draftPost, we might want to just fetch it here or rely on store.
-                    // Actually, Composer expects `draftData` param. 
-                    // Let's call loadDraft which populates `draftPost`.
-                    // Wait, Composer navigation param `draftData` is used.
-                    // If I update `loadDraft` to RETURN the data it would be easier.
-                    // But `loadDraft` updates `draftPost` in store.
-                    // Let's update `loadDraft` to return the data, OR read it from store after.
-                    // Simpler: Just rely on the store's `draftPost` if I was navigating to a screen that uses `draftPost`.
-                    // But `ComposerEditor` uses `route.params.draftData`.
-                    // I should probably pass the lightweight draft and let COMPOSER load it?
-                    // "Cold-start-friendly loading" -> Composer should show "Loading Scene..."
-                    // That is better UX than blocking here.
-                    // BUT, I can't easily change Composer right now without verifying it.
-                    // Let's block here with a spinner for MVP.
-
-                    // We need to access the loaded data.
-                    // I will look at `item` again. `loadDraft` updates the specific draft in `drafts` array? 
-                    // No, `loadDraft` sets `draftPost` (active draft).
-
                     await loadDraft(item);
-                    // Now `useAppStore.getState().draftPost` has the data.
                     const loadedDraft = useAppStore.getState().draftPost;
+                    sceneData = loadedDraft?.sceneData;
                     setIsLoadingDraft(false);
-
-                    navigation.navigate('ComposerEditor', {
-                        draftData: loadedDraft?.sceneData,
-                        draftTitle: item.title || "Untitled",
-                        draftId: item.id // Pass ID for versioning/collab
-                    });
                 } catch (e) {
                     Alert.alert("Error", "Could not load draft.");
                     setIsLoadingDraft(false);
+                    return;
                 }
+            }
+
+            // Route based on sceneType
+            const sceneType = sceneData?.sceneType;
+            if (sceneType === 'figment_ar') {
+                // Navigate directly to Figment (now in MainStack)
+                navigation.navigate('Figment', {
+                    draftData: sceneData,
+                    draftTitle: item.title || "Untitled",
+                    draftId: item.id
+                });
             } else {
+                // Default to Composer (Three.js WebView)
                 navigation.navigate('ComposerEditor', {
-                    draftData: item.sceneData,
+                    draftData: sceneData,
                     draftTitle: item.title || "Untitled",
                     draftId: item.id
                 });

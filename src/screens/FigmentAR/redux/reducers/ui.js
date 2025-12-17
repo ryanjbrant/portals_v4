@@ -19,6 +19,7 @@ const initialState = {
   currentEffectSelectionIndex: 0,
   arTrackingInitialized: false,
   selectedHdri: 'studio-09',
+  sceneTitle: 'Untitled Scene',
 }
 
 function ui(state = initialState, action) {
@@ -60,6 +61,11 @@ function ui(state = initialState, action) {
       return {
         ...state,
         selectedHdri: action.hdri,
+      };
+    case 'SET_SCENE_TITLE':
+      return {
+        ...state,
+        sceneTitle: action.title,
       };
     default:
       return state;

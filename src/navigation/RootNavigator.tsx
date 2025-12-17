@@ -28,6 +28,7 @@ import { ComposerEntryScreen } from '../screens/ComposerEntryScreen';
 import { ComposerEditorScreen } from '../screens/Composer/ComposerEditorScreen';
 import { ComposerPublishScreen } from '../screens/Composer/ComposerPublishScreen';
 import { ARViewerScreen } from '../screens/AR/ARViewerScreen';
+import FigmentScreenWrapper from '../screens/FigmentAR/FigmentScreenWrapper';
 
 // Stub or Reuse Screen
 const UserProfileScreen = ProfileScreen; // Reuse for now, ideally refactor later
@@ -58,6 +59,7 @@ const MainStackScreen = () => (
         <MainStack.Screen name="ComposerEntry" component={ComposerEntryScreen} />
         <MainStack.Screen name="ComposerEditor" component={ComposerEditorScreen} />
         <MainStack.Screen name="ComposerPublish" component={ComposerPublishScreen} />
+        <MainStack.Screen name="Figment" component={FigmentScreenWrapper} />
         <MainStack.Screen name="ARViewer" component={ARViewerScreen} options={{ presentation: 'transparentModal' }} />
         <MainStack.Screen name="Chat" component={ChatScreen} />
         <MainStack.Screen name="TagPeople" component={TagPeopleScreen} options={{ presentation: 'modal' }} />

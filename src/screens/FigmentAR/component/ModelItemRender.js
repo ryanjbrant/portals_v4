@@ -17,6 +17,7 @@ import * as ModelData from '../model/ModelItems';
 import TimerMixin from 'react-timer-mixin';
 import ParticleEmitter from '../model/emitters/ParticleEmitter';
 import renderIf from '../helpers/renderIf';
+import ObjectGizmo from './ObjectGizmo';
 import {
   ViroMaterials,
   ViroNode,
@@ -24,9 +25,55 @@ import {
   ViroSpotLight,
   ViroAmbientLight,
   ViroQuad,
+  ViroAnimations,
 } from '@reactvision/react-viro';
 
 var createReactClass = require('create-react-class');
+
+// Bright modern color palette (HSL values for vibrant colors)
+const BRIGHT_COLORS = [
+  '#FF3366', // Hot Pink
+  '#FF6B35', // Orange Red
+  '#F7931A', // Bitcoin Orange
+  '#FFD700', // Gold
+  '#00FF88', // Mint Green
+  '#00D4FF', // Cyan
+  '#7B68EE', // Medium Slate Blue
+  '#FF69B4', // Hot Pink
+  '#00CED1', // Dark Turquoise
+  '#FF4500', // Orange Red
+  '#9370DB', // Medium Purple
+  '#20B2AA', // Light Sea Green
+  '#FF1493', // Deep Pink
+  '#00FA9A', // Medium Spring Green
+  '#8A2BE2', // Blue Violet
+  '#DC143C', // Crimson
+  '#00BFFF', // Deep Sky Blue
+  '#FF8C00', // Dark Orange
+];
+
+// Generate a random bright color
+function getRandomBrightColor() {
+  return BRIGHT_COLORS[Math.floor(Math.random() * BRIGHT_COLORS.length)];
+}
+
+// Get complementary color (180 degrees on color wheel)
+function getComplementaryColor(hexColor) {
+  // Convert hex to RGB
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+
+  // Get complementary
+  const compR = 255 - r;
+  const compG = 255 - g;
+  const compB = 255 - b;
+
+  return '#' + [compR, compG, compB].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+
+// Track created dynamic materials
+const createdMaterials = new Set();
 
 
 /**
@@ -48,6 +95,46 @@ var ModelItemRender = createReactClass({
     hitTestMethod: PropTypes.func,
   },
 
+  getInitialState() {
+    // Get base scale from model data and multiply by 2.5 for 0.5 default size
+    const baseScale = ModelData.getModelArray()[this.props.modelIDProps.index].scale;
+    const scaledUp = baseScale.map(s => s * 2.5);
+    // Generate a random bright color for this primitive
+    const randomColor = getRandomBrightColor();
+    const materialName = `dynamicColor_${this.props.modelIDProps.uuid}`;
+
+    // Create dynamic material BEFORE first render
+    const modelItem = ModelData.getModelArray()[this.props.modelIDProps.index];
+    if (modelItem.type === 'GLB' && !createdMaterials.has(materialName)) {
+      ViroMaterials.createMaterials({
+        [materialName]: {
+          lightingModel: 'PBR',
+          diffuseColor: randomColor,
+          metalness: 0.3,
+          roughness: 0.4,
+        },
+      });
+      createdMaterials.add(materialName);
+      console.log('[ModelItemRender] Created material:', materialName, 'with color:', randomColor);
+    }
+
+    return {
+      scale: scaledUp,
+      rotation: [0, 0, 0],
+      nodeIsVisible: true,
+      // If loaded from draft (loading === 'LOADED'), start visible in front of user
+      // Otherwise start high in sky to wait for hitTest placement
+      position: this.props.modelIDProps.loading === 'LOADED' ? [0, 0, -1.5] : [0, 10, 1],
+      shouldBillboard: this.props.modelIDProps.loading !== 'LOADED', // Don't billboard if loading from draft
+      runAnimation: true,
+      showParticles: true,
+      itemClickedDown: false,
+      showGizmo: false, // Gizmo visibility
+      materialColor: randomColor,
+      materialName: materialName,
+    }
+  },
+
   componentDidMount() {
     console.log('[ModelItemRender] componentDidMount - UUID:', this.props.modelIDProps.uuid);
     this._modelData = ModelData.getModelArray();
@@ -63,22 +150,16 @@ var ModelItemRender = createReactClass({
     }, 100);
   },
 
+  componentDidUpdate(prevProps) {
+    // Re-render when objectAnimations change
+    if (JSON.stringify(prevProps.objectAnimations) !== JSON.stringify(this.props.objectAnimations)) {
+      console.log('[ModelItemRender] objectAnimations changed for UUID:', this.props.modelIDProps.uuid);
+    }
+  },
+
   componentWillUnmount() {
     console.log('[ModelItemRender] componentWillUnmount - UUID:', this.props.modelIDProps.uuid);
     this._isMounted = false;
-  },
-
-  getInitialState() {
-    return {
-      scale: ModelData.getModelArray()[this.props.modelIDProps.index].scale,
-      rotation: [0, 0, 0],
-      nodeIsVisible: true,
-      position: [0, 10, 1], // make it appear initially high in the sky
-      shouldBillboard: true,
-      runAnimation: true,
-      showParticles: true,
-      itemClickedDown: false,
-    }
   },
 
   render: function () {
@@ -92,6 +173,30 @@ var ModelItemRender = createReactClass({
 
     // If hidden prop is true, force invisible (but keep same element structure to avoid unmount crash)
     const isVisible = this.props.isHidden ? false : this.state.nodeIsVisible;
+
+    // Determine active animation from objectAnimations prop
+    const objectAnims = this.props.objectAnimations || {};
+    let activeAnimation = null;
+    let animationName = null;
+
+    // Priority order: bounce, pulse, rotate, scale, wiggle, random
+    const animOrder = ['bounce', 'pulse', 'rotate', 'scale', 'wiggle', 'random'];
+    for (const animType of animOrder) {
+      if (objectAnims[animType]?.active) {
+        // For rotate, check which axis
+        if (animType === 'rotate') {
+          const axis = objectAnims[animType].axis || { x: false, y: true, z: false };
+          if (axis.x) animationName = 'rotateX';
+          else if (axis.z) animationName = 'rotateZ';
+          else animationName = 'rotateY';
+        } else {
+          animationName = animType;
+        }
+        activeAnimation = { name: animationName, run: true, loop: true };
+        console.log('[ModelItemRender] Animation applied:', animationName, 'for UUID:', this.props.modelIDProps.uuid);
+        break;
+      }
+    }
 
     return (
 
@@ -133,16 +238,26 @@ var ModelItemRender = createReactClass({
           shadowOpacity={.9} />
         */}
 
-        <ViroNode position={modelItem.position}>
+        <ViroNode position={modelItem.position} animation={activeAnimation}>
           <Viro3DObject
             source={modelItem.obj}
             type={modelItem.type}
             resources={modelItem.resources}
+            materials={modelItem.type === 'GLB' ? [this.state.materialName] : modelItem.materials}
             scale={this.state.scale}
             onClickState={this._onClickState(this.props.modelIDProps.uuid)}
             onError={this._onError(this.props.modelIDProps.uuid)}
             onLoadStart={this._onObjectLoadStart(this.props.modelIDProps.uuid)}
             onLoadEnd={this._onObjectLoadEnd(this.props.modelIDProps.uuid)} />
+
+          {/* Gizmo controls - shown when object is tapped */}
+          {this.state.showGizmo && (
+            <ObjectGizmo
+              scale={this.state.scale[0] * 2}
+              onYAxisDrag={(deltaY) => this._onGizmoYDrag(deltaY)}
+              onXAxisDrag={(deltaRot) => this._onGizmoXDrag(deltaRot)}
+            />
+          )}
         </ViroNode>
       </ViroNode>
     );
@@ -196,13 +311,35 @@ var ModelItemRender = createReactClass({
   },
   _onItemClicked() {
     if (!this._isMounted) return;
-    let currentAnimationState = this.state.runAnimation;
-    let currentParticlesState = this.state.showParticles;
+    // Toggle gizmo visibility on tap
     this.setState({
-      runAnimation: !currentAnimationState,
-      showParticles: !currentParticlesState,
+      showGizmo: !this.state.showGizmo,
       itemClickedDown: false,
     });
+  },
+
+  // Gizmo Y-axis drag handler - lift object vertically
+  _onGizmoYDrag(deltaY) {
+    if (!this._isMounted) return;
+    this.setState(prevState => ({
+      position: [
+        prevState.position[0],
+        prevState.position[1] + deltaY,
+        prevState.position[2],
+      ],
+    }));
+  },
+
+  // Gizmo X-axis drag handler - rotate object around Y
+  _onGizmoXDrag(deltaRotation) {
+    if (!this._isMounted) return;
+    this.setState(prevState => ({
+      rotation: [
+        prevState.rotation[0],
+        prevState.rotation[1] + deltaRotation,
+        prevState.rotation[2],
+      ],
+    }));
   },
   /*
    Rotation should be relative to its current rotation *not* set to the absolute
@@ -380,6 +517,40 @@ ViroMaterials.createMaterials({
   pbr: {
     lightingModel: "PBR",
   },
+});
+
+// Register animations for Figment AR objects
+ViroAnimations.registerAnimations({
+  // Bounce animation - sequential: up then down
+  bounceUp: { properties: { positionY: "+=0.15" }, easing: "EaseInEaseOut", duration: 300 },
+  bounceDown: { properties: { positionY: "-=0.15" }, easing: "EaseInEaseOut", duration: 300 },
+  bounce: [["bounceUp", "bounceDown"]],
+
+  // Pulse animation (scale) - sequential: grow then shrink
+  pulseUp: { properties: { scaleX: 1.15, scaleY: 1.15, scaleZ: 1.15 }, easing: "EaseInEaseOut", duration: 400 },
+  pulseDown: { properties: { scaleX: 1.0, scaleY: 1.0, scaleZ: 1.0 }, easing: "EaseInEaseOut", duration: 400 },
+  pulse: [["pulseUp", "pulseDown"]],
+
+  // Rotate animations - loopable single rotation
+  rotateY: { properties: { rotateY: "+=45" }, duration: 500 },
+  rotateX: { properties: { rotateX: "+=45" }, duration: 500 },
+  rotateZ: { properties: { rotateZ: "+=45" }, duration: 500 },
+
+  // Scale animation (oscillating) - sequential: grow then shrink
+  scaleUp: { properties: { scaleX: 1.3, scaleY: 1.3, scaleZ: 1.3 }, easing: "EaseInEaseOut", duration: 500 },
+  scaleDown: { properties: { scaleX: 1.0, scaleY: 1.0, scaleZ: 1.0 }, easing: "EaseInEaseOut", duration: 500 },
+  scale: [["scaleUp", "scaleDown"]],
+
+  // Wiggle animation - sequential: left, right, center
+  wiggleLeft: { properties: { rotateZ: "+=5" }, easing: "EaseInEaseOut", duration: 100 },
+  wiggleRight: { properties: { rotateZ: "-=10" }, easing: "EaseInEaseOut", duration: 100 },
+  wiggleCenter: { properties: { rotateZ: "+=5" }, easing: "EaseInEaseOut", duration: 100 },
+  wiggle: [["wiggleLeft", "wiggleRight", "wiggleCenter"]],
+
+  // Random/float animation - sequential: up then down
+  floatUp: { properties: { positionY: "+=0.05" }, easing: "EaseInEaseOut", duration: 1000 },
+  floatDown: { properties: { positionY: "-=0.05" }, easing: "EaseInEaseOut", duration: 1000 },
+  random: [["floatUp", "floatDown"]],
 });
 
 module.exports = ModelItemRender;

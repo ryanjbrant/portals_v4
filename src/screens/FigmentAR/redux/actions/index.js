@@ -157,3 +157,18 @@ export function changeHdriTheme(hdri) {
   };
 }
 
+// action to set the scene title for draft saving
+export function setSceneTitle(title) {
+  return {
+    type: 'SET_SCENE_TITLE',
+    title: title,
+  };
+}
+
+// action to load a scene from saved draft data
+export function loadScene(sceneData) {
+  return {
+    type: 'LOAD_SCENE',
+    sceneData: sceneData,
+  };
+}

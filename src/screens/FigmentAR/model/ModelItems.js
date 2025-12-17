@@ -150,23 +150,24 @@ var ModelItems = [
     "lighting_mode": "PBR",
     "resources": []
   },
-  {
-    "name": "pyramid_glb",
-    "selected": false,
-    "loading": LoadingConstants.NONE,
-    "icon_img": require("../../../../assets/models/Pyramid.png"),
-    "obj": require("../../../../assets/models/Pyramid.glb"),
-    "materials": null,
-    "scale": [.2, .2, .2],
-    "position": [0, 0, 0],
-    "type": "GLB",
-    "physics": undefined,
-    "shadow_width": 2,
-    "shadow_height": 2,
-    "spotlight_position_y": 5,
-    "lighting_mode": "PBR",
-    "resources": []
-  },
+  // Pyramid model commented out - Pyramid.glb file missing
+  // {
+  //   "name": "pyramid_glb",
+  //   "selected": false,
+  //   "loading": LoadingConstants.NONE,
+  //   "icon_img": require("../../../../assets/models/Pyramid.png"),
+  //   "obj": require("../../../../assets/models/Pyramid.glb"),
+  //   "materials": null,
+  //   "scale": [.2, .2, .2],
+  //   "position": [0, 0, 0],
+  //   "type": "GLB",
+  //   "physics": undefined,
+  //   "shadow_width": 2,
+  //   "shadow_height": 2,
+  //   "spotlight_position_y": 5,
+  //   "lighting_mode": "PBR",
+  //   "resources": []
+  // },
   {
     "name": "rounded_cube_glb",
     "selected": false,

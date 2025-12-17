@@ -1,17 +1,190 @@
-import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity, Image } from 'react-native';
+import React, { useEffect, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity, Image, Animated, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { WebView } from 'react-native-webview';
+
+const { width, height } = Dimensions.get('window');
+
+// Canvas-based Noise Overlay Component using WebView
+const NoiseOverlay = () => {
+    const noiseHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <style>
+                * { margin: 0; padding: 0; }
+                body { background: transparent; overflow: hidden; }
+                canvas { 
+                    position: fixed; 
+                    top: 0; 
+                    left: 0; 
+                    width: 100vw; 
+                    height: 100vh;
+                    image-rendering: pixelated;
+                    pointer-events: none;
+                }
+            </style>
+        </head>
+        <body>
+            <canvas id="noise"></canvas>
+            <script>
+                const canvas = document.getElementById('noise');
+                const ctx = canvas.getContext('2d', { alpha: true });
+                const size = 512;
+                canvas.width = size;
+                canvas.height = size;
+                
+                let frame = 0;
+                const refreshInterval = 3;
+                const alpha = 12;
+                
+                function drawNoise() {
+                    const imageData = ctx.createImageData(size, size);
+                    const data = imageData.data;
+                    
+                    for (let i = 0; i < data.length; i += 4) {
+                        const value = Math.random() * 255;
+                        data[i] = value;
+                        data[i + 1] = value;
+                        data[i + 2] = value;
+                        data[i + 3] = alpha;
+                    }
+                    
+                    ctx.putImageData(imageData, 0, 0);
+                }
+                
+                function loop() {
+                    if (frame % refreshInterval === 0) {
+                        drawNoise();
+                    }
+                    frame++;
+                    requestAnimationFrame(loop);
+                }
+                
+                loop();
+            </script>
+        </body>
+        </html>
+    `;
+
+    return (
+        <View style={styles.noiseContainer} pointerEvents="none">
+            <WebView
+                source={{ html: noiseHTML }}
+                style={styles.noiseWebView}
+                scrollEnabled={false}
+                pointerEvents="none"
+                backgroundColor="transparent"
+                originWhitelist={['*']}
+            />
+        </View>
+    );
+};
+
+// Animated Orb Component for morphing gradient effect
+const AnimatedOrb = ({ color, size, initialX, initialY, duration }: {
+    color: string;
+    size: number;
+    initialX: number;
+    initialY: number;
+    duration: number;
+}) => {
+    const translateX = useRef(new Animated.Value(0)).current;
+    const translateY = useRef(new Animated.Value(0)).current;
+    const scale = useRef(new Animated.Value(1)).current;
+    const opacity = useRef(new Animated.Value(0.85)).current;
+
+    useEffect(() => {
+        const animateOrb = () => {
+            Animated.loop(
+                Animated.parallel([
+                    Animated.sequence([
+                        Animated.timing(translateX, {
+                            toValue: Math.random() * 200 - 100,
+                            duration: duration,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(translateX, {
+                            toValue: Math.random() * -200 + 100,
+                            duration: duration * 1.2,
+                            useNativeDriver: true,
+                        }),
+                    ]),
+                    Animated.sequence([
+                        Animated.timing(translateY, {
+                            toValue: Math.random() * 150 - 75,
+                            duration: duration * 0.9,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(translateY, {
+                            toValue: Math.random() * -150 + 75,
+                            duration: duration * 1.1,
+                            useNativeDriver: true,
+                        }),
+                    ]),
+                    Animated.sequence([
+                        Animated.timing(scale, {
+                            toValue: 1.3,
+                            duration: duration * 1.5,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(scale, {
+                            toValue: 0.8,
+                            duration: duration * 1.3,
+                            useNativeDriver: true,
+                        }),
+                    ]),
+                    Animated.sequence([
+                        Animated.timing(opacity, {
+                            toValue: 1.0,
+                            duration: duration,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(opacity, {
+                            toValue: 0.7,
+                            duration: duration * 1.2,
+                            useNativeDriver: true,
+                        }),
+                    ]),
+                ])
+            ).start();
+        };
+        animateOrb();
+    }, []);
+
+    return (
+        <Animated.View
+            style={{
+                position: 'absolute',
+                left: initialX,
+                top: initialY,
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                backgroundColor: color,
+                opacity,
+                transform: [{ translateX }, { translateY }, { scale }],
+                shadowColor: color,
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 1,
+                shadowRadius: size,
+            }}
+        />
+    );
+};
 
 export const ComposerEntryScreen = () => {
     const navigation = useNavigation<any>();
     const drafts = useAppStore(state => state.drafts);
     const fetchDrafts = useAppStore(state => state.fetchDrafts);
 
-    React.useEffect(() => {
+    useEffect(() => {
         const unsubscribe = navigation.addListener('focus', () => {
             fetchDrafts();
         });
@@ -39,11 +212,6 @@ export const ComposerEntryScreen = () => {
         if (!draftData && item.sceneId) {
             try {
                 setIsLoading(true);
-                // loadDraft updates the store's draftPost. We can access it from there or just let loadDraft do its work 
-                // and we grab the result if loadDraft returned it (it currently doesn't, but it updates store).
-                // Actually, let's look at how ProfileGallery did it. 
-                // Wait, I didn't finish reading ProfileGallery.
-                // Let's assume we can use the same logic: await loadDraft(item).
                 await loadDraft(item);
                 const updatedDraft = useAppStore.getState().draftPost;
                 draftData = updatedDraft?.sceneData;
@@ -78,9 +246,37 @@ export const ComposerEntryScreen = () => {
 
     return (
         <View style={styles.container}>
+            {/* Base dark gradient */}
             <LinearGradient
-                colors={['#1a1a2e', '#000000']}
+                colors={['#0a0a0f', '#0f0a1a', '#050510', '#000000']}
+                locations={[0, 0.3, 0.7, 1]}
                 style={StyleSheet.absoluteFillObject}
+            />
+
+            {/* Animated morphing orbs - blue/purple/pink/magenta palette */}
+            <View style={styles.orbContainer} pointerEvents="none">
+                <AnimatedOrb color="#ff0080" size={320} initialX={width * 0.1} initialY={height * 0.15} duration={8000} />
+                <AnimatedOrb color="#00d4ff" size={280} initialX={width * 0.8} initialY={height * 0.35} duration={10000} />
+                <AnimatedOrb color="#aa00ff" size={300} initialX={width * 0.5} initialY={height * 0.08} duration={7000} />
+                <AnimatedOrb color="#6600ff" size={340} initialX={width * 0.3} initialY={height * 0.28} duration={12000} />
+                <AnimatedOrb color="#ff00aa" size={260} initialX={width * 0.7} initialY={height * 0.18} duration={9000} />
+                <AnimatedOrb color="#00e5cc" size={160} initialX={width * 0.4} initialY={height * 0.4} duration={11000} />
+            </View>
+
+            {/* Double blur overlay for maximum softness */}
+            <BlurView intensity={100} tint="default" style={StyleSheet.absoluteFillObject} pointerEvents="none">
+                <BlurView intensity={100} tint="default" style={StyleSheet.absoluteFillObject} />
+            </BlurView>
+
+            {/* Canvas-based noise overlay */}
+            <NoiseOverlay />
+
+            {/* Dark fade at bottom */}
+            <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.7)', '#000000']}
+                locations={[0.3, 0.6, 1]}
+                style={StyleSheet.absoluteFillObject}
+                pointerEvents="none"
             />
 
             <SafeAreaView style={styles.safeArea}>
@@ -90,11 +286,9 @@ export const ComposerEntryScreen = () => {
                     </TouchableOpacity>
                 </View>
 
-                <View style={styles.heroSection}>
-                    <View style={styles.orb}>
-                        <Ionicons name="planet" size={60} color={theme.colors.secondary} />
-                    </View>
-                    <Text style={styles.heroTitle}>Create Logic</Text>
+                {/* Centered hero text */}
+                <View style={styles.heroContainer}>
+                    <Text style={styles.heroText}>Create Something.</Text>
                 </View>
 
                 <View style={styles.content}>
@@ -115,9 +309,11 @@ export const ComposerEntryScreen = () => {
                                 if (item.id === 'new') {
                                     return (
                                         <View style={{ flexDirection: 'row', gap: 8 }}>
-                                            <TouchableOpacity style={styles.newCard} onPress={() => navigation.navigate('ComposerEditor')}>
-                                                <Ionicons name="cube" size={32} color={theme.colors.text} />
-                                                <Text style={styles.cardText}>3D Editor</Text>
+                                            <TouchableOpacity style={styles.newButton} onPress={() => navigation.navigate('Figment')}>
+                                                <View style={styles.addCircle}>
+                                                    <Ionicons name="add" size={28} color="#000" />
+                                                </View>
+                                                <Text style={styles.cardText}>New</Text>
                                             </TouchableOpacity>
                                         </View>
                                     )
@@ -126,7 +322,7 @@ export const ComposerEntryScreen = () => {
                             }}
                             keyExtractor={item => item.id}
                             showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={{ paddingHorizontal: 20 }}
+                            contentContainerStyle={{ paddingLeft: (width - 80) / 2, paddingRight: 20 }}
                         />
 
                     </View>
@@ -140,6 +336,21 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: theme.colors.background,
+    },
+    orbContainer: {
+        ...StyleSheet.absoluteFillObject,
+        overflow: 'hidden',
+    },
+    noiseWebView: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'transparent',
+    },
+    noiseContainer: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
     },
     safeArea: {
         flex: 1,
@@ -155,29 +366,20 @@ const styles = StyleSheet.create({
     iconButton: {
         padding: 8,
     },
-    heroSection: {
+    heroContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    orb: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-        backgroundColor: 'rgba(37, 244, 238, 0.1)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(37, 244, 238, 0.3)',
-        marginBottom: 20,
-    },
-    heroTitle: {
-        ...theme.typography.h1,
-        color: theme.colors.white,
+    heroText: {
+        fontSize: 32,
+        fontWeight: '600',
+        color: 'rgba(255, 255, 255, 0.9)',
         letterSpacing: 1,
     },
     content: {
         flex: 1,
+        justifyContent: 'flex-end',
         paddingBottom: 40,
     },
     tabs: {
@@ -218,6 +420,22 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
         borderStyle: 'dashed',
+    },
+    newButton: {
+        width: 80,
+        height: 180,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    addCircle: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#fff',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8,
     },
     draftPreview: {
         flex: 1,

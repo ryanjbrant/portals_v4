@@ -152,15 +152,19 @@ export const saveSceneToStorage = async (sceneData: any, coverImageUri?: string,
 
     // 4. Save Scene Metadata to Firestore
     const sceneRef = doc(db, 'scenes', sceneId);
-    await setDoc(sceneRef, {
+    const sceneDocData: any = {
         ownerId,
         objectCount: processedObjects.length,
         updatedAt: serverTimestamp(),
-        createdAt: sceneData.createdAt ? undefined : serverTimestamp(), // Don't overwrite if exists?
         storageKey: jsonKey, // Link to the R2 JSON
         previewPath,
         version: 2 // Schema version
-    }, { merge: true });
+    };
+    // Only set createdAt for new scenes (avoid overwriting existing)
+    if (!sceneData.createdAt) {
+        sceneDocData.createdAt = serverTimestamp();
+    }
+    await setDoc(sceneRef, sceneDocData, { merge: true });
 
     // 5. Save Objects as Subcollection (Reference/Search only)
     // We strictly filter what goes into Firestore to avoid 1MB limits.

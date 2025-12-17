@@ -9,7 +9,7 @@ import { useAppStore } from '../../store';
 export const ComposerPublishScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
-    const { scene, videoUri } = route.params || {};
+    const { scene, videoUri, coverImage } = route.params || {};
 
     const [caption, setCaption] = useState('');
     const [isPublishing, setIsPublishing] = useState(false);
@@ -32,6 +32,7 @@ export const ComposerPublishScreen = () => {
                 user: { id: 'u1', username: 'me', avatar: 'https://via.placeholder.com/150' },
                 caption: caption,
                 videoUri: videoUri, // Local for now
+                coverImage: coverImage, // Add cover image to post
                 likes: 0,
                 comments: 0,
                 shares: 0,
@@ -69,10 +70,18 @@ export const ComposerPublishScreen = () => {
 
             <View style={styles.content}>
                 <View style={styles.mediaRow}>
-                    {/* Placeholder for video thumb since we don't have video component handy in this file context, usually use expo-video */}
-                    <View style={styles.thumbPlaceholder}>
-                        <Text style={{ color: 'white' }}>Video Preview</Text>
-                    </View>
+                    {/* Cover image preview */}
+                    {coverImage ? (
+                        <Image
+                            source={{ uri: coverImage }}
+                            style={styles.thumbPreview}
+                            resizeMode="cover"
+                        />
+                    ) : (
+                        <View style={styles.thumbPlaceholder}>
+                            <Ionicons name="videocam-outline" size={24} color="#666" />
+                        </View>
+                    )}
                     <TextInput
                         style={styles.input}
                         placeholder="Write a caption..."
@@ -94,6 +103,7 @@ const styles = StyleSheet.create({
     publishText: { color: theme.colors.primary, fontWeight: 'bold', fontSize: 16 },
     content: { padding: 16 },
     mediaRow: { flexDirection: 'row', gap: 16 },
-    thumbPlaceholder: { width: 80, height: 120, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' },
+    thumbPlaceholder: { width: 80, height: 120, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
+    thumbPreview: { width: 80, height: 120, borderRadius: 8 },
     input: { flex: 1, color: 'white', fontSize: 16, paddingTop: 8 }
 });
