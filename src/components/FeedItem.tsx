@@ -49,9 +49,17 @@ export const FeedItem = ({ post, onCommentPress }: FeedItemProps) => {
 
     const handleShare = async () => {
         try {
-            await Share.share({
+            const shareOptions: { message: string; url?: string; title?: string } = {
                 message: `Check out this post from @${post.user.username}\n\n"${post.caption}"\n\nSent via Portals`,
-            });
+                title: `@${post.user.username}'s Portal`,
+            };
+
+            // If there's a video URL, include it so users can save/download it
+            if (post.mediaUri) {
+                shareOptions.url = post.mediaUri;
+            }
+
+            await Share.share(shareOptions);
         } catch (error: any) {
             console.error(error.message);
         }

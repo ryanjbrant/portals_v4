@@ -30,6 +30,14 @@ export function addModelWithIndex(index) {
   }
 }
 
+// action to add a custom/remote model to the AR Scene
+export function addCustomModel(modelData) {
+  return {
+    type: 'ADD_CUSTOM_MODEL',
+    modelData: modelData,
+  }
+}
+
 // action to remove model with given UUID from AR Scene
 export function removeModelWithUUID(uuid) {
   return {

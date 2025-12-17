@@ -27,6 +27,7 @@ import {
   ViroQuad,
   ViroAnimations,
 } from '@reactvision/react-viro';
+import * as FileSystem from 'expo-file-system/legacy';
 
 var createReactClass = require('create-react-class');
 
@@ -97,14 +98,18 @@ var ModelItemRender = createReactClass({
 
   getInitialState() {
     // Get base scale from model data and multiply by 2.5 for 0.5 default size
-    const baseScale = ModelData.getModelArray()[this.props.modelIDProps.index].scale;
+    const isCustom = this.props.modelIDProps.index === -1;
+    const modelItem = isCustom ? this.props.modelIDProps : ModelData.getModelArray()[this.props.modelIDProps.index];
+
+    // Default scale for custom is usually smaller or defined in reducer
+    const baseScale = modelItem.scale || [0.2, 0.2, 0.2];
     const scaledUp = baseScale.map(s => s * 2.5);
     // Generate a random bright color for this primitive
     const randomColor = getRandomBrightColor();
     const materialName = `dynamicColor_${this.props.modelIDProps.uuid}`;
 
     // Create dynamic material BEFORE first render
-    const modelItem = ModelData.getModelArray()[this.props.modelIDProps.index];
+    // const modelItem = ... (already defined above)
     if (modelItem.type === 'GLB' && !createdMaterials.has(materialName)) {
       ViroMaterials.createMaterials({
         [materialName]: {
@@ -132,6 +137,10 @@ var ModelItemRender = createReactClass({
       showGizmo: false, // Gizmo visibility
       materialColor: randomColor,
       materialName: materialName,
+      // For custom models - track local file path after download
+      localModelPath: null,
+      isDownloading: false,
+      downloadError: null,
     }
   },
 
@@ -139,6 +148,14 @@ var ModelItemRender = createReactClass({
     console.log('[ModelItemRender] componentDidMount - UUID:', this.props.modelIDProps.uuid);
     this._modelData = ModelData.getModelArray();
     this._isMounted = true;
+
+    // Check if this is a custom model with a remote URL
+    const isCustom = this.props.modelIDProps.index === -1;
+    if (isCustom && this.props.modelIDProps.source?.uri) {
+      const remoteUri = this.props.modelIDProps.source.uri;
+      console.log('[ModelItemRender] Custom model detected, downloading from:', remoteUri);
+      this._downloadRemoteModel(remoteUri);
+    }
 
     // Force a re-render after a short delay to work around ViroReact batching issue
     // where the first render cycle doesn't properly attach nodes to the scene graph
@@ -148,6 +165,51 @@ var ModelItemRender = createReactClass({
         this.forceUpdate();
       }
     }, 100);
+  },
+
+  async _downloadRemoteModel(remoteUri) {
+    try {
+      this.setState({ isDownloading: true });
+
+      // Generate local filename from UUID
+      const uuid = this.props.modelIDProps.uuid;
+      const ext = this.props.modelIDProps.source?.uri?.split('.').pop() || 'glb';
+      const localFileName = `${uuid}.${ext}`;
+      const localPath = `${FileSystem.cacheDirectory}models/${localFileName}`;
+
+      // Ensure directory exists
+      const dirInfo = await FileSystem.getInfoAsync(`${FileSystem.cacheDirectory}models`);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(`${FileSystem.cacheDirectory}models`, { intermediates: true });
+      }
+
+      // Check if already cached
+      const fileInfo = await FileSystem.getInfoAsync(localPath);
+      if (fileInfo.exists) {
+        console.log('[ModelItemRender] Model already cached at:', localPath);
+        if (this._isMounted) {
+          this.setState({ localModelPath: localPath, isDownloading: false });
+        }
+        return;
+      }
+
+      console.log('[ModelItemRender] Downloading model to:', localPath);
+      const downloadResult = await FileSystem.downloadAsync(remoteUri, localPath);
+
+      if (downloadResult.status === 200) {
+        console.log('[ModelItemRender] Download complete, local path:', downloadResult.uri);
+        if (this._isMounted) {
+          this.setState({ localModelPath: downloadResult.uri, isDownloading: false });
+        }
+      } else {
+        throw new Error(`Download failed with status ${downloadResult.status}`);
+      }
+    } catch (error) {
+      console.error('[ModelItemRender] Download error:', error);
+      if (this._isMounted) {
+        this.setState({ downloadError: error.message, isDownloading: false });
+      }
+    }
   },
 
   componentDidUpdate(prevProps) {
@@ -165,7 +227,18 @@ var ModelItemRender = createReactClass({
   render: function () {
     console.log('[ModelItemRender] render - UUID:', this.props.modelIDProps.uuid);
 
-    var modelItem = ModelData.getModelArray()[this.props.modelIDProps.index];
+    const isCustom = this.props.modelIDProps.index === -1;
+    var modelItem = isCustom ? this.props.modelIDProps : ModelData.getModelArray()[this.props.modelIDProps.index];
+
+    // Debug logging for custom models
+    if (isCustom) {
+      console.log('[ModelItemRender] Custom model detected');
+      console.log('[ModelItemRender] source:', modelItem.source);
+      console.log('[ModelItemRender] type:', modelItem.type);
+      console.log('[ModelItemRender] scale:', this.state.scale);
+      console.log('[ModelItemRender] position:', this.state.position);
+      console.log('[ModelItemRender] obj:', modelItem.obj);
+    }
     let transformBehaviors = {};
     if (this.state.shouldBillboard) {
       transformBehaviors.transformBehaviors = this.state.shouldBillboard ? "billboardY" : [];
@@ -238,17 +311,33 @@ var ModelItemRender = createReactClass({
           shadowOpacity={.9} />
         */}
 
-        <ViroNode position={modelItem.position} animation={activeAnimation}>
-          <Viro3DObject
-            source={modelItem.obj}
-            type={modelItem.type}
-            resources={modelItem.resources}
-            materials={modelItem.type === 'GLB' ? [this.state.materialName] : modelItem.materials}
-            scale={this.state.scale}
-            onClickState={this._onClickState(this.props.modelIDProps.uuid)}
-            onError={this._onError(this.props.modelIDProps.uuid)}
-            onLoadStart={this._onObjectLoadStart(this.props.modelIDProps.uuid)}
-            onLoadEnd={this._onObjectLoadEnd(this.props.modelIDProps.uuid)} />
+        <ViroNode position={modelItem.position || [0, 0, 0]} animation={activeAnimation}>
+          {/* Render model: bundled OR custom */}
+          {(() => {
+            // For custom models, use the remote URL directly (ViroReact supports remote GLB)
+            let modelSource;
+            if (isCustom) {
+              // Use remote source directly
+              modelSource = modelItem.source;
+              console.log('[ModelItemRender] Viro3DObject source (remote):', JSON.stringify(modelSource));
+            } else {
+              modelSource = modelItem.obj;
+              console.log('[ModelItemRender] Viro3DObject source (bundled)');
+            }
+            console.log('[ModelItemRender] Viro3DObject type:', modelItem.type);
+            return (
+              <Viro3DObject
+                source={modelSource}
+                type={modelItem.type}
+                resources={modelItem.resources || []}
+                materials={isCustom ? undefined : (modelItem.type === 'GLB' ? [this.state.materialName] : modelItem.materials)}
+                scale={this.state.scale}
+                onClickState={this._onClickState(this.props.modelIDProps.uuid)}
+                onError={this._onError(this.props.modelIDProps.uuid)}
+                onLoadStart={this._onObjectLoadStart(this.props.modelIDProps.uuid)}
+                onLoadEnd={this._onObjectLoadEnd(this.props.modelIDProps.uuid)} />
+            );
+          })()}
 
           {/* Gizmo controls - shown when object is tapped */}
           {this.state.showGizmo && (
@@ -417,19 +506,64 @@ var ModelItemRender = createReactClass({
 
   _onObjectLoadEnd(uuid) {
     return () => {
+      console.log('[ModelItemRender] Model loaded:', uuid);
       this.props.onLoadCallback(uuid, LoadConstants.LOADED);
       this.props.hitTestMethod(this._onARHitTestResults);
+
+      // Auto-scale custom models to fit ~60% of viewport
+      if (this.props.modelIDProps.index === -1) {
+        this._autoScaleModel();
+      }
     };
   },
 
-  /**
-   * This method is executed once a model finishes loading. The arguments position, forward and results are used to
-   * find the correct position of the model. position, forward and results are calculated when user adds a model to 
-   * the scene by performing an AR Hit Test (see https://docs.viromedia.com/docs/viroarscene). arguments:
-   * position - intersection of a Ray going out from the camera in the forward direction and the AR point returned by underlying AR platform
-   * forward - forward vector of the ray
-   * results - All feature points returned
-   */
+  _autoScaleModel(attempt = 0) {
+    // If ref is missing, retry up to 5 times (1 second total)
+    if (!this.arNodeRef) {
+      if (attempt < 5) {
+        console.log(`[ModelItemRender] No ref for auto-scale, retrying... (${attempt + 1}/5)`);
+        this.setTimeout(() => {
+          this._autoScaleModel(attempt + 1);
+        }, 200);
+      } else {
+        console.warn('[ModelItemRender] Failed to auto-scale: ref never became available.');
+      }
+      return;
+    }
+
+    // Slight delay to ensure geometry is ready for bounding box check
+    this.setTimeout(() => {
+      // ViroNode doesn't always support getBoundingBoxAsync directly in all versions,
+      // but if it does, this is the way. If not, we might need a fallback.
+      // Assuming ViroNode or the inner Viro3DObject (which we don't have a direct ref to easily) supports it.
+      // Actually, we set this.arNodeRef to the ViroNode.
+      if (this.arNodeRef.getBoundingBoxAsync) {
+        this.arNodeRef.getBoundingBoxAsync().then((boundingBox) => {
+          const { min, max } = boundingBox;
+          const width = max[0] - min[0];
+          const height = max[1] - min[1];
+          const depth = max[2] - min[2];
+
+          const maxDim = Math.max(width, height, depth);
+
+          // Target size: ~0.6 meters (rough approximation of 60% viewport at 1m distance)
+          const targetSize = 0.6;
+
+          if (maxDim > 0) {
+            const scaleFactor = targetSize / maxDim;
+            console.log(`[ModelItemRender] Auto-scaling model. MaxDim: ${maxDim}, ScaleFactor: ${scaleFactor}`);
+
+            this.setState({
+              scale: [scaleFactor, scaleFactor, scaleFactor]
+            });
+          }
+        }).catch(err => {
+          console.warn('[ModelItemRender] Failed to get bounding box for auto-scale:', err);
+        });
+      }
+    }, 200);
+  },
+
   _onARHitTestResults(position, forward, results) {
     // default position is just 3 forward of the user
     let newPosition = [forward[0] * 1.5, forward[1] * 1.5, forward[2] * 1.5];
@@ -461,11 +595,6 @@ var ModelItemRender = createReactClass({
     this._setInitialPlacement(newPosition);
   },
 
-  // we need to set the position before making the node visible because of a race condition
-  // in the case of models, this could cause the model to appear where the user is before
-  // moving to it's location causing the user to accidentally be "inside" the model.
-  // This sets an initial timeout of 500 ms to avoid any race condition in setting 
-  // position and rotation while the object is being loaded.
   _setInitialPlacement(position) {
     if (!this._isMounted) return;
     this.setState({
@@ -474,9 +603,6 @@ var ModelItemRender = createReactClass({
     this.setTimeout(() => { this._updateInitialRotation() }, 500);
   },
 
-  // This function gets the rotation transform of the parent ViroNode that was placed in the scene by the user
-  // and applies that rotation to the model inside the ViroNode (by setting state). This is done to ensure that
-  // the portal faces the user at it's initial placement.
   _updateInitialRotation() {
     if (!this._isMounted) return;
     // If we don't have the ref yet, just make it visible without rotation adjustment

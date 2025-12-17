@@ -197,6 +197,59 @@ return (
 
 ---
 
+### 6. 360 Video Portal Background Black Screen
+
+**Problem:** When changing a portal's 360 background to a video via the PortalBackgroundPanel, the `Viro360Video` renders black even though the source is correct.
+
+**Root Cause:** Two issues combined:
+1. **Redux reducer mutation** - `changePortalPhoto` reducer was mutating state directly instead of returning a new immutable object
+2. **ViroReact batching** - The component doesn't re-render video properly without a forced update
+
+**Solution:**
+
+1. **Fix Redux reducer** (`redux/reducers/arobjects.js`):
+```javascript
+// WRONG - mutates state directly (won't trigger re-render)
+state[action.uuid] = newModel;
+return state;
+
+// CORRECT - returns new immutable object
+return {
+  ...state,
+  [action.uuid]: {
+    ...state[action.uuid],
+    portal360Image: { ...action.photoSource }
+  }
+};
+```
+
+2. **Add componentDidUpdate** (`component/PortalItemRender.js`):
+```javascript
+componentDidUpdate(prevProps) {
+  if (prevProps.portalIDProps?.portal360Image !== this.props.portalIDProps?.portal360Image) {
+    console.log('[PortalItemRender] Portal background changed, forcing re-render');
+    this.setTimeout(() => {
+      if (this._isMounted) {
+        this.forceUpdate();
+      }
+    }, 100);
+  }
+},
+```
+
+3. **Keep Viro360Video simple** - match reference implementation:
+```javascript
+<Viro360Video key="background_portal_video" muted={!this.state.insidePortal} volume={1.0} source={portalSource.source} loop={true} />
+```
+
+**Files modified:**
+| File | Change |
+|------|--------|
+| `redux/reducers/arobjects.js` | Fixed `changePortalPhoto` to return new immutable state |
+| `component/PortalItemRender.js` | Added `componentDidUpdate` with `forceUpdate` |
+
+---
+
 ## Critical Functions Flow
 
 ### Adding an Object

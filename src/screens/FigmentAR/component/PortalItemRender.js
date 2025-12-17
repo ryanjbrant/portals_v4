@@ -89,6 +89,18 @@ var PortalItemRender = createReactClass({
     this._isMounted = false;
   },
 
+  componentDidUpdate(prevProps) {
+    // Force re-render when portal background changes (ViroReact batching workaround)
+    if (prevProps.portalIDProps?.portal360Image !== this.props.portalIDProps?.portal360Image) {
+      console.log('[PortalItemRender] Portal background changed, forcing re-render');
+      this.setTimeout(() => {
+        if (this._isMounted) {
+          this.forceUpdate();
+        }
+      }, 100);
+    }
+  },
+
   /**
    * This render() function adds a ViroNode to the scene containing a ViroPortalScene,
    * with ViroPortal and the required 3D Object for the "entry way", and views to render "inside the portal"
@@ -204,12 +216,17 @@ var PortalItemRender = createReactClass({
    */
   _renderPortalInside(portalItem) {
     var portalSource = (this.props.portalIDProps.portal360Image != undefined && this.props.portalIDProps.portal360Image != null) ? this.props.portalIDProps.portal360Image : portalItem.portal360Image;
+    console.log('[PortalItemRender] portalSource:', JSON.stringify(portalSource));
+    console.log('[PortalItemRender] type:', portalSource.type);
+    console.log('[PortalItemRender] _is360Photo result:', this._is360Photo(portalSource, portalSource.width, portalSource.height));
     if (this._is360Photo(portalSource, portalSource.width, portalSource.height)) {
       if (portalSource.type == PSConstants.PS_TYPE_360_VIDEO) {
+        // Match reference implementation exactly
         return (
-          <Viro360Video key="background_portal_video" muted={!this.state.insidePortal} volume={1.0} source={portalSource.source} loop={true} paused={false} />
+          <Viro360Video key="background_portal_video" muted={!this.state.insidePortal} volume={1.0} source={portalSource.source} loop={true} />
         );
       } else {
+        console.log('[PortalItemRender] Rendering Viro360Image with source:', portalSource.source);
         return (
           <Viro360Image key="background_portal" source={portalSource.source} />
         );

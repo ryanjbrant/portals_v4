@@ -26,10 +26,11 @@ import PhotosSelector from './component/PhotosSelector';
 import ARInitializationUI from './component/ARInitializationUI.js';
 import AnimationPanel from './component/AnimationPanel';
 import PortalBackgroundPanel from './component/PortalBackgroundPanel';
+import ModelLibraryPanel from './component/ModelLibraryPanel';
 import * as ModelData from './model/ModelItems';
 import * as PortalData from './model/PortalItems';
 import * as LightingData from './model/LightingItems';
-import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme, ARTrackingInitialized, addMedia, setSceneTitle, loadScene } from './redux/actions';
+import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, addCustomModel, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme, ARTrackingInitialized, addMedia, setSceneTitle, loadScene } from './redux/actions';
 import { serializeFigmentScene } from './helpers/FigmentSceneSerializer';
 import { useAppStore } from '../../store';
 
@@ -122,6 +123,7 @@ export class App extends Component {
     this._handleRename = this._handleRename.bind(this);
     this._handleSaveDraft = this._handleSaveDraft.bind(this);
     this._handleNewScene = this._handleNewScene.bind(this);
+    this._onListPressed = this._onListPressed.bind(this);
 
     this.state = {
       currentModeSelected: kObjSelectMode,
@@ -157,7 +159,8 @@ export class App extends Component {
       videoDuration: 0, // Video duration in seconds
       isMenuOpen: false, // Dropdown menu visibility
       showContextualMenu: false, // Contextual settings menu visibility
-      showPortalBackgroundPanel: false, // Portal background picker panel visibility
+      showPortalBackgroundPanel: false,
+      showModelLibraryPanel: false, // New state for Model Library Panel // Portal background picker panel visibility
       objectAnimations: {}, // { [uuid]: { bounce: { active, intensity }, rotate: { active, intensity, axis }... } }
     };
 
@@ -457,16 +460,18 @@ export class App extends Component {
           onUpdateAnimation={(type, params, active) => this._onUpdateObjectAnimation(type, params, active)}
         />
 
-        {/* Portal Background Panel - show when portal background picker is opened */}
+        {/* Portal Background Panel */}
         <PortalBackgroundPanel
           visible={this.state.showPortalBackgroundPanel}
           onClose={() => this.setState({ showPortalBackgroundPanel: false })}
-          onSelectBackground={(photoSource) => {
-            console.log('[App] Portal background selected:', photoSource);
-            if (this.state.lastSelectedPortalUUID !== -1) {
-              this.props.dispatchChangePortalPhoto(this.state.lastSelectedPortalUUID, photoSource);
-            }
-          }}
+          onSelectBackground={this._onPortalBackgroundSelected}
+        />
+
+        {/* Model Library Panel */}
+        <ModelLibraryPanel
+          visible={this.state.showModelLibraryPanel}
+          onClose={() => this.setState({ showModelLibraryPanel: false })}
+          onSelectModel={this._onListPressed}
         />
 
         {/* AR Initialization animation - hide during recording */}
@@ -1257,7 +1262,7 @@ export class App extends Component {
     const isLighting = this.props.listMode === UIConstants.LIST_MODE_LIGHT;
 
     // Check if we should show the non-recording UI (Picker + Toolbar)
-    const showSelectionUI = !this.state.isActivelyRecording && !this.state.showConfirmButtons && !this.state.showPhotosSelector && !this.state.showPortalBackgroundPanel && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN;
+    const showSelectionUI = !this.state.isActivelyRecording && !this.state.showConfirmButtons && !this.state.showPhotosSelector && !this.state.showPortalBackgroundPanel && !this.state.showModelLibraryPanel && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN;
 
     const shouldShowPicker = showSelectionUI && (isPortals || isEffects || isModels || isLighting);
 
@@ -1297,10 +1302,10 @@ export class App extends Component {
             paddingVertical: 10,
             borderRadius: 20
           }}>
-            {/* Objects Button */}
+            {/* Objects Button - Modified to show ModelLibraryPanel */}
             <TouchableOpacity
-              onPress={() => toggleMode(UIConstants.LIST_MODE_MODEL, UIConstants.LIST_TITLE_MODELS)}
-              style={{ alignItems: 'center', marginHorizontal: 12, opacity: this.props.listMode === UIConstants.LIST_MODE_MODEL ? 1 : 0.6 }}
+              onPress={() => this.setState({ showModelLibraryPanel: true })}
+              style={{ alignItems: 'center', marginHorizontal: 12, opacity: this.state.showModelLibraryPanel ? 1 : 0.6 }}
             >
               <Ionicons name="cube-outline" size={32} color="white" style={{ marginBottom: 4 }} />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Objects</Text>
@@ -1722,16 +1727,24 @@ export class App extends Component {
   }
 
   // Dispatch correct event to redux for adding AR Objects, Portals and Effects in the scene 
-  _onListPressed(index) {
-    if (this.props.listMode == UIConstants.LIST_MODE_MODEL) {
-      this.props.dispatchAddModel(index);
+  // item can be index (for built-ins) or object (for custom)
+  // type is 'starter' or 'personal' or undefined (legacy)
+  _onListPressed(indexOrItem, type) {
+    if (this.props.listMode == UIConstants.LIST_MODE_MODEL || type === 'starter' || type === 'personal') {
+      if (type === 'personal') {
+        console.log("Adding personal model:", indexOrItem);
+        this.props.dispatchAddCustomModel(indexOrItem);
+      } else {
+        // 'starter' or legacy list
+        this.props.dispatchAddModel(indexOrItem);
+      }
     } else if (this.props.listMode == UIConstants.LIST_MODE_PORTAL) {
-      this.props.dispatchAddPortal(index);
+      this.props.dispatchAddPortal(indexOrItem);
     } else if (this.props.listMode == UIConstants.LIST_MODE_EFFECT) {
-      this.props.dispatchToggleEffectSelection(index);
+      this.props.dispatchToggleEffectSelection(indexOrItem);
     } else if (this.props.listMode == UIConstants.LIST_MODE_LIGHT) {
       var lightingArray = LightingData.getLightingArray();
-      this.props.dispatchChangeHdriTheme(lightingArray[index].name);
+      this.props.dispatchChangeHdriTheme(lightingArray[indexOrItem].name);
     }
   }
 
@@ -1990,6 +2003,7 @@ const mapDispatchToProps = (dispatch) => {
     dispatchAddMedia: (source, type, width, height) => dispatch(addMedia(source, type, width, height)),
     dispatchSetSceneTitle: (title) => dispatch(setSceneTitle(title)),
     dispatchLoadScene: (sceneData) => dispatch(loadScene(sceneData)),
+    dispatchAddCustomModel: (modelData) => dispatch(addCustomModel(modelData)),
   }
 }
 

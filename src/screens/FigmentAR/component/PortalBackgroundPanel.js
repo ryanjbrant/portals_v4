@@ -23,73 +23,79 @@ const { height, width } = Dimensions.get('window');
 const PANEL_HEIGHT = height * 0.5;
 const THUMB_SIZE = (width - 60) / 3;
 
-// 360 Video data - these are full spherical videos
+// Base URL for Cloudflare R2 video storage
+const R2_VIDEO_BASE = 'https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/videos/360-video';
+
+// 360 Video data - streaming from Cloudflare R2 for faster progressive playback
 const VIDEOS_360 = [
     {
         id: 'dinosaurs',
         name: 'Dinosaurs',
         thumbnail: require('../res/360/thumbs/Dinosaurs.jpg'),
-        source: require('../res/360/Dinosaurs.mp4'),
+        source: { uri: `${R2_VIDEO_BASE}/Dinosaurs.mp4` },
     },
     {
         id: 'mcqueen',
         name: 'McQueen',
         thumbnail: require('../res/360/thumbs/AlexanderMcQueen.jpg'),
-        source: require('../res/360/AlexanderMcQueen.mp4'),
+        source: { uri: `${R2_VIDEO_BASE}/AlexanderMcQueen.mp4` },
     },
     {
         id: 'dali',
         name: 'Dalí Dreams',
         thumbnail: require('../res/360/thumbs/Dali.jpg'),
-        source: require('../res/360/Dali.mp4'),
+        source: { uri: `${R2_VIDEO_BASE}/Dali.mp4` },
     },
     {
         id: 'avatar',
         name: 'Avatar',
         thumbnail: require('../res/360/thumbs/Avatar.jpg'),
-        source: require('../res/360/Avatar.mp4'),
+        source: { uri: `${R2_VIDEO_BASE}/Avatar.mp4` },
     },
     {
         id: 'galaxy',
         name: 'Galaxy',
         thumbnail: require('../res/360/thumbs/Galaxy.jpg'),
-        source: require('../res/360/Galaxy.mp4'),
+        source: { uri: `${R2_VIDEO_BASE}/Galaxy.mp4` },
     },
     {
         id: 'it',
         name: 'IT',
         thumbnail: require('../res/360/thumbs/IT.jpg'),
-        source: require('../res/360/IT.mp4'),
+        source: { uri: `${R2_VIDEO_BASE}/IT.mp4` },
     },
 ];
 
-// Spherical sky images for portal backgrounds
+// Base URL for Cloudflare R2 360 images storage
+const R2_IMAGE_BASE = 'https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/360-images';
+
+// Spherical sky images for portal backgrounds - loaded from Cloudflare R2
 const IMAGES_360 = [
-    { id: 'sky01', name: 'Sky 1', thumbnail: require('../res/portals-dome/thumbs/pure-sky-01.jpg'), source: require('../res/portals-dome/pure-sky-01.jpg') },
-    { id: 'sky02', name: 'Sky 2', thumbnail: require('../res/portals-dome/thumbs/pure-sky-02.jpg'), source: require('../res/portals-dome/pure-sky-02.jpg') },
-    { id: 'sky03', name: 'Sky 3', thumbnail: require('../res/portals-dome/thumbs/pure-sky-03.jpg'), source: require('../res/portals-dome/pure-sky-03.jpg') },
-    { id: 'sky04', name: 'Sky 4', thumbnail: require('../res/portals-dome/thumbs/pure-sky-04.jpg'), source: require('../res/portals-dome/pure-sky-04.jpg') },
-    { id: 'sky05', name: 'Sky 5', thumbnail: require('../res/portals-dome/thumbs/pure-sky-05.jpg'), source: require('../res/portals-dome/pure-sky-05.jpg') },
-    { id: 'sky06', name: 'Sky 6', thumbnail: require('../res/portals-dome/thumbs/pure-sky-06.jpg'), source: require('../res/portals-dome/pure-sky-06.jpg') },
-    { id: 'sky07', name: 'Sky 7', thumbnail: require('../res/portals-dome/thumbs/pure-sky-07.jpg'), source: require('../res/portals-dome/pure-sky-07.jpg') },
-    { id: 'sky08', name: 'Sky 8', thumbnail: require('../res/portals-dome/thumbs/pure-sky-08.jpg'), source: require('../res/portals-dome/pure-sky-08.jpg') },
-    { id: 'sky09', name: 'Sky 9', thumbnail: require('../res/portals-dome/thumbs/pure-sky-09.jpg'), source: require('../res/portals-dome/pure-sky-09.jpg') },
-    { id: 'sky10', name: 'Sky 10', thumbnail: require('../res/portals-dome/thumbs/pure-sky-10.jpg'), source: require('../res/portals-dome/pure-sky-10.jpg') },
-    { id: 'sky11', name: 'Sky 11', thumbnail: require('../res/portals-dome/thumbs/pure-sky-11.jpg'), source: require('../res/portals-dome/pure-sky-11.jpg') },
-    { id: 'sky12', name: 'Sky 12', thumbnail: require('../res/portals-dome/thumbs/pure-sky-12.jpg'), source: require('../res/portals-dome/pure-sky-12.jpg') },
-    { id: 'sky13', name: 'Sky 13', thumbnail: require('../res/portals-dome/thumbs/pure-sky-13.jpg'), source: require('../res/portals-dome/pure-sky-13.jpg') },
-    { id: 'sky14', name: 'Sky 14', thumbnail: require('../res/portals-dome/thumbs/pure-sky-14.jpg'), source: require('../res/portals-dome/pure-sky-14.jpg') },
-    { id: 'sky15', name: 'Sky 15', thumbnail: require('../res/portals-dome/thumbs/pure-sky-15.jpg'), source: require('../res/portals-dome/pure-sky-15.jpg') },
-    { id: 'sky16', name: 'Sky 16', thumbnail: require('../res/portals-dome/thumbs/pure-sky-16.jpg'), source: require('../res/portals-dome/pure-sky-16.jpg') },
-    { id: 'sky17', name: 'Sky 17', thumbnail: require('../res/portals-dome/thumbs/pure-sky-17.jpg'), source: require('../res/portals-dome/pure-sky-17.jpg') },
-    { id: 'sky18', name: 'Sky 18', thumbnail: require('../res/portals-dome/thumbs/pure-sky-18.jpg'), source: require('../res/portals-dome/pure-sky-18.jpg') },
-    { id: 'sky19', name: 'Sky 19', thumbnail: require('../res/portals-dome/thumbs/pure-sky-19.jpg'), source: require('../res/portals-dome/pure-sky-19.jpg') },
-    { id: 'sky20', name: 'Sky 20', thumbnail: require('../res/portals-dome/thumbs/pure-sky-20.jpg'), source: require('../res/portals-dome/pure-sky-20.jpg') },
-    { id: 'sky21', name: 'Sky 21', thumbnail: require('../res/portals-dome/thumbs/pure-sky-21.jpg'), source: require('../res/portals-dome/pure-sky-21.jpg') },
-    { id: 'sky22', name: 'Sky 22', thumbnail: require('../res/portals-dome/thumbs/pure-sky-22.jpg'), source: require('../res/portals-dome/pure-sky-22.jpg') },
-    { id: 'sky23', name: 'Sky 23', thumbnail: require('../res/portals-dome/thumbs/pure-sky-23.jpg'), source: require('../res/portals-dome/pure-sky-23.jpg') },
-    { id: 'sky24', name: 'Sky 24', thumbnail: require('../res/portals-dome/thumbs/pure-sky-24.jpg'), source: require('../res/portals-dome/pure-sky-24.jpg') },
-    { id: 'sky25', name: 'Sky 25', thumbnail: require('../res/portals-dome/thumbs/pure-sky-25.jpg'), source: require('../res/portals-dome/pure-sky-25.jpg') },
+    { id: 'sky01', name: 'Sky 1', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-01.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-01.jpg` } },
+    { id: 'sky02', name: 'Sky 2', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-02.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-02.jpg` } },
+    { id: 'sky03', name: 'Sky 3', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-03.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-03.jpg` } },
+    { id: 'sky04', name: 'Sky 4', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-04.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-04.jpg` } },
+    { id: 'sky05', name: 'Sky 5', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-05.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-05.jpg` } },
+    { id: 'sky06', name: 'Sky 6', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-06.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-06.jpg` } },
+    { id: 'sky07', name: 'Sky 7', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-07.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-07.jpg` } },
+    { id: 'sky08', name: 'Sky 8', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-08.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-08.jpg` } },
+    { id: 'sky09', name: 'Sky 9', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-09.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-09.jpg` } },
+    { id: 'sky10', name: 'Sky 10', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-10.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-10.jpg` } },
+    { id: 'sky11', name: 'Sky 11', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-11.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-11.jpg` } },
+    { id: 'sky12', name: 'Sky 12', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-12.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-12.jpg` } },
+    { id: 'sky13', name: 'Sky 13', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-13.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-13.jpg` } },
+    { id: 'sky14', name: 'Sky 14', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-14.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-14.jpg` } },
+    { id: 'sky15', name: 'Sky 15', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-15.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-15.jpg` } },
+    { id: 'sky16', name: 'Sky 16', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-16.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-16.jpg` } },
+    { id: 'sky17', name: 'Sky 17', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-17.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-17.jpg` } },
+    { id: 'sky18', name: 'Sky 18', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-18.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-18.jpg` } },
+    { id: 'sky19', name: 'Sky 19', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-19.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-19.jpg` } },
+    { id: 'sky20', name: 'Sky 20', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-20.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-20.jpg` } },
+    { id: 'sky21', name: 'Sky 21', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-21.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-21.jpg` } },
+    { id: 'sky22', name: 'Sky 22', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-22.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-22.jpg` } },
+    { id: 'sky23', name: 'Sky 23', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-23.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-23.jpg` } },
+    { id: 'sky24', name: 'Sky 24', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-24.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-24.jpg` } },
+    { id: 'sky25', name: 'Sky 25', thumbnail: { uri: `${R2_IMAGE_BASE}/thumbs/pure-sky-25.jpg` }, source: { uri: `${R2_IMAGE_BASE}/pure-sky-25.jpg` } },
 ];
 
 class PortalBackgroundPanel extends Component {

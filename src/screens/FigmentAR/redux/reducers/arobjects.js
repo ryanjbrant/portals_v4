@@ -71,11 +71,15 @@ function changeLoadState(state = {}, action) {
 function changePortalPhoto(state = {}, action) {
   switch (action.type) {
     case 'CHANGE_PORTAL_PHOTO':
-      if (state[action.uuid] != null || state[action.uuid] != undefined) {
-        var model = state[action.uuid];
-        var newModel = { ...model };
-        newModel.portal360Image = { ...action.photoSource };
-        state[action.uuid] = newModel;
+      if (state[action.uuid] != null && state[action.uuid] != undefined) {
+        // Return a NEW object to trigger Redux re-render (immutable update)
+        return {
+          ...state,
+          [action.uuid]: {
+            ...state[action.uuid],
+            portal360Image: { ...action.photoSource }
+          }
+        };
       }
       return state;
     default:
@@ -111,9 +115,42 @@ function modifyEffectSelection(state = [], action) {
   }
 }
 
+// Creates a new custom/remote model item
+function newCustomModelItem(modelData) {
+  // Derive ViroReact type from file extension
+  const ext = modelData.extension?.toLowerCase() || 'glb';
+  let viroType = 'GLB'; // default
+  if (ext === 'vrx') viroType = 'VRX';
+  else if (ext === 'obj') viroType = 'OBJ';
+  else if (ext === 'gltf' || ext === 'glb') viroType = 'GLB';
+
+  return {
+    uuid: uuidv4(),
+    selected: false,
+    loading: LoadingConstants.NONE, // Let Viro handle loading state
+    index: -1, // Indicates custom model
+    // Store source directly
+    source: { uri: modelData.uri },
+    type: viroType,
+    name: modelData.name,
+    scale: [1.0, 1.0, 1.0], // Larger default scale for custom models
+    position: [0, 0, -1], // Will be updated by hit test
+    resources: [], // Remote GLB is self-contained
+    materials: null, // Let GLB use its own materials/textures
+    animation: { name: "02", delay: 0, loop: true, run: true },
+  };
+}
+
 // Add model at the given index to the AR Scene
 function addModelItem(state = {}, action) {
   var model = newModelItem(action.index);
+  state[model.uuid] = model;
+  return state;
+}
+
+// Add custom model to the AR Scene
+function addCustomModelItem(state = {}, action) {
+  var model = newCustomModelItem(action.modelData);
   state[model.uuid] = model;
   return state;
 }
@@ -178,6 +215,11 @@ function arobjects(state = initialState, action) {
       return {
         ...state,
         modelItems: { ...addModelItem(state.modelItems, action) },
+      }
+    case 'ADD_CUSTOM_MODEL':
+      return {
+        ...state,
+        modelItems: { ...addCustomModelItem(state.modelItems, action) },
       }
     case 'REMOVE_MODEL':
       return {
