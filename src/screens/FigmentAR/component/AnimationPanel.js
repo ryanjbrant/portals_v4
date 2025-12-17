@@ -216,6 +216,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 10,
+        zIndex: 1000,
     },
     handleBarContainer: { alignItems: 'center', paddingTop: 12, paddingBottom: 8 },
     handleBar: {

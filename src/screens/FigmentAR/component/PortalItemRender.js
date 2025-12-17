@@ -207,7 +207,7 @@ var PortalItemRender = createReactClass({
     if (this._is360Photo(portalSource, portalSource.width, portalSource.height)) {
       if (portalSource.type == PSConstants.PS_TYPE_360_VIDEO) {
         return (
-          <Viro360Video key="background_portal_video" muted={!this.state.insidePortal} volume={1.0} source={portalSource.source} loop={true} />
+          <Viro360Video key="background_portal_video" muted={!this.state.insidePortal} volume={1.0} source={portalSource.source} loop={true} paused={false} />
         );
       } else {
         return (

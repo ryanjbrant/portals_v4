@@ -25,6 +25,7 @@ import FigmentListView from './component/FigmentListView';
 import PhotosSelector from './component/PhotosSelector';
 import ARInitializationUI from './component/ARInitializationUI.js';
 import AnimationPanel from './component/AnimationPanel';
+import PortalBackgroundPanel from './component/PortalBackgroundPanel';
 import * as ModelData from './model/ModelItems';
 import * as PortalData from './model/PortalItems';
 import * as LightingData from './model/LightingItems';
@@ -156,6 +157,7 @@ export class App extends Component {
       videoDuration: 0, // Video duration in seconds
       isMenuOpen: false, // Dropdown menu visibility
       showContextualMenu: false, // Contextual settings menu visibility
+      showPortalBackgroundPanel: false, // Portal background picker panel visibility
       objectAnimations: {}, // { [uuid]: { bounce: { active, intensity }, rotate: { active, intensity, axis }... } }
     };
 
@@ -455,6 +457,18 @@ export class App extends Component {
           onUpdateAnimation={(type, params, active) => this._onUpdateObjectAnimation(type, params, active)}
         />
 
+        {/* Portal Background Panel - show when portal background picker is opened */}
+        <PortalBackgroundPanel
+          visible={this.state.showPortalBackgroundPanel}
+          onClose={() => this.setState({ showPortalBackgroundPanel: false })}
+          onSelectBackground={(photoSource) => {
+            console.log('[App] Portal background selected:', photoSource);
+            if (this.state.lastSelectedPortalUUID !== -1) {
+              this.props.dispatchChangePortalPhoto(this.state.lastSelectedPortalUUID, photoSource);
+            }
+          }}
+        />
+
         {/* AR Initialization animation - hide during recording */}
         {!isRecordingInProgress && (
           <ARInitializationUI style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }} />
@@ -582,13 +596,13 @@ export class App extends Component {
     return (
       <View style={{ flex: 1, position: 'absolute', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'flex-end', top: '25%', right: 10, width: 80, height: 220 }}>
         <View style={{ flex: .45, flexDirection: 'column', justifyContent: 'space-between', alignItems: 'flex-end', right: 0, top: 20, width: 80 }}>
-          {renderIf(this.props.currentItemSelectionIndex != -1 && (this.state.showPhotosSelector == false),
+          {renderIf(this.props.currentItemSelectionIndex != -1 && (!this.state.showPortalBackgroundPanel),
             <ContextMenuButton onPress={this._onContextMenuRemoveButtonPressed}
               stateImageArray={[require("./res/btn_trash.png")]}
               style={localStyles.previewScreenButtons} />
           )}
 
-          {renderIf(this.props.currentItemSelectionIndex != -1 && (this.state.showPhotosSelector == false),
+          {renderIf(this.props.currentItemSelectionIndex != -1 && (!this.state.showPortalBackgroundPanel),
             <ContextMenuButton onPress={this._onContextClearAll}
               stateImageArray={[require("./res/btn_clear_all.png")]}
               style={localStyles.previewScreenButtons} />
@@ -596,8 +610,8 @@ export class App extends Component {
 
         </View>
         <View style={{ flex: .2, flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'flex-end', width: 80 }}>
-          {renderIf(this.props.currentItemSelectionIndex != -1 && (this.props.currentSelectedItemType == UIConstants.LIST_MODE_PORTAL) && (this.state.showPhotosSelector == false),
-            <ContextMenuButton onPress={() => { this.setState({ showPhotosSelector: true, lastSelectedPortalUUID: this.props.currentItemSelectionIndex }) }}
+          {renderIf(this.props.currentItemSelectionIndex != -1 && (this.props.currentSelectedItemType == UIConstants.LIST_MODE_PORTAL) && (this.state.showPortalBackgroundPanel == false),
+            <ContextMenuButton onPress={() => { this.setState({ showPortalBackgroundPanel: true, lastSelectedPortalUUID: this.props.currentItemSelectionIndex }) }}
               stateImageArray={[require("./res/btn_add_pic_v2.png")]}
               style={localStyles.previewScreenButtonsAddPic} />
           )}
@@ -1243,7 +1257,7 @@ export class App extends Component {
     const isLighting = this.props.listMode === UIConstants.LIST_MODE_LIGHT;
 
     // Check if we should show the non-recording UI (Picker + Toolbar)
-    const showSelectionUI = !this.state.isActivelyRecording && !this.state.showConfirmButtons && !this.state.showPhotosSelector && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN;
+    const showSelectionUI = !this.state.isActivelyRecording && !this.state.showConfirmButtons && !this.state.showPhotosSelector && !this.state.showPortalBackgroundPanel && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN;
 
     const shouldShowPicker = showSelectionUI && (isPortals || isEffects || isModels || isLighting);
 
