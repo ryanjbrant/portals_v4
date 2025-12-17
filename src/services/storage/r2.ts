@@ -9,6 +9,9 @@ const R2_ACCESS_KEY_ID = "5489d4f31b46f984df98234c0d04a6d6";
 const R2_SECRET_ACCESS_KEY = "25b8ad2d2f30905ba1f34ce1936b8cedfe6cda02e0381b9544d85dad33a53b16";
 const R2_BUCKET_NAME = "portals";
 
+// Public URL base for R2 assets (via Cloudflare CDN)
+export const R2_PUBLIC_BASE = "https://pub-c81ca5d39f3e4015942414e4140ddfe2.r2.dev";
+
 // Initialize S3 Client targeting Cloudflare R2
 export const r2Client = new S3Client({
     region: "auto",

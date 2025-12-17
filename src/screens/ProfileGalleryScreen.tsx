@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, FlatList, Image, Dimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, Dimensions, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme/theme';
@@ -128,29 +129,26 @@ export const ProfileGalleryScreen = () => {
                     sceneData = loadedDraft?.sceneData;
                     setIsLoadingDraft(false);
                 } catch (e) {
+                    console.error('[ProfileGallery] Failed to load draft:', e);
                     Alert.alert("Error", "Could not load draft.");
                     setIsLoadingDraft(false);
                     return;
                 }
             }
 
-            // Route based on sceneType
-            const sceneType = sceneData?.sceneType;
-            if (sceneType === 'figment_ar') {
-                // Navigate directly to Figment (now in MainStack)
-                navigation.navigate('Figment', {
-                    draftData: sceneData,
-                    draftTitle: item.title || "Untitled",
-                    draftId: item.id
-                });
-            } else {
-                // Default to Composer (Three.js WebView)
-                navigation.navigate('ComposerEditor', {
-                    draftData: sceneData,
-                    draftTitle: item.title || "Untitled",
-                    draftId: item.id
-                });
+            // Safety check - don't navigate with undefined sceneData
+            if (!sceneData) {
+                console.warn('[ProfileGallery] No sceneData available for draft:', item.id);
+                // Navigate anyway but with empty objects array to prevent crash
+                sceneData = { objects: [], sceneType: 'figment_ar' };
             }
+
+            // All drafts now load into Figment AR editor
+            navigation.navigate('Figment', {
+                draftData: sceneData,
+                draftTitle: item.title || "Untitled",
+                draftId: item.id
+            });
         } else {
             navigation.navigate('PostFeed', {
                 posts: data,

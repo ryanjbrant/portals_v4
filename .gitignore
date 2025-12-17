@@ -41,3 +41,4 @@ yarn-error.*
 # generated native folders
 # /ios
 /android
+src/screens/FigmentAR/res/360/*.mp4

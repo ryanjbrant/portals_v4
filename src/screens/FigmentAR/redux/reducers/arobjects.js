@@ -259,28 +259,51 @@ function arobjects(state = initialState, action) {
         mediaItems: hideAllItems(state.mediaItems),
       }
     case 'LOAD_SCENE':
-      // Rebuild state from saved draft data
-      // action.sceneData contains { objects: [...], effects, hdri, etc }
+      // Rebuild state from saved scene manifest
+      // action.sceneData contains { objects: [...], postProcessEffects, hdriBackground }
       const loadedModels = {};
       const loadedPortals = {};
       const loadedMedia = {};
 
       if (action.sceneData?.objects) {
         action.sceneData.objects.forEach(obj => {
+          // Skip objects without required fields
+          if (!obj || !obj.id || !obj.type) {
+            console.warn('[LOAD_SCENE] Skipping invalid object:', obj);
+            return;
+          }
+
           if (obj.type === 'viro_model') {
+            const isCustom = obj.modelIndex < 0 || obj.uri;
             loadedModels[obj.id] = {
               uuid: obj.id,
-              selected: obj.selected || false,
+              selected: false,
               loading: LoadingConstants.LOADED,
-              index: obj.modelIndex,
+              index: isCustom ? -1 : obj.modelIndex,
+              // Custom model properties
+              source: isCustom ? { uri: obj.uri } : undefined,
+              type: obj.modelType || 'GLB',
+              name: obj.name,
+              // Transform properties
+              position: obj.position || [0, 0, -1],
+              rotation: obj.rotation || [0, 0, 0],
+              scale: obj.scale || [1, 1, 1],
+              // Animation
+              animation: obj.animation || { name: "02", delay: 0, loop: true, run: true },
+              materials: obj.materials,
+              physics: obj.physics,
+              resources: [],
             };
           } else if (obj.type === 'viro_portal') {
             loadedPortals[obj.id] = {
               uuid: obj.id,
-              selected: obj.selected || false,
+              selected: false,
               loading: LoadingConstants.LOADED,
               index: obj.portalIndex,
               portal360Image: obj.portal360Image,
+              position: obj.position || [0, 0, -2],
+              rotation: obj.rotation || [0, 0, 0],
+              scale: obj.scale || [1, 1, 1],
             };
           } else if (obj.type === 'image' || obj.type === 'video') {
             loadedMedia[obj.id] = {
@@ -288,11 +311,14 @@ function arobjects(state = initialState, action) {
               selected: false,
               loading: LoadingConstants.LOADED,
               source: { uri: obj.uri },
-              type: obj.type.toUpperCase(),
+              type: (obj.type || 'image').toUpperCase(),
               position: obj.position || [0, 0, -1],
+              rotation: obj.rotation || [0, 0, 0],
               scale: obj.scale || [1, 1, 1],
               width: obj.width || 1,
               height: obj.height || 1,
+              autoplay: obj.autoplay ?? true,
+              loop: obj.loop ?? true,
             };
           }
         });
@@ -326,6 +352,38 @@ function arobjects(state = initialState, action) {
         ...state,
         effectItems: updatedEffects.slice(0),
         postProcessEffects: updatedEffects[action.index].postProcessEffects,
+      }
+    case 'UPDATE_MODEL_TRANSFORMS':
+      // Sync component transforms back to Redux for serialization
+      const modelToUpdate = state.modelItems[action.uuid];
+      if (!modelToUpdate) return state;
+      return {
+        ...state,
+        modelItems: {
+          ...state.modelItems,
+          [action.uuid]: {
+            ...modelToUpdate,
+            position: action.position || modelToUpdate.position,
+            rotation: action.rotation || modelToUpdate.rotation,
+            scale: action.scale || modelToUpdate.scale,
+          }
+        }
+      }
+    case 'UPDATE_MEDIA_TRANSFORMS':
+      // Sync media component transforms back to Redux
+      const mediaToUpdate = state.mediaItems[action.uuid];
+      if (!mediaToUpdate) return state;
+      return {
+        ...state,
+        mediaItems: {
+          ...state.mediaItems,
+          [action.uuid]: {
+            ...mediaToUpdate,
+            position: action.position || mediaToUpdate.position,
+            rotation: action.rotation || mediaToUpdate.rotation,
+            scale: action.scale || mediaToUpdate.scale,
+          }
+        }
       }
     default:
       return state;

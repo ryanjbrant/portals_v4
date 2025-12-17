@@ -170,6 +170,7 @@ export class figment extends Component {
               hitTestMethod={root._performARHitTest}
               onLoadCallback={root._onLoadCallback}
               onClickStateCallback={root._onModelsClickStateCallback}
+              onTransformUpdate={root.props.arSceneNavigator?.viroAppProps?.onTransformUpdate}
               bitMask={Math.pow(2, objBitMask)}
               isHidden={modelItems[currentKey].hidden === true}
               objectAnimations={modelAnimations} />
@@ -192,6 +193,7 @@ export class figment extends Component {
           <MediaItemRender
             key={mediaItem.uuid}
             mediaItem={mediaItem}
+            onTransformUpdate={root.props.arSceneNavigator?.viroAppProps?.onMediaTransformUpdate}
           // Add callbacks if needed, e.g. for selection
           />
         ));

@@ -19,6 +19,7 @@ import {
   ViroImage,
   ViroParticleEmitter,
   polarToCartesian,
+  ViroMaterials,
 } from '@reactvision/react-viro';
 
 /**
@@ -458,4 +459,40 @@ function getFireWorkGravity(position, color, delay, index) {
       }}
     />
   ));
+}
+
+// Define grass material
+ViroMaterials.createMaterials({
+  grass_blade: {
+    diffuseTexture: require("../res/particle-grass.png"),
+    lightingModel: "Constant", // No lighting needed for grass usually, or Lambert
+    blendMode: "Alpha", // Ensure transparency works
+    bloomThreshold: 0.5,
+  },
+});
+
+export function getGrass() {
+  var views = [];
+  const NUM_GRASS = 500; // Increased density
+  const RANGE = 3.0; // +/- 3 meters (6x6m area)
+
+  for (let i = 0; i < NUM_GRASS; i++) {
+    const x = (Math.random() * RANGE * 2) - RANGE;
+    const z = (Math.random() * RANGE * 2) - RANGE;
+    // Random height variation for natural look
+    const scale = 0.1 + (Math.random() * 0.1);
+
+    views.push((
+      <ViroImage
+        key={`grass_${i}`}
+        height={scale}
+        width={scale}
+        position={[x, -0.5, z]} // User requested -0.5 Y
+        rotation={[0, Math.random() * 360, 0]} // Random Y rotation
+        materials={["grass_blade"]}
+        transformBehaviors={[]} // Explicitly NO billboarding
+      />
+    ));
+  }
+  return views;
 }

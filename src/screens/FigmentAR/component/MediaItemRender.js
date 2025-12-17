@@ -18,14 +18,20 @@ var createReactClass = require('create-react-class');
 var MediaItemRender = createReactClass({
     propTypes: {
         mediaIDProps: PropTypes.any,
+        mediaItem: PropTypes.any,
         onClickStateCallback: PropTypes.func,
+        onTransformUpdate: PropTypes.func, // Callback to sync transforms back to Redux
     },
 
     getInitialState() {
+        // Use saved values from mediaItem if loading from draft
+        const mediaItem = this.props.mediaItem || {};
+        const isLoadedFromDraft = mediaItem.loading === 'LOADED';
+
         return {
-            scale: [1, 1, 1],
-            rotation: [0, 0, 0],
-            position: [0, 0, -1],
+            scale: isLoadedFromDraft && mediaItem.scale ? mediaItem.scale : [1, 1, 1],
+            rotation: isLoadedFromDraft && mediaItem.rotation ? mediaItem.rotation : [0, 0, 0],
+            position: isLoadedFromDraft && mediaItem.position ? mediaItem.position : [0, 0, -1],
             nodeIsVisible: true,
         }
     },
@@ -33,16 +39,6 @@ var MediaItemRender = createReactClass({
     componentDidMount() {
         console.log('[MediaItemRender] componentDidMount:', this.props.mediaItem.uuid);
         this._isMounted = true;
-        // Logic to initialize position/rotation if needed
-        // Currently using defaults from Redux store which are passed via props or state
-
-        // Initialize with props if available
-        if (this.props.mediaItem) {
-            this.setState({
-                scale: this.props.mediaItem.scale || [1, 1, 1],
-                position: this.props.mediaItem.position || [0, 0, -1],
-            });
-        }
 
         // CRITICAL: Force re-render after 100ms to fix Viro batching visibility issue
         setTimeout(() => {
@@ -56,6 +52,17 @@ var MediaItemRender = createReactClass({
         this._isMounted = false;
     },
 
+    _syncToRedux() {
+        // Sync transforms back to Redux for serialization
+        if (this.props.onTransformUpdate && this.props.mediaItem) {
+            this.props.onTransformUpdate(this.props.mediaItem.uuid, {
+                scale: this.state.scale,
+                position: this.state.position,
+                rotation: this.state.rotation,
+            });
+        }
+    },
+
     _onPinch(pinchState, scaleFactor, source) {
         if (pinchState === 2) {
             if (!this._initialPinchScale) this._initialPinchScale = this.state.scale;
@@ -64,25 +71,27 @@ var MediaItemRender = createReactClass({
         }
         if (pinchState === 3) {
             this._initialPinchScale = null;
+            this._syncToRedux(); // Sync on gesture end
         }
     },
 
     _onRotate(rotateState, rotationFactor, source) {
         if (rotateState === 2) {
-            // Simple rotation implementation
-            // In a real app we'd accumulate rotation. 
-            // For now, let's just use the factor relative to 0 or implement accumulation if needed.
-            // ARComposer uses accumulation.
             this.setState(prevState => ({
                 rotation: [prevState.rotation[0], prevState.rotation[1] - rotationFactor, prevState.rotation[2]]
             }));
+        }
+        if (rotateState === 3) {
+            this._syncToRedux(); // Sync on gesture end
         }
     },
 
     _onDrag(dragState, position, source) {
         if (dragState === 2) { // Moving
-            // Update visual position
-            // this.setState({ position: position }); // ViroNode updates automatically, but we can sync state
+            this.setState({ position: position });
+        }
+        if (dragState === 3) { // Drag ended
+            this._syncToRedux(); // Sync on gesture end
         }
     },
 

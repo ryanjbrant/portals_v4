@@ -32,7 +32,7 @@ For Expo projects, the plugin handles all native configuration automatically. Sc
       [
         "@reactvision/react-viro",
         {
-          "googleCloudApiKey": "AQ.Ab8RN6KGfX_x0kf5ob_SIXlrmk_3DqGQwr5kZUBFewMjsnPpaQ",
+          "googleCloudApiKey": "YOUR_GOOGLE_CLOUD_API_KEY_HERE",
           "cloudAnchorProvider": "arcore",
           "android": {
             "xRMode": ["AR"]

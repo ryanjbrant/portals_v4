@@ -33,6 +33,7 @@ import * as LightingData from './model/LightingItems';
 import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, addCustomModel, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme, ARTrackingInitialized, addMedia, setSceneTitle, loadScene } from './redux/actions';
 import { serializeFigmentScene } from './helpers/FigmentSceneSerializer';
 import { useAppStore } from '../../store';
+import { saveScene as saveSceneToCloud, loadScene as loadSceneFromCloud } from '../../services/scene';
 
 const kObjSelectMode = 1;
 const kPortalSelectMode = 2;
@@ -166,13 +167,27 @@ export class App extends Component {
 
     this._onBackgroundTap = this._onBackgroundTap.bind(this);
     this._onUpdateObjectAnimation = this._onUpdateObjectAnimation.bind(this);
+    this._onTransformUpdate = this._onTransformUpdate.bind(this);
+    this._onMediaTransformUpdate = this._onMediaTransformUpdate.bind(this);
     // Update viroAppProps to include onBackgroundTap
     this.state.viroAppProps = {
       loadingObjectCallback: this._onListItemLoaded,
       clickStateCallback: this._onItemClickedInScene,
       onBackgroundTap: this._onBackgroundTap,
       onUpdateAnimation: this._onUpdateObjectAnimation,
+      onTransformUpdate: this._onTransformUpdate,
+      onMediaTransformUpdate: this._onMediaTransformUpdate,
     };
+  }
+
+  _onTransformUpdate(uuid, transforms) {
+    console.log('[App] Model transform update for', uuid, transforms);
+    this.props.dispatchUpdateModelTransforms(uuid, transforms);
+  }
+
+  _onMediaTransformUpdate(uuid, transforms) {
+    console.log('[App] Media transform update for', uuid, transforms);
+    this.props.dispatchUpdateMediaTransforms(uuid, transforms);
   }
 
   componentDidMount() {
@@ -181,10 +196,14 @@ export class App extends Component {
     const draftData = route?.params?.draftData;
     const draftTitle = route?.params?.draftTitle;
 
-    if (draftData) {
+    if (draftData && typeof draftData === 'object') {
       console.log('[App] Loading draft scene:', draftTitle);
-      // Load the scene data into Redux
-      this.props.dispatchLoadScene(draftData);
+      // Validate draftData has expected structure
+      if (draftData.objects && Array.isArray(draftData.objects)) {
+        this.props.dispatchLoadScene(draftData);
+      } else {
+        console.warn('[App] Invalid draftData structure, skipping load:', draftData);
+      }
 
       // Set the scene title if provided
       if (draftTitle) {
@@ -472,6 +491,23 @@ export class App extends Component {
           visible={this.state.showModelLibraryPanel}
           onClose={() => this.setState({ showModelLibraryPanel: false })}
           onSelectModel={this._onListPressed}
+          onSelectMedia={(item, mediaType) => {
+            console.log('[App] onSelectMedia called:', mediaType, item.name);
+            // Add media to AR scene
+            if (mediaType === 'video' || mediaType === 'images') {
+              const source = { uri: item.url };
+              const type = mediaType === 'video' ? 'VIDEO' : 'IMAGE';
+              // Use stored dimensions to preserve aspect ratio
+              // Width is normalized to 1, height is computed from original ratio
+              const w = item.width || 1;
+              const h = item.height || 1;
+              const aspectHeight = h / w;
+              this.props.dispatchAddMedia(source, type, 1, aspectHeight);
+            } else if (mediaType === 'audio') {
+              // Audio handling could be different (background audio, spatial audio, etc.)
+              console.log('[App] Audio selected - TODO: implement audio playback');
+            }
+          }}
         />
 
         {/* AR Initialization animation - hide during recording */}
@@ -1302,10 +1338,10 @@ export class App extends Component {
             paddingVertical: 10,
             borderRadius: 20
           }}>
-            {/* Objects Button - Modified to show ModelLibraryPanel */}
+            {/* Objects Button - Horizontal slider (like Portals/Effects) */}
             <TouchableOpacity
-              onPress={() => this.setState({ showModelLibraryPanel: true })}
-              style={{ alignItems: 'center', marginHorizontal: 12, opacity: this.state.showModelLibraryPanel ? 1 : 0.6 }}
+              onPress={() => toggleMode(UIConstants.LIST_MODE_MODEL, UIConstants.LIST_TITLE_MODELS)}
+              style={{ alignItems: 'center', marginHorizontal: 12, opacity: this.props.listMode === UIConstants.LIST_MODE_MODEL ? 1 : 0.6 }}
             >
               <Ionicons name="cube-outline" size={32} color="white" style={{ marginBottom: 4 }} />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Objects</Text>
@@ -1414,11 +1450,11 @@ export class App extends Component {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              key="filters_button"
-              onPress={() => toggleMode(UIConstants.LIST_MODE_EFFECT, UIConstants.LIST_TITLE_EFFECTS)}
+              key="library_button"
+              onPress={() => this.setState({ showModelLibraryPanel: true })}
               style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', marginLeft: 20 }}
             >
-              <Ionicons name="color-wand-outline" size={22} color="white" />
+              <Ionicons name="albums-outline" size={22} color="white" />
             </TouchableOpacity>
           )}
         </View>
@@ -2004,6 +2040,20 @@ const mapDispatchToProps = (dispatch) => {
     dispatchSetSceneTitle: (title) => dispatch(setSceneTitle(title)),
     dispatchLoadScene: (sceneData) => dispatch(loadScene(sceneData)),
     dispatchAddCustomModel: (modelData) => dispatch(addCustomModel(modelData)),
+    dispatchUpdateModelTransforms: (uuid, transforms) => dispatch({
+      type: 'UPDATE_MODEL_TRANSFORMS',
+      uuid,
+      position: transforms.position,
+      rotation: transforms.rotation,
+      scale: transforms.scale,
+    }),
+    dispatchUpdateMediaTransforms: (uuid, transforms) => dispatch({
+      type: 'UPDATE_MEDIA_TRANSFORMS',
+      uuid,
+      position: transforms.position,
+      rotation: transforms.rotation,
+      scale: transforms.scale,
+    }),
   }
 }
 

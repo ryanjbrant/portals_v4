@@ -223,9 +223,17 @@ export const ComposerEntryScreen = () => {
             }
         }
 
-        navigation.navigate('ComposerEditor', {
+        // Safety check - provide fallback empty scene if no data
+        if (!draftData) {
+            console.warn('[ComposerEntry] No sceneData for draft, using empty scene');
+            draftData = { objects: [], sceneType: 'figment_ar' };
+        }
+
+        // Navigate to Figment AR editor with draft data
+        navigation.navigate('Figment', {
             draftData: draftData,
-            draftTitle: item.title || "Untitled"
+            draftTitle: item.title || "Untitled",
+            draftId: item.id
         });
     };
 

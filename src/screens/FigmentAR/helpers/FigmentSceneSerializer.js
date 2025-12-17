@@ -15,13 +15,23 @@ export function serializeFigmentScene(arobjects, ui) {
     if (arobjects.modelItems) {
         Object.values(arobjects.modelItems).forEach((item) => {
             if (!item.hidden) {
-                objects.push({
+                const obj = {
                     id: item.uuid,
                     type: 'viro_model',
                     modelIndex: item.index,
-                    selected: item.selected,
-                    loading: item.loading,
-                });
+                    modelType: item.type || 'GLB',
+                    position: item.position || [0, 0, -1],
+                    rotation: item.rotation || [0, 0, 0],
+                    scale: item.scale || [1, 1, 1],
+                };
+                // Only add optional fields if they have values (Firebase rejects undefined)
+                if (item.source?.uri) obj.uri = item.source.uri;
+                if (item.name) obj.name = item.name;
+                if (item.animation) obj.animation = item.animation;
+                if (item.materials) obj.materials = item.materials;
+                if (item.physics) obj.physics = item.physics;
+
+                objects.push(obj);
             }
         });
     }
@@ -35,6 +45,9 @@ export function serializeFigmentScene(arobjects, ui) {
                     type: 'viro_portal',
                     portalIndex: item.index,
                     portal360Image: item.portal360Image,
+                    position: item.position || [0, 0, -2],
+                    rotation: item.rotation || [0, 0, 0],
+                    scale: item.scale || [1, 1, 1],
                     selected: item.selected,
                     loading: item.loading,
                 });
@@ -50,8 +63,9 @@ export function serializeFigmentScene(arobjects, ui) {
                     id: item.uuid,
                     type: item.type === 'VIDEO' ? 'video' : 'image',
                     uri: item.source?.uri,
-                    position: item.position,
-                    scale: item.scale,
+                    position: item.position || [0, 0, -1],
+                    rotation: item.rotation || [0, 0, 0],
+                    scale: item.scale || [1, 1, 1],
                     width: item.width,
                     height: item.height,
                 });

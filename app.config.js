@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 export default {
     expo: {
-        name: "Portals_Raw",
+        name: "Portals",
         slug: "Portals_Raw",
         scheme: "portals",
         version: "1.0.0",
@@ -48,7 +48,7 @@ export default {
             [
                 "@reactvision/react-viro",
                 {
-                    "googleCloudApiKey": "AQ.Ab8RN6KGfX_x0kf5ob_SIXlrmk_3DqGQwr5kZUBFewMjsnPpaQ",
+                    "googleCloudApiKey": process.env.EXPO_PUBLIC_GOOGLE_CLOUD_API_KEY,
                     "cloudAnchorProvider": "arcore",
                     "android": {
                         "xRMode": ["AR"]

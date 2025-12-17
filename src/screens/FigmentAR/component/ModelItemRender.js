@@ -94,16 +94,45 @@ var ModelItemRender = createReactClass({
     // A callback method thats provided here, gets triggered when the model loads that resolves to the correct
     // position and orientation for the model to be placed at initially
     hitTestMethod: PropTypes.func,
+    // Callback to sync transforms back to Redux
+    onTransformUpdate: PropTypes.func,
   },
 
   getInitialState() {
     // Get base scale from model data and multiply by 2.5 for 0.5 default size
     const isCustom = this.props.modelIDProps.index === -1;
     const modelItem = isCustom ? this.props.modelIDProps : ModelData.getModelArray()[this.props.modelIDProps.index];
+    const isLoadedFromDraft = this.props.modelIDProps.loading === 'LOADED';
 
-    // Default scale for custom is usually smaller or defined in reducer
-    const baseScale = modelItem.scale || [0.2, 0.2, 0.2];
-    const scaledUp = baseScale.map(s => s * 2.5);
+    // Use saved values if loading from draft, otherwise use defaults
+    let initialScale;
+    let initialPosition;
+    let initialRotation;
+
+    if (isLoadedFromDraft && this.props.modelIDProps.scale) {
+      // Use the saved scale from draft
+      initialScale = this.props.modelIDProps.scale;
+    } else {
+      // Default scale for new models
+      const baseScale = modelItem.scale || [0.2, 0.2, 0.2];
+      initialScale = baseScale.map(s => s * 2.5);
+    }
+
+    if (isLoadedFromDraft && this.props.modelIDProps.position) {
+      // Use the saved position from draft
+      initialPosition = this.props.modelIDProps.position;
+    } else {
+      // Start high in sky to wait for hitTest placement
+      initialPosition = [0, 10, 1];
+    }
+
+    if (isLoadedFromDraft && this.props.modelIDProps.rotation) {
+      // Use the saved rotation from draft
+      initialRotation = this.props.modelIDProps.rotation;
+    } else {
+      initialRotation = [0, 0, 0];
+    }
+
     // Generate a random bright color for this primitive
     const randomColor = getRandomBrightColor();
     const materialName = `dynamicColor_${this.props.modelIDProps.uuid}`;
@@ -124,13 +153,11 @@ var ModelItemRender = createReactClass({
     }
 
     return {
-      scale: scaledUp,
-      rotation: [0, 0, 0],
+      scale: initialScale,
+      rotation: initialRotation,
       nodeIsVisible: true,
-      // If loaded from draft (loading === 'LOADED'), start visible in front of user
-      // Otherwise start high in sky to wait for hitTest placement
-      position: this.props.modelIDProps.loading === 'LOADED' ? [0, 0, -1.5] : [0, 10, 1],
-      shouldBillboard: this.props.modelIDProps.loading !== 'LOADED', // Don't billboard if loading from draft
+      position: initialPosition,
+      shouldBillboard: !isLoadedFromDraft, // Don't billboard if loading from draft
       runAnimation: true,
       showParticles: true,
       itemClickedDown: false,
@@ -479,10 +506,19 @@ var ModelItemRender = createReactClass({
       return;
     }
 
-    // State 3: Pinch Ended - Cleanup
+    // State 3: Pinch Ended - Cleanup and sync to Redux
     if (pinchState === 3) {
       // No scale update here - state is already up to date from the last State 2 event.
       // This prevents the "snap" caused by re-applying logic on release.
+
+      // Sync the final scale back to Redux for serialization
+      if (this.props.onTransformUpdate) {
+        this.props.onTransformUpdate(this.props.modelIDProps.uuid, {
+          scale: this.state.scale,
+          position: this.state.position,
+          rotation: this.state.rotation,
+        });
+      }
 
       this._initialPinchScale = null;
       this.props.onClickStateCallback(this.props.modelIDProps.uuid, pinchState, UIConstants.LIST_MODE_MODEL);
@@ -511,7 +547,9 @@ var ModelItemRender = createReactClass({
       this.props.hitTestMethod(this._onARHitTestResults);
 
       // Auto-scale custom models to fit ~60% of viewport
-      if (this.props.modelIDProps.index === -1) {
+      // BUT skip for draft-loaded models to preserve saved scale
+      const isLoadedFromDraft = this.props.modelIDProps.loading === 'LOADED';
+      if (this.props.modelIDProps.index === -1 && !isLoadedFromDraft) {
         this._autoScaleModel();
       }
     };
