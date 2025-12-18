@@ -1410,15 +1410,6 @@ export class App extends Component {
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Portals</Text>
             </TouchableOpacity>
 
-            {/* Media Button */}
-            <TouchableOpacity
-              onPress={this._onMediaButtonPress}
-              style={{ alignItems: 'center', marginHorizontal: 12, opacity: 0.6 }}
-            >
-              <Ionicons name="images-outline" size={32} color="white" style={{ marginBottom: 4 }} />
-              <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Media</Text>
-            </TouchableOpacity>
-
             {/* Effects Button */}
             <TouchableOpacity
               onPress={() => toggleMode(UIConstants.LIST_MODE_EFFECT, UIConstants.LIST_TITLE_EFFECTS)}
