@@ -21,3 +21,5 @@ export const LIST_MODE_LIGHT = 'LIST_MODE_LIGHT';
 export const LIST_TITLE_LIGHT = 'Lighting';
 export const LIST_MODE_MEDIA = 'LIST_MODE_MEDIA';
 export const LIST_TITLE_MEDIA = 'Media';
+export const LIST_MODE_AUDIO = 'LIST_MODE_AUDIO';
+export const LIST_TITLE_AUDIO = 'Audio';

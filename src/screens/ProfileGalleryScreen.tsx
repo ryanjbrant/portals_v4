@@ -219,6 +219,9 @@ export const ProfileGalleryScreen = () => {
         );
 
         if (activeTab === 'drafts') {
+            // coverImage is now a proper R2 URL from fetchDrafts (mapped from previewPath)
+            const imageUrl = item.coverImage;
+
             return (
                 <TouchableOpacity
                     style={[styles.draftItem, isSelectionMode && { opacity: 0.9 }]}
@@ -226,15 +229,20 @@ export const ProfileGalleryScreen = () => {
                     onLongPress={() => isSelf && handleLongPress(item)}
                     delayLongPress={200}
                 >
-                    {item.coverImage ? (
-                        <Image source={{ uri: item.coverImage }} style={[styles.thumbnail, { borderRadius: 8 }]} />
+                    {imageUrl ? (
+                        <Image
+                            source={{ uri: imageUrl }}
+                            style={styles.draftImage}
+                            resizeMode="cover"
+                        />
                     ) : (
-                        <View style={styles.draftPreview}>
+                        <View style={styles.draftPlaceholder}>
                             <Ionicons name="construct-outline" size={32} color={theme.colors.textDim} />
                         </View>
                     )}
-                    <View style={styles.draftInfo}>
-                        <Text style={styles.draftTitle} numberOfLines={1}>{item.title || "Untitled Scene"}</Text>
+                    {/* Gradient overlay for text visibility */}
+                    <View style={styles.draftGradient}>
+                        <Text style={styles.draftTitle} numberOfLines={1}>{item.title || "Untitled"}</Text>
                         <Text style={styles.draftDate}>{new Date(item.updatedAt || Date.now()).toLocaleDateString()}</Text>
                     </View>
                     {isSelectionMode && <SelectionOverlay />}
@@ -413,31 +421,45 @@ const styles = StyleSheet.create({
     draftItem: {
         width: ITEM_WIDTH,
         height: ITEM_WIDTH * 1.4,
-        padding: 8,
-        justifyContent: 'center',
-        alignItems: 'center',
+        position: 'relative',
+        overflow: 'hidden',
         borderRightWidth: 1,
         borderBottomWidth: 1,
         borderColor: theme.colors.surfaceHighlight,
     },
-    draftPreview: {
-        flex: 1,
+    draftImage: {
+        width: '100%',
+        height: '100%',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+    },
+    draftPlaceholder: {
+        width: '100%',
+        height: '100%',
         backgroundColor: '#1E1E1E',
         justifyContent: 'center',
         alignItems: 'center',
-        borderTopLeftRadius: 8,
-        borderTopRightRadius: 8
+    },
+    draftGradient: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingTop: 30,
+        paddingBottom: 8,
+        paddingHorizontal: 8,
+        backgroundColor: 'rgba(0,0,0,0.7)',
     },
     draftTitle: {
         color: theme.colors.text,
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: '600',
-        textAlign: 'center',
-        marginBottom: 4,
+        marginBottom: 2,
     },
     draftDate: {
         color: theme.colors.textDim,
-        fontSize: 10,
+        fontSize: 9,
     },
     emptyContainer: {
         padding: 40,
@@ -468,5 +490,4 @@ const styles = StyleSheet.create({
         right: 6,
         zIndex: 10,
     },
-    draftInfo: { padding: 8 }
 });

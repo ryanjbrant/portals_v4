@@ -85,6 +85,33 @@ export function serializeFigmentScene(arobjects, ui) {
         });
     }
 
+    // Serialize audio items
+    if (arobjects.audioItems) {
+        Object.values(arobjects.audioItems).forEach((item) => {
+            if (!item.hidden) {
+                console.log('[Serializer] Saving audio item:', {
+                    id: item.uuid,
+                    audioType: item.type,
+                    position: item.position,
+                });
+                objects.push({
+                    id: item.uuid,
+                    type: 'audio',
+                    audioType: item.type, // 'sound', 'soundfield', 'spatial'
+                    uri: item.source?.uri,
+                    position: item.position || [0, 0, -2],
+                    rotation: item.rotation || [0, 0, 0],
+                    scale: item.scale || [1, 1, 1],
+                    volume: item.volume,
+                    loop: item.loop,
+                    minDistance: item.minDistance,
+                    maxDistance: item.maxDistance,
+                    rolloffModel: item.rolloffModel,
+                });
+            }
+        });
+    }
+
     // Build the scene object
     return {
         title: ui.sceneTitle || 'Untitled Scene',

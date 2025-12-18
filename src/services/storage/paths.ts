@@ -18,14 +18,24 @@ export function assetKey(kind: AssetKind, hash: string, ext: string): string {
     }
 }
 
-export function sceneJsonKey(sceneId: string): string {
-    return `scenes/${sceneId}/scene.json`;
+// Get current date as YYYY-MM-DD for path organization
+function getDatePath(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
-export function scenePreviewKey(sceneId: string): string {
-    return `scenes/${sceneId}/preview.jpg`;
+export function sceneJsonKey(sceneId: string, userId: string = 'anon'): string {
+    return `scenes/${userId}/${getDatePath()}/${sceneId}/scene.json`;
+}
+
+export function scenePreviewKey(sceneId: string, userId: string = 'anon'): string {
+    return `scenes/${userId}/${getDatePath()}/${sceneId}/preview.jpg`;
 }
 
 export function finalVideoKey(videoId: string): string {
     return `videos/${videoId}.mp4`;
 }
+

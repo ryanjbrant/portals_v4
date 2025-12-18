@@ -85,7 +85,8 @@ export const PostDetailsScreen = () => {
             if (draftPost.sceneData) {
                 // Use the scalable saver
                 const { saveSceneToStorage } = require('../services/sceneSaver');
-                sceneId = await saveSceneToStorage(draftPost.sceneData, coverImage, currentUser.id);
+                const { sceneId: savedSceneId } = await saveSceneToStorage(draftPost.sceneData, coverImage, currentUser.id);
+                sceneId = savedSceneId;
             }
 
             // Upload Media

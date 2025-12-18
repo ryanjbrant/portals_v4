@@ -237,21 +237,26 @@ export const ComposerEntryScreen = () => {
         });
     };
 
-    const renderDraft = ({ item }: { item: any }) => (
-        <TouchableOpacity
-            style={[styles.draftCard, isLoading && { opacity: 0.7 }]}
-            onPress={() => handleDraftPress(item)}
-            disabled={isLoading}
-        >
-            {item.coverImage ? (
-                <Image source={{ uri: item.coverImage }} style={[styles.draftPreview, { marginBottom: 8 }]} />
-            ) : (
-                <View style={styles.draftPreview} />
-            )}
-            <Text style={styles.draftTitle} numberOfLines={1}>{item.title || "Untitled"}</Text>
-            <Text style={styles.draftDate}>{new Date(item.updatedAt || Date.now()).toLocaleDateString()}</Text>
-        </TouchableOpacity>
-    );
+    const renderDraft = ({ item }: { item: any }) => {
+        // coverImage is now a proper R2 URL from fetchDrafts (mapped from previewPath)
+        const imageUrl = item.coverImage;
+
+        return (
+            <TouchableOpacity
+                style={[styles.draftCard, isLoading && { opacity: 0.7 }]}
+                onPress={() => handleDraftPress(item)}
+                disabled={isLoading}
+            >
+                {imageUrl ? (
+                    <Image source={{ uri: imageUrl }} style={[styles.draftPreview, { marginBottom: 8 }]} />
+                ) : (
+                    <View style={styles.draftPreview} />
+                )}
+                <Text style={styles.draftTitle} numberOfLines={1}>{item.title || "Untitled"}</Text>
+                <Text style={styles.draftDate}>{new Date(item.updatedAt || Date.now()).toLocaleDateString()}</Text>
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <View style={styles.container}>

@@ -33,6 +33,8 @@ import {
   ViroSpotLight,
   ViroAmbientLight,
   Viro360Video,
+  ViroSpinner,
+  ViroText,
 } from '@reactvision/react-viro';
 
 var createReactClass = require('create-react-class');
@@ -86,6 +88,7 @@ var PortalItemRender = createReactClass({
       shouldBillboard: !isLoadedFromDraft, // Don't billboard if loaded from draft
       insidePortal: false,
       itemClickedDown: false,
+      videoBuffering: false, // Track 360 video buffering state
     }
   },
 
@@ -242,7 +245,29 @@ var PortalItemRender = createReactClass({
       if (portalSource.type == PSConstants.PS_TYPE_360_VIDEO) {
         // Match reference implementation exactly
         return (
-          <Viro360Video key="background_portal_video" muted={!this.state.insidePortal} volume={1.0} source={portalSource.source} loop={true} />
+          <Viro360Video
+            key="background_portal_video"
+            muted={!this.state.insidePortal}
+            volume={1.0}
+            source={portalSource.source}
+            loop={true}
+            onBufferStart={() => {
+              console.log('[PortalItemRender] 360 Video buffering started');
+              this.setState({ videoBuffering: true });
+              // Notify parent App.js for UI overlay
+              if (this.props.onVideoBuffering) {
+                this.props.onVideoBuffering(true);
+              }
+            }}
+            onBufferEnd={() => {
+              console.log('[PortalItemRender] 360 Video buffering ended');
+              this.setState({ videoBuffering: false });
+              // Notify parent App.js for UI overlay
+              if (this.props.onVideoBuffering) {
+                this.props.onVideoBuffering(false);
+              }
+            }}
+          />
         );
       } else {
         console.log('[PortalItemRender] Rendering Viro360Image with source:', portalSource.source);

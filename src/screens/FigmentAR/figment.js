@@ -15,6 +15,7 @@ import ModelItemRender from './component/ModelItemRender';
 import PortalItemRender from './component/PortalItemRender';
 import EffectItemRender from './component/EffectItemRender';
 import MediaItemRender from './component/MediaItemRender';
+import AudioItemRender from './component/AudioItemRender';
 import { ARTrackingInitialized, switchListMode } from './redux/actions';
 
 
@@ -93,7 +94,9 @@ export class figment extends Component {
     let portals = this._renderPortals(this.props.portalItems, startingBitMask);
     // fetch effects
     let effects = this._renderEffects(this.props.effectItems);
-    console.log('[Figment] render end - Models count:', models.length);
+    // fetch audio items
+    let audioItems = this._renderAudioItems(this.props.audioItems);
+    console.log('[Figment] render end - Models count:', models.length, 'Audio count:', audioItems.length);
 
     return (
       <ViroARScene ref={component => { this.arSceneRef = component }} physicsWorld={{ gravity: [0, -9.81, 0] }} postProcessEffects={[this.props.postProcessEffects]}
@@ -140,6 +143,7 @@ export class figment extends Component {
         {models}
         {portals}
         {effects}
+        {audioItems}
       </ViroARScene>
     );
   }
@@ -222,6 +226,7 @@ export class figment extends Component {
               onLoadCallback={root._onLoadCallback}
               onClickStateCallback={root._onPortalsClickStateCallback}
               onTransformUpdate={root.props.arSceneNavigator?.viroAppProps?.onPortalTransformUpdate}
+              onVideoBuffering={root.props.arSceneNavigator?.viroAppProps?.onVideoBuffering}
               bitMask={Math.pow(2, portalBitMask)}
               isHidden={portalItems[currentKey].hidden === true} />
           );
@@ -243,6 +248,30 @@ export class figment extends Component {
         }
       }
     }
+  }
+
+  // Render audio items added to the scene.
+  // audioItems - list of audio added by user; comes from redux, see js/redux/reducers/arobjects.js
+  _renderAudioItems(audioItems) {
+    var renderedAudio = [];
+    if (audioItems) {
+      var root = this;
+      Object.keys(audioItems).forEach(function (currentKey) {
+        let audioItem = audioItems[currentKey];
+        if (audioItem && !audioItem.hidden) {
+          console.log('[Figment] Rendering Audio Item:', audioItem.uuid, 'Type:', audioItem.type);
+          renderedAudio.push((
+            <AudioItemRender
+              key={audioItem.uuid}
+              audioItem={audioItem}
+              onTransformUpdate={root.props.arSceneNavigator?.viroAppProps?.onAudioTransformUpdate}
+              onClickStateCallback={root._onModelClickStateCallback}
+            />
+          ));
+        }
+      });
+    }
+    return renderedAudio;
   }
 
   // Callback fired when the app receives AR Tracking state changes from ViroARScene.
@@ -309,6 +338,7 @@ function selectProps(store) {
     modelItems: store.arobjects.modelItems,
     portalItems: store.arobjects.portalItems,
     mediaItems: store.arobjects.mediaItems, // Added
+    audioItems: store.arobjects.audioItems, // Added for spatial audio
     effectItems: store.arobjects.effectItems,
     postProcessEffects: store.arobjects.postProcessEffects,
     selectedHdri: store.ui.selectedHdri,

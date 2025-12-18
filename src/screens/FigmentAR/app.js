@@ -163,6 +163,7 @@ export class App extends Component {
       showPortalBackgroundPanel: false,
       showModelLibraryPanel: false, // New state for Model Library Panel // Portal background picker panel visibility
       objectAnimations: {}, // { [uuid]: { bounce: { active, intensity }, rotate: { active, intensity, axis }... } }
+      isVideoBuffering: false, // Track 360 video buffering state for UI overlay
     };
 
     this._onBackgroundTap = this._onBackgroundTap.bind(this);
@@ -170,6 +171,9 @@ export class App extends Component {
     this._onTransformUpdate = this._onTransformUpdate.bind(this);
     this._onMediaTransformUpdate = this._onMediaTransformUpdate.bind(this);
     this._onPortalTransformUpdate = this._onPortalTransformUpdate.bind(this);
+    this._onAudioTransformUpdate = this._onAudioTransformUpdate.bind(this);
+    this._onPortalBackgroundSelected = this._onPortalBackgroundSelected.bind(this);
+    this._onVideoBuffering = this._onVideoBuffering.bind(this);
     // Update viroAppProps to include onBackgroundTap
     this.state.viroAppProps = {
       loadingObjectCallback: this._onListItemLoaded,
@@ -179,6 +183,8 @@ export class App extends Component {
       onTransformUpdate: this._onTransformUpdate,
       onMediaTransformUpdate: this._onMediaTransformUpdate,
       onPortalTransformUpdate: this._onPortalTransformUpdate,
+      onAudioTransformUpdate: this._onAudioTransformUpdate,
+      onVideoBuffering: this._onVideoBuffering,
     };
   }
 
@@ -195,6 +201,31 @@ export class App extends Component {
   _onPortalTransformUpdate(uuid, transforms) {
     console.log('[App] Portal transform update for', uuid, transforms);
     this.props.dispatchUpdatePortalTransforms(uuid, transforms);
+  }
+
+  _onAudioTransformUpdate(uuid, transforms) {
+    console.log('[App] Audio transform update for', uuid, transforms);
+    this.props.dispatchUpdateAudioTransforms(uuid, transforms);
+  }
+
+  _onPortalBackgroundSelected(photoSource) {
+    // Change the background of the currently selected portal
+    const selectedPortalUuid = this.props.currentItemSelectionIndex;
+    console.log('[App] Portal background selected:', photoSource, 'for portal:', selectedPortalUuid);
+
+    if (selectedPortalUuid && selectedPortalUuid !== -1) {
+      this.props.dispatchChangePortalPhoto(selectedPortalUuid, photoSource);
+    } else {
+      console.warn('[App] No portal selected for background change');
+    }
+
+    // Close the panel
+    this.setState({ showPortalBackgroundPanel: false });
+  }
+
+  _onVideoBuffering(isBuffering) {
+    console.log('[App] Video buffering state changed:', isBuffering);
+    this.setState({ isVideoBuffering: isBuffering });
   }
 
   componentDidMount() {
@@ -217,6 +248,13 @@ export class App extends Component {
         this.props.dispatchSetSceneTitle(draftTitle);
       }
     }
+  }
+
+  componentWillUnmount() {
+    // Clear all scene assets when leaving the Figment screen
+    // This ensures audio, models, portals, etc. are properly cleaned up
+    console.log('[App] componentWillUnmount - clearing all scene assets');
+    this.props.dispatchRemoveAll();
   }
 
   _onBackgroundTap() {
@@ -435,8 +473,15 @@ export class App extends Component {
               </TouchableOpacity>
             </View>
 
-            {/* Spacer to balance the close button */}
-            <View style={{ width: 40 }} />
+            {/* Video Loading Indicator - top right */}
+            {this.state.isVideoBuffering ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}>
+                <ActivityIndicator size="small" color="#FFD700" />
+                <Text style={{ color: '#FFD700', fontSize: 12, fontWeight: '600', marginLeft: 6 }}>Video Loading</Text>
+              </View>
+            ) : (
+              <View style={{ width: 40 }} />
+            )}
           </View>
         )}
 
@@ -511,8 +556,10 @@ export class App extends Component {
               const aspectHeight = h / w;
               this.props.dispatchAddMedia(source, type, 1, aspectHeight);
             } else if (mediaType === 'audio') {
-              // Audio handling could be different (background audio, spatial audio, etc.)
-              console.log('[App] Audio selected - TODO: implement audio playback');
+              // Add spatial audio to AR scene
+              console.log('[App] Audio selected - adding spatial audio:', item.url);
+              const source = { uri: item.url };
+              this.props.dispatchAddAudio(source, 'spatial');
             }
           }}
         />
@@ -2067,6 +2114,30 @@ const mapDispatchToProps = (dispatch) => {
       position: transforms.position,
       rotation: transforms.rotation,
       scale: transforms.scale,
+    }),
+    dispatchAddAudio: (source, audioType, options = {}) => dispatch({
+      type: 'ADD_AUDIO',
+      source,
+      audioType,
+      volume: options.volume,
+      loop: options.loop,
+      minDistance: options.minDistance,
+      maxDistance: options.maxDistance,
+      rolloffModel: options.rolloffModel,
+    }),
+    dispatchRemoveAudio: (uuid) => dispatch({
+      type: 'REMOVE_AUDIO',
+      uuid,
+    }),
+    dispatchUpdateAudioTransforms: (uuid, transforms) => dispatch({
+      type: 'UPDATE_AUDIO_TRANSFORMS',
+      uuid,
+      position: transforms.position,
+      rotation: transforms.rotation,
+      scale: transforms.scale,
+    }),
+    dispatchRemoveAll: () => dispatch({
+      type: 'REMOVE_ALL',
     }),
   }
 }

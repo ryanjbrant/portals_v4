@@ -30,6 +30,7 @@ const initialState = {
   modelItems: {},
   portalItems: {},
   mediaItems: {}, // Added for user-selected photos/videos
+  audioItems: {}, // Added for audio (ViroSound, ViroSoundField, ViroSpatialSound)
   effectItems: EffectData.getInitEffectArray(),
   postProcessEffects: EffectsConstants.EFFECT_NONE,
 }
@@ -249,6 +250,39 @@ function arobjects(state = initialState, action) {
         ...state,
         mediaItems: { ...removeMediaItem(state.mediaItems, action) },
       }
+    case 'ADD_AUDIO':
+      console.log('[Reducer] ADD_AUDIO: Adding audio item');
+      const newAudioItem = {
+        uuid: action.uuid || uuidv4(),
+        selected: false,
+        loading: LoadingConstants.LOADED,
+        source: action.source,
+        type: action.audioType || 'spatial', // 'sound', 'soundfield', 'spatial'
+        position: action.position || [0, 0, -2],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1],
+        volume: action.volume !== undefined ? action.volume : 1.0,
+        loop: action.loop !== undefined ? action.loop : true,
+        muted: false,
+        paused: false,
+        minDistance: action.minDistance || 1,
+        maxDistance: action.maxDistance || 10,
+        rolloffModel: action.rolloffModel || 'Logarithmic',
+      };
+      return {
+        ...state,
+        audioItems: {
+          ...state.audioItems,
+          [newAudioItem.uuid]: newAudioItem,
+        },
+      }
+    case 'REMOVE_AUDIO':
+      const audioToRemove = { ...state.audioItems };
+      delete audioToRemove[action.uuid];
+      return {
+        ...state,
+        audioItems: audioToRemove,
+      }
     case 'ADD_PORTAL':
       return {
         ...state,
@@ -269,6 +303,7 @@ function arobjects(state = initialState, action) {
         effectItems: updatedEffects.slice(0),
         postProcessEffects: EffectsConstants.EFFECT_NONE,
         mediaItems: {}, // Clear completely
+        audioItems: {}, // Clear audio items
       }
     case 'LOAD_SCENE':
       // Rebuild state from saved scene manifest
@@ -276,6 +311,7 @@ function arobjects(state = initialState, action) {
       const loadedModels = {};
       const loadedPortals = {};
       const loadedMedia = {};
+      const loadedAudio = {};
 
       // Find the NEAREST object (highest Z value since Z is negative in front of camera)
       // We'll anchor the nearest object at a comfortable viewing distance, preserving relative depths
@@ -413,6 +449,35 @@ function arobjects(state = initialState, action) {
               autoplay: obj.autoplay ?? true,
               loop: obj.loop ?? true,
             };
+          } else if (obj.type === 'audio') {
+            // Load audio item
+            console.log('[LOAD_SCENE] Loading audio item:', {
+              id: obj.id,
+              audioType: obj.audioType,
+              position: obj.position,
+            });
+            loadedAudio[obj.id] = {
+              uuid: obj.id,
+              selected: false,
+              loading: LoadingConstants.LOADED,
+              isFromDraft: true,
+              source: { uri: obj.uri },
+              type: obj.audioType || 'spatial',
+              position: obj.position ? [
+                obj.position[0] + offsetX,
+                obj.position[1] + offsetY,
+                obj.position[2] + offsetZ,
+              ] : [0, 0, -2],
+              rotation: obj.rotation || [0, 0, 0],
+              scale: obj.scale || [1, 1, 1],
+              volume: obj.volume !== undefined ? obj.volume : 1.0,
+              loop: obj.loop !== undefined ? obj.loop : true,
+              muted: false,
+              paused: false,
+              minDistance: obj.minDistance || 1,
+              maxDistance: obj.maxDistance || 10,
+              rolloffModel: obj.rolloffModel || 'Logarithmic',
+            };
           }
         });
       }
@@ -422,6 +487,7 @@ function arobjects(state = initialState, action) {
         modelItems: loadedModels,
         portalItems: loadedPortals,
         mediaItems: loadedMedia,
+        audioItems: loadedAudio,
         postProcessEffects: action.sceneData?.postProcessEffects || EffectsConstants.EFFECT_NONE,
       }
     case 'CHANGE_MODEL_LOAD_STATE':
@@ -491,6 +557,22 @@ function arobjects(state = initialState, action) {
             position: action.position || portalToUpdate.position,
             rotation: action.rotation || portalToUpdate.rotation,
             scale: action.scale || portalToUpdate.scale,
+          }
+        }
+      }
+    case 'UPDATE_AUDIO_TRANSFORMS':
+      // Sync audio component transforms back to Redux
+      const audioToUpdate = state.audioItems[action.uuid];
+      if (!audioToUpdate) return state;
+      return {
+        ...state,
+        audioItems: {
+          ...state.audioItems,
+          [action.uuid]: {
+            ...audioToUpdate,
+            position: action.position || audioToUpdate.position,
+            rotation: action.rotation || audioToUpdate.rotation,
+            scale: action.scale || audioToUpdate.scale,
           }
         }
       }
