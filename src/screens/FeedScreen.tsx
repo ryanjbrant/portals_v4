@@ -15,11 +15,17 @@ const CATEGORIES = ["Live", "Feed", "Friends", "Artifacts", "Exclusive", "Creati
 const CategoryFeed = ({ category, isActive, onCommentPress }: { category: string, isActive: boolean, onCommentPress: (id: string) => void }) => {
     // Determine data based on category (Mock logic)
     const allFeed = useAppStore(state => state.feed);
+    const relationships = useAppStore(state => state.relationships);
     const setVoiceContext = useAppStore(state => state.setVoiceContext);
     const [refreshing, setRefreshing] = useState(false);
 
-    // Filter feed based on category (Default to 'Feed' if undefined)
+    // Filter feed based on category
     const categoryData = allFeed.filter(post => {
+        // Special case: Friends shows posts from followed users
+        if (category === 'Friends') {
+            return relationships.following.includes(post.userId);
+        }
+        // Default category matching
         const postCategory = post.category || 'Feed';
         return postCategory === category;
     });
@@ -79,6 +85,7 @@ export const FeedScreen = () => {
     const [activeIndex, setActiveIndex] = useState(1); // Default to 'Friends' (index 1)
     const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
     const fetchFeed = useAppStore(state => state.fetchFeed);
+    const pendingComment = useAppStore(state => state.pendingComment);
 
     const feedListRef = useRef<FlatList>(null);
     const tabsListRef = useRef<FlatList>(null);
@@ -87,6 +94,13 @@ export const FeedScreen = () => {
     useEffect(() => {
         fetchFeed();
     }, []);
+
+    // Auto-open comments sheet when voice sets a pending comment
+    useEffect(() => {
+        if (pendingComment?.postId) {
+            setSelectedPostId(pendingComment.postId);
+        }
+    }, [pendingComment]);
 
     const handleTabPress = (index: number) => {
         setActiveIndex(index);

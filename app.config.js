@@ -39,6 +39,8 @@ export default {
         },
         plugins: [
             "expo-web-browser",
+            "expo-audio",
+            "expo-video",
             [
                 "expo-location",
                 {

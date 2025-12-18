@@ -87,3 +87,22 @@ export interface Draft {
     collaborators?: string[]; // List of User IDs
     ownerId?: string; // Original creator ID
 }
+
+export interface Message {
+    id: string;
+    conversationId: string;
+    senderId: string;
+    text: string;
+    timestamp: number;
+    read: boolean;
+    deleted: boolean; // Soft delete for moderation
+}
+
+export interface Conversation {
+    id: string;
+    participantIds: string[];
+    lastMessage: string;
+    lastMessageTime: number;
+    createdAt: number;
+}
+

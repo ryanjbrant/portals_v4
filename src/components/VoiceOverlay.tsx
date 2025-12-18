@@ -15,7 +15,7 @@ export const VoiceOverlay = ({ visible, statusText = "Listening...", navigationR
     const scale = useRef(new Animated.Value(1)).current;
     const opacity = useRef(new Animated.Value(0)).current; // Start hidden
 
-    const { voiceContext, toggleLike, addComment } = useAppStore();
+    const { voiceContext, toggleLike, setPendingComment } = useAppStore();
     const [transcription, setTranscription] = useState("");
 
     useEffect(() => {
@@ -76,7 +76,7 @@ export const VoiceOverlay = ({ visible, statusText = "Listening...", navigationR
         // We do NOT hide immediately, we wait for processing result to show text?
         // Actually, let's keep it visible while processing, then hide after delay.
 
-        if (!VoiceService.audioRecording) {
+        if (!VoiceService.audioRecorder) {
             // Not recording, maybe already processed or never started
             Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
             return;
@@ -133,8 +133,9 @@ export const VoiceOverlay = ({ visible, statusText = "Listening...", navigationR
                 const text = result.params?.text || result.params?.comment;
 
                 if (id && text) {
-                    await addComment(id, text);
-                    setTranscription("Comment added!");
+                    // Set pending comment to open comment sheet with pre-filled text
+                    setPendingComment({ postId: id, text });
+                    setTranscription("Opening comments...");
                 } else {
                     setTranscription("Couldn't add comment.");
                 }

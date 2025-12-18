@@ -1,13 +1,20 @@
-import { Audio } from 'expo-av';
+import {
+    AudioModule,
+    RecordingPresets,
+    requestRecordingPermissionsAsync,
+    setAudioModeAsync,
+    type AudioRecorder as AudioRecorderType
+} from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getGenerativeModel } from 'firebase/ai';
 import { vertexAI } from '../config/firebase';
 
 export const VoiceService = {
-    audioRecording: null as Audio.Recording | null,
+    audioRecorder: null as AudioRecorderType | null,
+    meteringInterval: null as NodeJS.Timeout | null,
 
     async requestPermissions() {
-        const { status } = await Audio.requestPermissionsAsync();
+        const { status } = await requestRecordingPermissionsAsync();
         return status === 'granted';
     },
 
@@ -16,23 +23,27 @@ export const VoiceService = {
             const hasPermission = await this.requestPermissions();
             if (!hasPermission) return false;
 
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: true,
-                playsInSilentModeIOS: true,
+            await setAudioModeAsync({
+                allowsRecording: true,
+                playsInSilentMode: true,
             });
 
-            const recording = new Audio.Recording();
-            this.audioRecording = recording;
+            const recorder = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
+            this.audioRecorder = recorder;
 
-            await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+            await recorder.prepareToRecordAsync();
 
-            recording.setOnRecordingStatusUpdate((status) => {
-                if (status.metering !== undefined) {
-                    onMeteringUpdate(status.metering);
+            // Poll for metering updates since expo-audio doesn't have callback-based metering
+            this.meteringInterval = setInterval(async () => {
+                if (this.audioRecorder?.isRecording) {
+                    const status = await this.audioRecorder.getStatus();
+                    if (status.metering !== undefined) {
+                        onMeteringUpdate(status.metering);
+                    }
                 }
-            });
+            }, 100);
 
-            await recording.startAsync();
+            await recorder.record();
             console.log('Recording started');
             return true;
         } catch (error) {
@@ -43,12 +54,18 @@ export const VoiceService = {
 
     async stopRecording(): Promise<string | null> {
         try {
-            if (!this.audioRecording) return null;
+            if (!this.audioRecorder) return null;
 
-            await this.audioRecording.stopAndUnloadAsync();
-            const uri = this.audioRecording.getURI();
+            // Clear metering interval
+            if (this.meteringInterval) {
+                clearInterval(this.meteringInterval);
+                this.meteringInterval = null;
+            }
 
-            this.audioRecording = null;
+            await this.audioRecorder.stop();
+            const uri = this.audioRecorder.uri;
+
+            this.audioRecorder = null;
             console.log('Recording stopped, URI:', uri);
             return uri;
         } catch (error) {
@@ -69,8 +86,11 @@ export const VoiceService = {
                 encoding: 'base64',
             });
 
-            // 2. Initialize Model
-            const model = getGenerativeModel(vertexAI, { model: 'gemini-2.0-flash-exp' });
+            // Debug: Log audio data size
+            console.log("Audio base64 length:", base64Audio.length);
+
+            // 2. Initialize Model (using stable GA model)
+            const model = getGenerativeModel(vertexAI, { model: 'gemini-2.0-flash' });
 
             // 3. Define Prompt
             const prompt = `
@@ -106,11 +126,13 @@ export const VoiceService = {
             `;
 
             // 4. Generate Content (Multimodal: Text + Audio)
+            // Supported MIME types: audio/m4a, audio/mp4, audio/mp3, audio/wav, audio/ogg, audio/aac
+            console.log("Sending request with audio/m4a MIME type...");
             const result = await model.generateContent([
                 prompt,
                 {
                     inlineData: {
-                        mimeType: 'audio/m4a', // Expo High Quality preset uses m4a/aac
+                        mimeType: 'audio/m4a', // M4A is supported
                         data: base64Audio
                     }
                 }
@@ -125,8 +147,9 @@ export const VoiceService = {
 
             return command;
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("Gemini Error:", error);
+            console.error("Error details:", error?.message, error?.status, error?.statusText);
             return { action: 'none', text: "Sorry, I couldn't understand that." };
         }
     }

@@ -61,7 +61,16 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { CameraRoll } from '@react-native-camera-roll/camera-roll';
+// Safe import for CameraRoll - allows app to run even if native module isn't available
+let CameraRoll;
+try {
+  CameraRoll = require('@react-native-camera-roll/camera-roll').CameraRoll;
+} catch (e) {
+  console.warn('[App] CameraRoll native module not available. Save to camera roll will be disabled.');
+  CameraRoll = {
+    save: () => Promise.reject(new Error('CameraRoll not available')),
+  };
+}
 
 import {
   ViroARSceneNavigator,
@@ -75,7 +84,7 @@ import { NativeModules, findNodeHandle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { Audio } from 'expo-av';
+import { requestRecordingPermissionsAsync } from 'expo-audio';
 
 // Import Expo ArViewRecorder module
 import ArViewRecorder from '../../../modules/ar-view-recorder';
@@ -590,8 +599,8 @@ export class App extends Component {
   async requestAudioPermission() {
     try {
       if (Platform.OS === 'ios') {
-        // iOS: Use expo-av for microphone permission
-        const { status } = await Audio.requestPermissionsAsync();
+        // iOS: Use expo-audio for microphone permission
+        const { status } = await requestRecordingPermissionsAsync();
         console.log('[App] iOS audio permission status:', status);
         this.setState({
           audioPermission: status === 'granted',

@@ -145,6 +145,20 @@ export const AuthService = {
 
         await updateDoc(currentUserRef, { following: increment(1) });
         await updateDoc(targetUserRef, { followers: increment(1) });
+
+        // Send notification to the followed user
+        try {
+            const currentUserDoc = await getDoc(currentUserRef);
+            if (currentUserDoc.exists()) {
+                const { NotificationService } = await import('./notifications');
+                await NotificationService.sendFollowNotification(
+                    currentUserDoc.data() as User,
+                    targetUserId
+                );
+            }
+        } catch (error) {
+            console.error('[AuthService] Failed to send follow notification:', error);
+        }
     },
 
     async unfollowUser(currentUserId: string, targetUserId: string): Promise<void> {

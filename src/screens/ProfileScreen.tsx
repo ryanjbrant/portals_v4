@@ -160,7 +160,10 @@ export const ProfileScreen = () => {
                                     </Text>
                                 </TouchableOpacity>
 
-                                <TouchableOpacity style={styles.secondaryButton}>
+                                <TouchableOpacity
+                                    style={styles.secondaryButton}
+                                    onPress={() => navigation.navigate('Chat', { userId: profileUser.id })}
+                                >
                                     <Text style={styles.secondaryButtonText}>Message</Text>
                                 </TouchableOpacity>
                             </>

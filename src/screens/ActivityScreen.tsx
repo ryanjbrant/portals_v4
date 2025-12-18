@@ -5,14 +5,19 @@ import { useAppStore } from '../store';
 import { Notification } from '../types';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { AuthService } from '../services/auth';
 
 type FilterType = 'All' | 'Collabs' | 'Mentions';
 
 export const ActivityScreen = () => {
     const navigation = useNavigation<any>();
     const notifications = useAppStore(state => state.notifications);
+    const currentUser = useAppStore(state => state.currentUser);
     const respondToRequest = useAppStore(state => state.respondToRequest);
     const markAsRead = useAppStore(state => state.markAsRead);
+
+    // Track which users we've followed back (local state for UI)
+    const [followedBackIds, setFollowedBackIds] = useState<Set<string>>(new Set());
 
     // Filter State
     const [activeFilter, setActiveFilter] = useState<FilterType>('All');
@@ -28,6 +33,21 @@ export const ActivityScreen = () => {
     const handleAction = (id: string, action: 'accepted' | 'declined') => {
         respondToRequest(id, action);
         markAsRead(id);
+    };
+
+    const handleFollowBack = async (userId: string) => {
+        if (!currentUser) return;
+        setFollowedBackIds(prev => new Set(prev).add(userId));
+        try {
+            await AuthService.followUser(currentUser.id, userId);
+        } catch (error) {
+            console.error('Follow back failed:', error);
+            setFollowedBackIds(prev => {
+                const next = new Set(prev);
+                next.delete(userId);
+                return next;
+            });
+        }
     };
 
     const handleNotificationPress = (item: Notification) => {
@@ -84,6 +104,19 @@ export const ActivityScreen = () => {
                         <Ionicons name="arrow-undo" size={14} color={theme.colors.textDim} />
                         <Text style={styles.replyText}>Reply</Text>
                     </TouchableOpacity>
+                )}
+
+                {/* Follow Back Action */}
+                {item.type === 'follow' && !followedBackIds.has(item.user.id) && (
+                    <TouchableOpacity
+                        style={[styles.actionBtn, styles.acceptBtn]}
+                        onPress={() => handleFollowBack(item.user.id)}
+                    >
+                        <Text style={styles.btnText}>Follow Back</Text>
+                    </TouchableOpacity>
+                )}
+                {item.type === 'follow' && followedBackIds.has(item.user.id) && (
+                    <Text style={styles.statusText}>Following</Text>
                 )}
             </View>
 

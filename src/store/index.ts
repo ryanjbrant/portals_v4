@@ -33,6 +33,8 @@ interface AppState {
     comments: Record<string, Comment[]>; // Map postId to comments
     addComment: (postId: string, text: string) => Promise<void>;
     addReply: (postId: string, parentCommentId: string, reply: Comment) => void;
+    pendingComment: { postId: string; text: string } | null;
+    setPendingComment: (pending: { postId: string; text: string } | null) => void;
 
     // Notifications
     // Notifications
@@ -56,6 +58,7 @@ interface AppState {
     removeTeamMember: (userId: string) => void;
     followUser: (userId: string) => void;
     unfollowUser: (userId: string) => void;
+    fetchFollowing: () => Promise<void>;
 
     // Drafts
     drafts: Draft[];
@@ -94,7 +97,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     toggleLike: async (postId) => {
         const state = get();
         const post = state.feed.find(p => p.id === postId);
-        if (!post) return;
+        if (!post || !state.currentUser) return;
 
         const isLiked = post.isLiked;
         // Optimistic Update
@@ -105,11 +108,34 @@ export const useAppStore = create<AppState>((set, get) => ({
                     : p
             )
         }));
+
+        // Persist to Firestore
+        try {
+            const { FeedService } = await import('../services/feed');
+            await FeedService.toggleLike(postId, state.currentUser.id, isLiked);
+
+            // Send notification on like (not unlike) and not on own post
+            if (!isLiked && post.userId !== state.currentUser.id) {
+                const { NotificationService } = await import('../services/notifications');
+                await NotificationService.sendLikeNotification(state.currentUser, post);
+            }
+        } catch (error) {
+            console.error('[Store] Error toggling like:', error);
+            // Revert on failure
+            set((state) => ({
+                feed: state.feed.map((p) =>
+                    p.id === postId
+                        ? { ...p, isLiked: isLiked, likes: isLiked ? p.likes : p.likes - 1 }
+                        : p
+                )
+            }));
+        }
     },
     addPost: (post) => set((state) => ({ feed: [post, ...state.feed] })),
     fetchFeed: async () => {
         try {
             console.log("[Store] Fetching feed from Firestore...");
+            const state = get();
             let querySnapshot;
 
             try {
@@ -137,11 +163,12 @@ export const useAppStore = create<AppState>((set, get) => ({
                     likes: data.likes || 0,
                     comments: data.comments || 0,
                     shares: data.shares || 0,
-                    isLiked: data.isLiked || false,
+                    isLiked: false, // Will be checked below
                     date: data.date,
                     tags: data.tags || [],
                     taggedUsers: data.taggedUsers || [],
                     locations: data.locations || [],
+                    category: data.category || 'Feed',
                     music: data.music || 'Original Sound',
                     mediaUri: data.mediaUri,
                     coverImage: data.coverImage,
@@ -150,12 +177,25 @@ export const useAppStore = create<AppState>((set, get) => ({
                 } as Post);
             });
 
+            // Check like status for each post (in parallel for performance)
+            if (state.currentUser) {
+                const { FeedService } = await import('../services/feed');
+                await Promise.all(
+                    posts.map(async (post) => {
+                        post.isLiked = await FeedService.checkIsLiked(post.id, state.currentUser!.id);
+                    })
+                );
+            }
+
             console.log(`[Store] Fetched ${posts.length} posts.`);
             if (posts.length > 0) {
                 set({ feed: posts });
             } else {
                 console.log("[Store] No posts found.");
             }
+
+            // Also fetch following list to enable Friends feed filter
+            await get().fetchFollowing();
         } catch (e) {
             console.error("[Store] Error fetching feed:", e);
         }
@@ -178,11 +218,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     comments: { 'p1': COMMENTS }, // Initialize with mock comments mapped to p1 for demo
     addComment: async (postId, text) => {
         console.log(`[Store] Adding comment to ${postId}: ${text}`);
-        // In a real app, you would create a Comment object and add it to state.comments
-        // For now, we update the feed count optimistically
-        set((state) => ({
-            feed: state.feed.map(p => p.id === postId ? { ...p, comments: p.comments + 1 } : p)
+        const state = get();
+        if (!state.currentUser) return;
+
+        // Optimistically update the feed count
+        set((s) => ({
+            feed: s.feed.map(p => p.id === postId ? { ...p, comments: p.comments + 1 } : p)
         }));
+
+        // Persist to Firestore
+        try {
+            const { FeedService } = await import('../services/feed');
+            await FeedService.addComment(
+                postId,
+                state.currentUser.id,
+                text,
+                state.currentUser.avatar || '',
+                state.currentUser.username
+            );
+        } catch (error) {
+            console.error('[Store] Error adding comment:', error);
+            // Revert on failure
+            set((s) => ({
+                feed: s.feed.map(p => p.id === postId ? { ...p, comments: p.comments - 1 } : p)
+            }));
+        }
     },
     addReply: (postId, parentCommentId, reply) => set((state) => {
         const postComments = state.comments[postId] || [];
@@ -201,6 +261,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             feed: state.feed.map(p => p.id === postId ? { ...p, comments: p.comments + 1 } : p)
         };
     }),
+    pendingComment: null,
+    setPendingComment: (pending) => set({ pendingComment: pending }),
 
     // Notifications
     notifications: NOTIFICATIONS,
@@ -261,6 +323,26 @@ export const useAppStore = create<AppState>((set, get) => ({
             following: state.relationships.following.filter(id => id !== userId)
         }
     })),
+    fetchFollowing: async () => {
+        const state = get();
+        if (!state.currentUser) return;
+
+        try {
+            const followingRef = collection(db, 'users', state.currentUser.id, 'following');
+            const snapshot = await getDocs(followingRef);
+            const followingIds = snapshot.docs.map(doc => doc.id);
+
+            set((prevState) => ({
+                relationships: {
+                    ...prevState.relationships,
+                    following: followingIds
+                }
+            }));
+            console.log(`[Store] Fetched ${followingIds.length} following users.`);
+        } catch (e) {
+            console.error('[Store] Error fetching following list:', e);
+        }
+    },
 
     // Drafts
     drafts: DRAFTS,

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
@@ -62,6 +62,13 @@ export const PostDetailsScreen = () => {
     const mediaUri = draftPost?.mediaUri;
     const [compressedUri, setCompressedUri] = useState<string | null>(null);
     const [isCompressing, setIsCompressing] = useState(false);
+
+    // Video player for preview
+    const player = useVideoPlayer(mediaUri || null, player => {
+        player.loop = true;
+        player.muted = true;
+        player.play();
+    });
 
     React.useEffect(() => {
         // User requested reducing complexity - use raw video
@@ -191,7 +198,7 @@ export const PostDetailsScreen = () => {
                 <View style={styles.mediaPreview}>
                     {mediaUri ? (
                         <>
-                            <Video
+                            <VideoView
                                 style={{
                                     width: 100,
                                     height: 150,
@@ -199,13 +206,9 @@ export const PostDetailsScreen = () => {
                                     marginRight: 16,
                                     backgroundColor: theme.colors.surfaceHighlight
                                 }}
-                                source={{ uri: mediaUri }}
-                                resizeMode={ResizeMode.COVER}
-                                shouldPlay
-                                isLooping
-                                isMuted
-                                posterSource={coverImage ? { uri: coverImage } : undefined}
-                                usePoster={!!coverImage}
+                                player={player}
+                                contentFit="cover"
+                                nativeControls={false}
                             />
                             {isCompressing && (
                                 <View style={{

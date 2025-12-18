@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, Share } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { Post } from '../types';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+import { AuthService } from '../services/auth';
 
 const { width, height } = Dimensions.get('window');
 // Height correction for tab bar
@@ -34,6 +35,22 @@ export const FeedItem = ({ post, onCommentPress }: FeedItemProps) => {
     const currentUser = useAppStore(state => state.currentUser);
     const toggleLike = useAppStore(state => state.toggleLike);
     const [isFollowing, setIsFollowing] = React.useState(false);
+
+    // Check if already following on mount
+    useEffect(() => {
+        if (currentUser && post.user.id !== currentUser.id) {
+            AuthService.checkIsFollowing(currentUser.id, post.user.id)
+                .then(setIsFollowing)
+                .catch(console.error);
+        }
+    }, [currentUser?.id, post.user.id]);
+
+    // Video player for feed item
+    const player = useVideoPlayer(post.mediaUri || null, player => {
+        player.loop = true;
+        player.muted = false;
+        player.play();
+    });
 
     const handleFollow = async () => {
         if (!currentUser) return;
@@ -73,15 +90,11 @@ export const FeedItem = ({ post, onCommentPress }: FeedItemProps) => {
         <View style={styles.container}>
             {/* Background Media */}
             {post.mediaUri ? (
-                <Video
+                <VideoView
                     style={styles.mediaContainer}
-                    source={{ uri: post.mediaUri }}
-                    resizeMode={ResizeMode.COVER}
-                    shouldPlay={true}
-                    isLooping={true}
-                    isMuted={false}
-                    onError={(e) => console.error("Video Playback Error:", e, post.mediaUri)}
-                    onLoad={() => console.log("Video Loaded:", post.mediaUri)}
+                    player={player}
+                    contentFit="cover"
+                    nativeControls={false}
                 />
             ) : (
                 <LinearGradient

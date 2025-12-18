@@ -23,7 +23,17 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { CameraRoll } from '@react-native-camera-roll/camera-roll';
+// Safe import for CameraRoll - allows app to run even if native module isn't available
+let CameraRoll;
+try {
+  CameraRoll = require('@react-native-camera-roll/camera-roll').CameraRoll;
+} catch (e) {
+  console.warn('[PhotosSelector] CameraRoll native module not available. Recent photos tab will be disabled.');
+  // Mock CameraRoll so the app doesn't crash
+  CameraRoll = {
+    getPhotos: () => Promise.resolve({ edges: [], page_info: { has_next_page: false } }),
+  };
+}
 
 import * as PSConstants from './PSConstants';
 import renderIf from '../helpers/renderIf';

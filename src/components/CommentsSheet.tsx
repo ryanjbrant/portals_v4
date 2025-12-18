@@ -46,9 +46,12 @@ const CommentItem = ({ item, onReply, depth = 0 }: { item: Comment, onReply: (us
 
                 <View style={styles.metaRow}>
                     <Text style={styles.metaText}>{item.timestamp || 'now'}</Text>
-                    <TouchableOpacity onPress={() => onReply(item.user.username, item.id)}>
-                        <Text style={styles.replyButtonText}>Reply</Text>
-                    </TouchableOpacity>
+                    {/* Hide Reply button beyond depth 2 (TikTok-style max 3 levels) */}
+                    {depth < 2 && (
+                        <TouchableOpacity onPress={() => onReply(item.user.username, item.id)}>
+                            <Text style={styles.replyButtonText}>Reply</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 {/* View Replies Toggle */}
@@ -101,6 +104,8 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
 
     const currentUser = useAppStore(state => state.currentUser);
     const addNotification = useAppStore(state => state.addNotification);
+    const pendingComment = useAppStore(state => state.pendingComment);
+    const setPendingComment = useAppStore(state => state.setPendingComment);
     const flatListRef = useRef<FlatList>(null);
     const inputRef = useRef<TextInput>(null);
 
@@ -118,6 +123,15 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
             setShowEmojiList(false);
         }
     }, [visible, postId]);
+
+    // Handle pending comment from voice (pre-fill input)
+    useEffect(() => {
+        if (visible && pendingComment && pendingComment.postId === postId) {
+            setNewComment(pendingComment.text);
+            setPendingComment(null); // Clear after using
+            inputRef.current?.focus();
+        }
+    }, [visible, pendingComment, postId]);
 
     const handleReply = (username: string, id: string) => {
         setReplyingTo({ username, id });
@@ -174,14 +188,27 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
                 });
             }
 
-            // 2. Add Comment
-            await FeedService.addComment(
-                postId,
-                currentUser.id,
-                text,
-                currentUser.avatar || '',
-                currentUser.username
-            );
+            // 2. Add Comment or Reply
+            if (replyingTo) {
+                // Add as a reply to parent comment
+                await FeedService.addReply(
+                    postId,
+                    replyingTo.id,
+                    currentUser.id,
+                    text,
+                    currentUser.avatar || '',
+                    currentUser.username
+                );
+            } else {
+                // Add as top-level comment
+                await FeedService.addComment(
+                    postId,
+                    currentUser.id,
+                    text,
+                    currentUser.avatar || '',
+                    currentUser.username
+                );
+            }
 
             useAppStore.getState().addComment(postId, text);
 

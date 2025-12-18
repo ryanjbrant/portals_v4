@@ -68,7 +68,7 @@ export const FeedService = {
             username,
             avatar: userAvatar,
             text,
-            timestamp: new Date().toISOString(), // Use string for UI consistency or handle serverTimestamp
+            timestamp: new Date().toISOString(),
             likes: 0,
             replies: []
         };
@@ -76,14 +76,58 @@ export const FeedService = {
         const docRef = await addDoc(commentsRef, newCommentData);
         await setDoc(postRef, { comments: increment(1) }, { merge: true });
 
-        // Return a valid Comment object matching the interface
         return {
             id: docRef.id,
             text,
             timestamp: 'Just now',
             likes: 0,
             isLiked: false,
-            userId, // Keep flat for reference if needed
+            userId,
+            user: {
+                id: userId,
+                username,
+                avatar: userAvatar,
+                followers: 0,
+                following: 0,
+                friends: 0,
+                flames: 0
+            }
+        } as Comment;
+    },
+
+    // Add Reply to a Comment
+    async addReply(postId: string, parentCommentId: string, userId: string, text: string, userAvatar: string, username: string): Promise<Comment> {
+        if (!text.trim()) throw new Error("Reply empty");
+
+        const { arrayUnion } = await import('firebase/firestore');
+        const commentRef = doc(db, 'posts', postId, 'comments', parentCommentId);
+        const postRef = doc(db, 'posts', postId);
+
+        const replyId = `reply_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const newReply = {
+            id: replyId,
+            userId,
+            username,
+            avatar: userAvatar,
+            text,
+            timestamp: new Date().toISOString(),
+            likes: 0,
+            isLiked: false,
+        };
+
+        // Add reply to parent comment's replies array
+        await updateDoc(commentRef, {
+            replies: arrayUnion(newReply)
+        });
+        await setDoc(postRef, { comments: increment(1) }, { merge: true });
+
+        return {
+            id: replyId,
+            text,
+            timestamp: 'Just now',
+            likes: 0,
+            isLiked: false,
+            userId,
             user: {
                 id: userId,
                 username,
@@ -105,13 +149,32 @@ export const FeedService = {
         return onSnapshot(q, (snapshot) => {
             const firestoreComments = snapshot.docs.map(doc => {
                 const data = doc.data();
+                // Parse replies with user objects
+                const replies = (data.replies || []).map((reply: any) => ({
+                    id: reply.id,
+                    text: reply.text,
+                    timestamp: 'Just now',
+                    likes: reply.likes || 0,
+                    isLiked: false,
+                    userId: reply.userId,
+                    user: {
+                        id: reply.userId,
+                        username: reply.username,
+                        avatar: reply.avatar,
+                        followers: 0,
+                        following: 0,
+                        friends: 0,
+                        flames: 0
+                    }
+                }));
+
                 return {
                     id: doc.id,
                     text: data.text,
-                    timestamp: typeof data.timestamp === 'string' ? 'Just now' : 'Just now', // Simplified date fmt
+                    timestamp: 'Just now',
                     likes: data.likes || 0,
                     isLiked: false,
-                    replies: [],
+                    replies,
                     userId: data.userId,
                     user: {
                         id: data.userId,
