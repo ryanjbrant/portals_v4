@@ -36,7 +36,16 @@ const initialState = {
 
 // Creates a new model item with the given index from the data model in ModelItems.js
 function newModelItem(indexToCreate) {
-  return { uuid: uuidv4(), selected: false, loading: LoadingConstants.NONE, index: indexToCreate };
+  return {
+    uuid: uuidv4(),
+    selected: false,
+    loading: LoadingConstants.NONE,
+    index: indexToCreate,
+    // CRITICAL: Include defaults for serialization
+    position: [0, 0, -1],
+    rotation: [0, 0, 0],
+    scale: [0.5, 0.5, 0.5], // Default scale for models
+  };
 }
 
 // Creates a new media item (video/image)
@@ -49,6 +58,7 @@ function newMediaItem(source, type, width, height) {
     type: type,
     scale: [1, 1, 1],
     position: [0, 0, -1],
+    rotation: [0, 0, 0], // Default rotation
     width: width || 1, // Default 1
     height: height || 1 // Default 1
   };
@@ -133,8 +143,10 @@ function newCustomModelItem(modelData) {
     source: { uri: modelData.uri },
     type: viroType,
     name: modelData.name,
-    scale: [1.0, 1.0, 1.0], // Larger default scale for custom models
+    // CRITICAL: Include ALL transform fields for serialization
+    scale: [1.0, 1.0, 1.0], // Default scale for custom models
     position: [0, 0, -1], // Will be updated by hit test
+    rotation: [0, 0, 0], // Default rotation
     resources: [], // Remote GLB is self-contained
     materials: null, // Let GLB use its own materials/textures
     animation: { name: "02", delay: 0, loop: true, run: true },
@@ -248,15 +260,15 @@ function arobjects(state = initialState, action) {
         portalItems: { ...removeModelItem(state.portalItems, action) },
       }
     case 'REMOVE_ALL':
-      //clear efffects - mark items as hidden instead of deleting
+      // Clear all items completely (not just hide) to prevent conflicts with new scenes
       var updatedEffects = modifyEffectSelection(state.effectItems.slice(0), action);
       return {
         ...state,
-        portalItems: hideAllItems(state.portalItems),
-        modelItems: hideAllItems(state.modelItems),
+        portalItems: {}, // Clear completely
+        modelItems: {}, // Clear completely
         effectItems: updatedEffects.slice(0),
         postProcessEffects: EffectsConstants.EFFECT_NONE,
-        mediaItems: hideAllItems(state.mediaItems),
+        mediaItems: {}, // Clear completely
       }
     case 'LOAD_SCENE':
       // Rebuild state from saved scene manifest
@@ -264,6 +276,38 @@ function arobjects(state = initialState, action) {
       const loadedModels = {};
       const loadedPortals = {};
       const loadedMedia = {};
+
+      // Find the NEAREST object (highest Z value since Z is negative in front of camera)
+      // We'll anchor the nearest object at a comfortable viewing distance, preserving relative depths
+      let nearestX = 0, nearestZ = -Infinity; // Start with far away
+      let centerX = 0;
+      let objectCount = 0;
+
+      if (action.sceneData?.objects) {
+        action.sceneData.objects.forEach(obj => {
+          if (obj?.position && Array.isArray(obj.position)) {
+            centerX += obj.position[0];
+            objectCount++;
+            // Track the nearest object (highest Z, closest to 0)
+            if (obj.position[2] > nearestZ) {
+              nearestZ = obj.position[2];
+              nearestX = obj.position[0];
+            }
+          }
+        });
+      }
+
+      if (objectCount > 0) {
+        centerX /= objectCount;
+      }
+
+      // NO RECENTERING - Load objects at their exact saved positions
+      // The user's scene arrangement is preserved exactly as saved
+      const offsetX = 0;
+      const offsetY = 0;
+      const offsetZ = 0;
+
+      console.log('[LOAD_SCENE] Loading objects at exact saved positions (no recentering)');
 
       if (action.sceneData?.objects) {
         action.sceneData.objects.forEach(obj => {
@@ -273,21 +317,54 @@ function arobjects(state = initialState, action) {
             return;
           }
 
+          // Helper to parse transforms that might be strings or arrays
+          const parseTransform = (val, defaultVal) => {
+            if (!val) return defaultVal;
+            if (Array.isArray(val)) return val;
+            if (typeof val === 'string') {
+              try {
+                const parsed = JSON.parse(val);
+                if (Array.isArray(parsed)) return parsed;
+              } catch (e) {
+                console.warn('[LOAD_SCENE] Failed to parse transform string:', val);
+              }
+            }
+            return defaultVal;
+          };
+
           if (obj.type === 'viro_model') {
             const isCustom = obj.modelIndex < 0 || obj.uri;
+
+            // Parse transforms - may be strings from JSON
+            const position = parseTransform(obj.position, [0, 0, -1]);
+            const rotation = parseTransform(obj.rotation, [0, 0, 0]);
+            const scale = parseTransform(obj.scale, [1, 1, 1]);
+
+            console.log('[LOAD_SCENE] Loading model item:', {
+              id: obj.id,
+              rawPosition: obj.position,
+              rawPositionType: typeof obj.position,
+              parsedPosition: position,
+            });
+
             loadedModels[obj.id] = {
               uuid: obj.id,
               selected: false,
               loading: LoadingConstants.LOADED,
+              isFromDraft: true, // Explicit flag for draft-loaded items
               index: isCustom ? -1 : obj.modelIndex,
               // Custom model properties
               source: isCustom ? { uri: obj.uri } : undefined,
               type: obj.modelType || 'GLB',
               name: obj.name,
-              // Transform properties
-              position: obj.position || [0, 0, -1],
-              rotation: obj.rotation || [0, 0, 0],
-              scale: obj.scale || [1, 1, 1],
+              // Transform properties - apply offset to recenter
+              position: [
+                position[0] + offsetX,
+                position[1] + offsetY,
+                position[2] + offsetZ,
+              ],
+              rotation: rotation,
+              scale: scale,
               // Animation
               animation: obj.animation || { name: "02", delay: 0, loop: true, run: true },
               materials: obj.materials,
@@ -299,20 +376,36 @@ function arobjects(state = initialState, action) {
               uuid: obj.id,
               selected: false,
               loading: LoadingConstants.LOADED,
+              isFromDraft: true, // Explicit flag for draft-loaded items
               index: obj.portalIndex,
               portal360Image: obj.portal360Image,
-              position: obj.position || [0, 0, -2],
+              position: obj.position ? [
+                obj.position[0] + offsetX,
+                obj.position[1] + offsetY,
+                obj.position[2] + offsetZ,
+              ] : [0, 0, -2],
               rotation: obj.rotation || [0, 0, 0],
               scale: obj.scale || [1, 1, 1],
             };
           } else if (obj.type === 'image' || obj.type === 'video') {
+            console.log('[LOAD_SCENE] Loading media item:', {
+              id: obj.id,
+              position: obj.position,
+              rotation: obj.rotation,
+              scale: obj.scale,
+            });
             loadedMedia[obj.id] = {
               uuid: obj.id,
               selected: false,
               loading: LoadingConstants.LOADED,
+              isFromDraft: true, // Explicit flag for draft-loaded items
               source: { uri: obj.uri },
               type: (obj.type || 'image').toUpperCase(),
-              position: obj.position || [0, 0, -1],
+              position: obj.position ? [
+                obj.position[0] + offsetX,
+                obj.position[1] + offsetY,
+                obj.position[2] + offsetZ,
+              ] : [0, 0, -1],
               rotation: obj.rotation || [0, 0, 0],
               scale: obj.scale || [1, 1, 1],
               width: obj.width || 1,
@@ -382,6 +475,22 @@ function arobjects(state = initialState, action) {
             position: action.position || mediaToUpdate.position,
             rotation: action.rotation || mediaToUpdate.rotation,
             scale: action.scale || mediaToUpdate.scale,
+          }
+        }
+      }
+    case 'UPDATE_PORTAL_TRANSFORMS':
+      // Sync portal component transforms back to Redux
+      const portalToUpdate = state.portalItems[action.uuid];
+      if (!portalToUpdate) return state;
+      return {
+        ...state,
+        portalItems: {
+          ...state.portalItems,
+          [action.uuid]: {
+            ...portalToUpdate,
+            position: action.position || portalToUpdate.position,
+            rotation: action.rotation || portalToUpdate.rotation,
+            scale: action.scale || portalToUpdate.scale,
           }
         }
       }

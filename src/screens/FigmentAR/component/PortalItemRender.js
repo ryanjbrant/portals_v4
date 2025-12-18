@@ -56,15 +56,34 @@ var PortalItemRender = createReactClass({
     // A callback method thats provided here, gets triggered when the portal loads that resolves to the correct
     // position and orientation for the portal to be placed at 
     hitTestMethod: PropTypes.func,
+    // Callback to sync transforms back to Redux for serialization
+    onTransformUpdate: PropTypes.func,
   },
 
   getInitialState() {
+    const portalIDProps = this.props.portalIDProps || {};
+    const isLoadedFromDraft = portalIDProps.isFromDraft === true;
+    const defaultScale = PortalData.getPortalArray()[portalIDProps.index]?.scale || [1, 1, 1];
+
+    // Use saved transforms if loading from draft
+    const finalPosition = isLoadedFromDraft && portalIDProps.position ? portalIDProps.position : [0, 2, 1];
+    const finalRotation = isLoadedFromDraft && portalIDProps.rotation ? portalIDProps.rotation : [0, 0, 0];
+    const finalScale = isLoadedFromDraft && portalIDProps.scale ? portalIDProps.scale : defaultScale;
+
+    console.log('[PortalItemRender] getInitialState:', {
+      uuid: portalIDProps.uuid,
+      isLoadedFromDraft,
+      position: JSON.stringify(finalPosition),
+      rotation: JSON.stringify(finalRotation),
+      scale: JSON.stringify(finalScale),
+    });
+
     return {
-      scale: PortalData.getPortalArray()[this.props.portalIDProps.index].scale,
-      rotation: [0, 0, 0],
+      scale: finalScale,
+      rotation: finalRotation,
       nodeIsVisible: true,
-      position: [0, 2, 1], // make it appear initially high in the sky
-      shouldBillboard: true,
+      position: finalPosition,
+      shouldBillboard: !isLoadedFromDraft, // Don't billboard if loaded from draft
       insidePortal: false,
       itemClickedDown: false,
     }
@@ -281,21 +300,51 @@ var PortalItemRender = createReactClass({
   },
 
   /*
+   Syncs current transforms to Redux for serialization
+   */
+  _syncToRedux() {
+    if (this.props.onTransformUpdate && this.props.portalIDProps) {
+      this.props.onTransformUpdate(this.props.portalIDProps.uuid, {
+        scale: this.state.scale,
+        position: this.state.position,
+        rotation: this.state.rotation,
+      });
+    }
+  },
+
+  /*
    Rotation should be relative to its current rotation *not* set to the absolute
    value of the given rotationFactor.
+   Note: ViroNode may not send distinct rotateState values, so we sync continuously.
    */
   _onRotate(rotateState, rotationFactor, source) {
     if (!this._isMounted) return;
-    if (rotateState == 3) {
-      this.setState({
-        rotation: [this.state.rotation[0], this.state.rotation[1] + rotationFactor, this.state.rotation[2]]
-      });
-      this.props.onClickStateCallback(this.props.portalIDProps.uuid, rotateState, UIConstants.LIST_MODE_MODEL);
-      return;
+
+    // Capture initial rotation on first event
+    if (rotateState === 1 || this._initialRotationY === null || this._initialRotationY === undefined) {
+      this._initialRotationY = this.state.rotation[1];
     }
 
+    const newRotationY = (this._initialRotationY || 0) + rotationFactor;
+    const newRotation = [this.state.rotation[0], newRotationY, this.state.rotation[2]];
+
     if (this.arNodeRef) {
-      this.arNodeRef.setNativeProps({ rotation: [this.state.rotation[0], this.state.rotation[1] + rotationFactor, this.state.rotation[2]] });
+      this.arNodeRef.setNativeProps({ rotation: newRotation });
+    }
+
+    // Throttle state/Redux updates
+    const now = Date.now();
+    if (!this._lastRotateSync || now - this._lastRotateSync > 100) {
+      this._lastRotateSync = now;
+      this.setState({ rotation: newRotation });
+      this._syncToRedux();
+    }
+
+    if (rotateState === 3) {
+      this.setState({ rotation: newRotation });
+      this._initialRotationY = null;
+      this._syncToRedux();
+      this.props.onClickStateCallback(this.props.portalIDProps.uuid, rotateState, UIConstants.LIST_MODE_MODEL);
     }
   },
 
@@ -304,21 +353,35 @@ var PortalItemRender = createReactClass({
    scale factor. So while the pinching is ongoing set scale through setNativeProps
    and multiply the state by that factor. At the end of a pinch event, set the state
    to the final value and store it in state.
+   Note: ViroNode may not send distinct pinchState values, so we sync continuously.
    */
   _onPinch(pinchState, scaleFactor, source) {
     if (!this._isMounted) return;
-    var newScale = this.state.scale.map((x) => { return x * scaleFactor })
 
-    if (pinchState == 3) {
-      this.setState({
-        scale: newScale
-      });
-      this.props.onClickStateCallback(this.props.portalIDProps.uuid, pinchState, UIConstants.LIST_MODE_MODEL);
-      return;
+    // Capture initial scale on first event
+    if (pinchState === 1 || !this._initialPinchScale) {
+      this._initialPinchScale = this.state.scale;
     }
+
+    const newScale = this._initialPinchScale.map((x) => x * scaleFactor);
 
     if (this.arNodeRef) {
       this.arNodeRef.setNativeProps({ scale: newScale });
+    }
+
+    // Throttle state/Redux updates
+    const now = Date.now();
+    if (!this._lastPinchSync || now - this._lastPinchSync > 100) {
+      this._lastPinchSync = now;
+      this.setState({ scale: newScale });
+      this._syncToRedux();
+    }
+
+    if (pinchState === 3) {
+      this.setState({ scale: newScale });
+      this._initialPinchScale = null;
+      this._syncToRedux();
+      this.props.onClickStateCallback(this.props.portalIDProps.uuid, pinchState, UIConstants.LIST_MODE_MODEL);
     }
   },
 

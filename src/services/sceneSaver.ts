@@ -76,7 +76,7 @@ const ensureAsset = async (uri: string, type: 'image' | 'texture' | 'model' | 'v
 /**
  * Main Save Function
  */
-export const saveSceneToStorage = async (sceneData: any, coverImageUri?: string, ownerId: string = 'anon'): Promise<string> => {
+export const saveSceneToStorage = async (sceneData: any, coverImageUri?: string, ownerId: string = 'anon'): Promise<{ sceneId: string, previewUrl: string | null }> => {
     const sceneId = sceneData.sceneId || `scene_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     console.log(`[Saver] Starting save for ${sceneId}`);
 
@@ -139,18 +139,18 @@ export const saveSceneToStorage = async (sceneData: any, coverImageUri?: string,
         objects: processedObjects
     };
 
-    const jsonKey = sceneJsonKey(sceneId);
+    const jsonKey = sceneJsonKey(sceneId, ownerId);
     await uploadStringContent(JSON.stringify(finalSceneJSON), jsonKey);
 
     // 3. Upload Preview Image
     let previewPath = null;
     if (coverImageUri && !coverImageUri.startsWith('http')) {
-        const previewKey = scenePreviewKey(sceneId);
+        const previewKey = scenePreviewKey(sceneId, ownerId);
         await uploadToR2(coverImageUri, previewKey, 'image/jpeg');
         previewPath = previewKey;
     }
 
-    // 4. Save Scene Metadata to Firestore
+    // 4. Save Scene Metadata to Firestore (UNIFIED - replaces drafts collection)
     const sceneRef = doc(db, 'scenes', sceneId);
     const sceneDocData: any = {
         ownerId,
@@ -158,7 +158,11 @@ export const saveSceneToStorage = async (sceneData: any, coverImageUri?: string,
         updatedAt: serverTimestamp(),
         storageKey: jsonKey, // Link to the R2 JSON
         previewPath,
-        version: 2 // Schema version
+        version: 2, // Schema version
+        // NEW: Fields previously in drafts collection
+        title: sceneData.title || 'Untitled Scene',
+        collaborators: sceneData.collaborators || [],
+        status: sceneData.status || 'draft', // 'draft' or 'published'
     };
     // Only set createdAt for new scenes (avoid overwriting existing)
     if (!sceneData.createdAt) {
@@ -193,5 +197,10 @@ export const saveSceneToStorage = async (sceneData: any, coverImageUri?: string,
     await batch.commit();
 
     console.log(`[Saver] Saved ${sceneId}`);
-    return sceneId;
+
+    // Return both sceneId and the public preview URL
+    return {
+        sceneId,
+        previewUrl: previewPath ? `https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/${previewPath}` : null
+    };
 };

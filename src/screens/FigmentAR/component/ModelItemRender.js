@@ -102,7 +102,16 @@ var ModelItemRender = createReactClass({
     // Get base scale from model data and multiply by 2.5 for 0.5 default size
     const isCustom = this.props.modelIDProps.index === -1;
     const modelItem = isCustom ? this.props.modelIDProps : ModelData.getModelArray()[this.props.modelIDProps.index];
-    const isLoadedFromDraft = this.props.modelIDProps.loading === 'LOADED';
+    // Use explicit isFromDraft flag (set by LOAD_SCENE reducer)
+    const isLoadedFromDraft = this.props.modelIDProps.isFromDraft === true;
+
+    console.log('[ModelItemRender] getInitialState DETAILED:', {
+      uuid: this.props.modelIDProps.uuid,
+      isLoadedFromDraft,
+      propsPosition: JSON.stringify(this.props.modelIDProps.position),
+      propsRotation: JSON.stringify(this.props.modelIDProps.rotation),
+      propsScale: JSON.stringify(this.props.modelIDProps.scale),
+    });
 
     // Use saved values if loading from draft, otherwise use defaults
     let initialScale;
@@ -132,6 +141,12 @@ var ModelItemRender = createReactClass({
     } else {
       initialRotation = [0, 0, 0];
     }
+
+    console.log('[ModelItemRender] Using transforms:', {
+      position: JSON.stringify(initialPosition),
+      rotation: JSON.stringify(initialRotation),
+      scale: JSON.stringify(initialScale),
+    });
 
     // Generate a random bright color for this primitive
     const randomColor = getRandomBrightColor();
@@ -175,6 +190,7 @@ var ModelItemRender = createReactClass({
     console.log('[ModelItemRender] componentDidMount - UUID:', this.props.modelIDProps.uuid);
     this._modelData = ModelData.getModelArray();
     this._isMounted = true;
+    this._hasInitialSynced = false; // Prevent duplicate initial transform syncs
 
     // Check if this is a custom model with a remote URL
     const isCustom = this.props.modelIDProps.index === -1;
@@ -244,6 +260,43 @@ var ModelItemRender = createReactClass({
     if (JSON.stringify(prevProps.objectAnimations) !== JSON.stringify(this.props.objectAnimations)) {
       console.log('[ModelItemRender] objectAnimations changed for UUID:', this.props.modelIDProps.uuid);
     }
+
+    // CRITICAL: Handle case where LOAD_SCENE updates Redux AFTER component mounts
+    // When isFromDraft changes from false/undefined to true, update state with saved transforms
+    const wasFromDraft = prevProps.modelIDProps.isFromDraft === true;
+    const isNowFromDraft = this.props.modelIDProps.isFromDraft === true;
+
+    if (!wasFromDraft && isNowFromDraft) {
+      const newPosition = this.props.modelIDProps.position || this.state.position;
+      const newRotation = this.props.modelIDProps.rotation || this.state.rotation;
+      const newScale = this.props.modelIDProps.scale || this.state.scale;
+
+      console.log('[ModelItemRender] isFromDraft changed to true, updating transforms:', {
+        uuid: this.props.modelIDProps.uuid,
+        position: JSON.stringify(newPosition),
+        rotation: JSON.stringify(newRotation),
+        scale: JSON.stringify(newScale),
+      });
+
+      // Update React state with saved transforms from the draft
+      this.setState({
+        position: newPosition,
+        rotation: newRotation,
+        scale: newScale,
+        shouldBillboard: false, // Disable billboard for draft-loaded models
+        nodeIsVisible: true,
+      });
+
+      // CRITICAL: ViroReact caches transforms and ignores React state changes
+      // Must use setNativeProps to force the native component to update
+      if (this.arNodeRef) {
+        this.arNodeRef.setNativeProps({
+          position: newPosition,
+          rotation: newRotation,
+          scale: newScale,
+        });
+      }
+    }
   },
 
   componentWillUnmount() {
@@ -252,20 +305,9 @@ var ModelItemRender = createReactClass({
   },
 
   render: function () {
-    console.log('[ModelItemRender] render - UUID:', this.props.modelIDProps.uuid);
-
     const isCustom = this.props.modelIDProps.index === -1;
     var modelItem = isCustom ? this.props.modelIDProps : ModelData.getModelArray()[this.props.modelIDProps.index];
 
-    // Debug logging for custom models
-    if (isCustom) {
-      console.log('[ModelItemRender] Custom model detected');
-      console.log('[ModelItemRender] source:', modelItem.source);
-      console.log('[ModelItemRender] type:', modelItem.type);
-      console.log('[ModelItemRender] scale:', this.state.scale);
-      console.log('[ModelItemRender] position:', this.state.position);
-      console.log('[ModelItemRender] obj:', modelItem.obj);
-    }
     let transformBehaviors = {};
     if (this.state.shouldBillboard) {
       transformBehaviors.transformBehaviors = this.state.shouldBillboard ? "billboardY" : [];
@@ -310,7 +352,7 @@ var ModelItemRender = createReactClass({
         rotation={this.state.rotation}
         onPinch={this._onPinch}
         onRotate={this._onRotate}
-        onDrag={() => { }}
+        onDrag={this._onDrag}
         dragType="FixedToWorld">
 
         {/* This SpotLight is placed directly above the 3D Object, directed straight down,
@@ -338,7 +380,12 @@ var ModelItemRender = createReactClass({
           shadowOpacity={.9} />
         */}
 
-        <ViroNode position={modelItem.position || [0, 0, 0]} animation={activeAnimation}>
+        {/* Inner ViroNode for model-specific offset (ground alignment, pivot, etc.).
+            This offset is defined in ModelItems.js and must be applied for all models,
+            including draft-loaded ones, since the saved outer position doesn't include it. */}
+        <ViroNode
+          position={modelItem.position || [0, 0, 0]}
+          animation={activeAnimation}>
           {/* Render model: bundled OR custom */}
           {(() => {
             // For custom models, use the remote URL directly (ViroReact supports remote GLB)
@@ -346,12 +393,9 @@ var ModelItemRender = createReactClass({
             if (isCustom) {
               // Use remote source directly
               modelSource = modelItem.source;
-              console.log('[ModelItemRender] Viro3DObject source (remote):', JSON.stringify(modelSource));
             } else {
               modelSource = modelItem.obj;
-              console.log('[ModelItemRender] Viro3DObject source (bundled)');
             }
-            console.log('[ModelItemRender] Viro3DObject type:', modelItem.type);
             return (
               <Viro3DObject
                 source={modelSource}
@@ -457,23 +501,96 @@ var ModelItemRender = createReactClass({
       ],
     }));
   },
+
+  /*
+   Drag handler - ViroReact provides dragToPos and source.
+   ViroReact API: onDrag(dragToPos, source)
+   - dragToPos: [x, y, z] array of the current drag position
+   - source: drag event source (ViroNode always sends 1, not distinct start/drag/end states)
+   
+   Since ViroNode doesn't send distinct drag states, we sync position on every drag event.
+   */
+  _onDrag(dragToPos, source) {
+    if (!this._isMounted) return;
+    if (!dragToPos || !Array.isArray(dragToPos)) return;
+
+    // Update state with new drag position
+    this.setState({
+      position: dragToPos
+    });
+
+    // Throttle Redux updates to avoid overwhelming the store
+    // Sync every 100ms at most
+    const now = Date.now();
+    if (!this._lastDragSync || now - this._lastDragSync > 100) {
+      this._lastDragSync = now;
+
+      // Sync to Redux for serialization
+      if (this.props.onTransformUpdate) {
+        this.props.onTransformUpdate(this.props.modelIDProps.uuid, {
+          scale: this.state.scale,
+          position: dragToPos,
+          rotation: this.state.rotation,
+        });
+      }
+    }
+  },
+
   /*
    Rotation should be relative to its current rotation *not* set to the absolute
    value of the given rotationFactor.
+   Note: rotationFactor from ViroReact is the cumulative rotation since gesture start.
+   Note: ViroNode may not send distinct rotateState values (1/2/3), so we sync on every event.
    */
   _onRotate(rotateState, rotationFactor, source) {
     if (!this._isMounted) return;
 
-    if (rotateState == 3) {
-      this.setState({
-        rotation: [this.state.rotation[0], this.state.rotation[1] + rotationFactor, this.state.rotation[2]]
-      });
-      this.props.onClickStateCallback(this.props.modelIDProps.uuid, rotateState, UIConstants.LIST_MODE_MODEL);
-      return;
+    // State 1 or first event: Capture initial rotation
+    if (rotateState === 1 || this._initialRotationY === null || this._initialRotationY === undefined) {
+      this._initialRotationY = this.state.rotation[1];
     }
 
+    // Calculate current rotation
+    const currentRotationY = (this._initialRotationY || 0) + rotationFactor;
+    const newRotation = [this.state.rotation[0], currentRotationY, this.state.rotation[2]];
+
+    // Update visually
     if (this.arNodeRef) {
-      this.arNodeRef.setNativeProps({ rotation: [this.state.rotation[0], this.state.rotation[1] + rotationFactor, this.state.rotation[2]] });
+      this.arNodeRef.setNativeProps({ rotation: newRotation });
+    }
+
+    // Throttle Redux updates (like we do for drag)
+    const now = Date.now();
+    if (!this._lastRotateSync || now - this._lastRotateSync > 100) {
+      this._lastRotateSync = now;
+
+      // Update state
+      this.setState({ rotation: newRotation });
+
+      // Sync to Redux for serialization
+      if (this.props.onTransformUpdate) {
+        this.props.onTransformUpdate(this.props.modelIDProps.uuid, {
+          scale: this.state.scale,
+          position: this.state.position,
+          rotation: newRotation,
+        });
+      }
+    }
+
+    // State 3: Rotation Ended - final sync
+    if (rotateState === 3) {
+      this.setState({ rotation: newRotation });
+
+      if (this.props.onTransformUpdate) {
+        this.props.onTransformUpdate(this.props.modelIDProps.uuid, {
+          scale: this.state.scale,
+          position: this.state.position,
+          rotation: newRotation,
+        });
+      }
+
+      this._initialRotationY = null; // Reset for next gesture
+      this.props.onClickStateCallback(this.props.modelIDProps.uuid, rotateState, UIConstants.LIST_MODE_MODEL);
     }
   },
 
@@ -482,39 +599,42 @@ var ModelItemRender = createReactClass({
    scale factor. So while the pinching is ongoing set scale through setNativeProps
    and multiply the state by that factor. At the end of a pinch event, set the state
    to the final value and store it in state.
+   Note: ViroNode may not send distinct pinchState values, so we sync continuously.
    */
   _onPinch(pinchState, scaleFactor, source) {
     if (!this._isMounted) return;
 
-    // State 1: Pinch Started - Capture initial scale
-    if (pinchState === 1) {
+    // State 1 or first event: Capture initial scale
+    if (pinchState === 1 || !this._initialPinchScale) {
       this._initialPinchScale = this.state.scale;
-      return;
     }
 
-    // State 2: Pinch Moving - Update State Continuously
-    if (pinchState === 2) {
-      // Ensure we have a base scale (handle missed state 1)
-      if (!this._initialPinchScale) {
-        this._initialPinchScale = this.state.scale;
-      }
+    // Calculate new scale
+    const newScale = this._initialPinchScale.map((x) => x * scaleFactor);
 
-      const newScale = this._initialPinchScale.map((x) => { return x * scaleFactor });
+    // Update state
+    this.setState({ scale: newScale });
 
-      // Update state immediately (matches ARComposer "perfect" behavior)
-      this.setState({ scale: newScale });
-      return;
-    }
+    // Throttle Redux updates
+    const now = Date.now();
+    if (!this._lastPinchSync || now - this._lastPinchSync > 100) {
+      this._lastPinchSync = now;
 
-    // State 3: Pinch Ended - Cleanup and sync to Redux
-    if (pinchState === 3) {
-      // No scale update here - state is already up to date from the last State 2 event.
-      // This prevents the "snap" caused by re-applying logic on release.
-
-      // Sync the final scale back to Redux for serialization
+      // Sync to Redux for serialization
       if (this.props.onTransformUpdate) {
         this.props.onTransformUpdate(this.props.modelIDProps.uuid, {
-          scale: this.state.scale,
+          scale: newScale,
+          position: this.state.position,
+          rotation: this.state.rotation,
+        });
+      }
+    }
+
+    // State 3: Pinch Ended - final sync and cleanup
+    if (pinchState === 3) {
+      if (this.props.onTransformUpdate) {
+        this.props.onTransformUpdate(this.props.modelIDProps.uuid, {
+          scale: newScale,
           position: this.state.position,
           rotation: this.state.rotation,
         });
@@ -522,7 +642,6 @@ var ModelItemRender = createReactClass({
 
       this._initialPinchScale = null;
       this.props.onClickStateCallback(this.props.modelIDProps.uuid, pinchState, UIConstants.LIST_MODE_MODEL);
-      return;
     }
   },
 
@@ -544,12 +663,27 @@ var ModelItemRender = createReactClass({
     return () => {
       console.log('[ModelItemRender] Model loaded:', uuid);
       this.props.onLoadCallback(uuid, LoadConstants.LOADED);
+
+      // Check if model is loaded from draft - if so, skip placement and auto-scale
+      // Use explicit isFromDraft flag (set by LOAD_SCENE reducer)
+      const isLoadedFromDraft = this.props.modelIDProps.isFromDraft === true;
+
+      if (isLoadedFromDraft) {
+        // Draft-loaded models already have their position/scale set from getInitialState
+        // Just make them visible without running hit test placement
+        console.log('[ModelItemRender] Draft-loaded model, skipping hit test placement');
+        this.setState({
+          shouldBillboard: false,
+          nodeIsVisible: true,
+        });
+        return;
+      }
+
+      // Only do hit test placement for NEW models
       this.props.hitTestMethod(this._onARHitTestResults);
 
       // Auto-scale custom models to fit ~60% of viewport
-      // BUT skip for draft-loaded models to preserve saved scale
-      const isLoadedFromDraft = this.props.modelIDProps.loading === 'LOADED';
-      if (this.props.modelIDProps.index === -1 && !isLoadedFromDraft) {
+      if (this.props.modelIDProps.index === -1) {
         this._autoScaleModel();
       }
     };
@@ -650,6 +784,11 @@ var ModelItemRender = createReactClass({
         shouldBillboard: false,
         nodeIsVisible: true,
       });
+      // Sync current transforms to Redux (only for NEW models, not draft-loaded)
+      if (!this._hasInitialSynced && this.props.modelIDProps.isFromDraft !== true) {
+        this._hasInitialSynced = true;
+        this._syncTransformToRedux();
+      }
       return;
     }
     this.arNodeRef.getTransformAsync().then((retDict) => {
@@ -664,14 +803,68 @@ var ModelItemRender = createReactClass({
       if (absX > 1 && absZ > 1) {
         yRotation = 180 - (yRotation);
       }
+      const newRotation = [0, yRotation, 0];
       this.setState({
-        rotation: [0, yRotation, 0],
+        rotation: newRotation,
         shouldBillboard: false,
         nodeIsVisible: true,
       });
+      // Sync final transforms to Redux after placement (only for NEW models)
+      if (!this._hasInitialSynced && this.props.modelIDProps.isFromDraft !== true) {
+        this._hasInitialSynced = true;
+        this._syncTransformToRedux(newRotation);
+      }
     }).catch((error) => {
       console.warn('[ModelItemRender] _updateInitialRotation error:', error);
     });
+  },
+
+  _syncTransformToRedux(rotation) {
+    // Get the ACTUAL world transform from ViroReact's native layer
+    // React state position may be stale if drag updated the native position
+    if (this.arNodeRef && this.arNodeRef.getTransformAsync) {
+      this.arNodeRef.getTransformAsync().then((transform) => {
+        console.log('[ModelItemRender] Syncing true world transform:', {
+          uuid: this.props.modelIDProps.uuid,
+          position: transform.position,
+          rotation: transform.rotation,
+          scale: this.state.scale,
+        });
+
+        if (this.props.onTransformUpdate) {
+          this.props.onTransformUpdate(this.props.modelIDProps.uuid, {
+            scale: this.state.scale,
+            position: transform.position, // True world position from ViroReact
+            rotation: rotation || transform.rotation,
+          });
+        }
+
+        // Also update local state to match
+        this.setState({
+          position: transform.position,
+          rotation: rotation || transform.rotation,
+        });
+      }).catch((error) => {
+        console.warn('[ModelItemRender] getTransformAsync failed, using state:', error);
+        // Fallback to state
+        if (this.props.onTransformUpdate) {
+          this.props.onTransformUpdate(this.props.modelIDProps.uuid, {
+            scale: this.state.scale,
+            position: this.state.position,
+            rotation: rotation || this.state.rotation,
+          });
+        }
+      });
+    } else {
+      // No ref available, use state
+      if (this.props.onTransformUpdate) {
+        this.props.onTransformUpdate(this.props.modelIDProps.uuid, {
+          scale: this.state.scale,
+          position: this.state.position,
+          rotation: rotation || this.state.rotation,
+        });
+      }
+    }
   },
 });
 

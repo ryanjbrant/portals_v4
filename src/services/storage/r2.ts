@@ -10,7 +10,7 @@ const R2_SECRET_ACCESS_KEY = "25b8ad2d2f30905ba1f34ce1936b8cedfe6cda02e0381b9544
 const R2_BUCKET_NAME = "portals";
 
 // Public URL base for R2 assets (via Cloudflare CDN)
-export const R2_PUBLIC_BASE = "https://pub-c81ca5d39f3e4015942414e4140ddfe2.r2.dev";
+export const R2_PUBLIC_BASE = "https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev";
 
 // Initialize S3 Client targeting Cloudflare R2
 export const r2Client = new S3Client({
@@ -59,11 +59,14 @@ export async function uploadToR2(uri: string, key: string, contentType: string) 
     console.log(`[R2] Preparing upload for ${key}`);
     try {
         // 1. Get Presigned URL
+        console.log(`[R2] Getting presigned URL for ${key}...`);
         const uploadUrl = await getUploadUrl(key, contentType);
+        console.log(`[R2] Got presigned URL, fetching file...`);
 
         // 2. Fetch the file data
         const response = await fetch(uri);
         const blob = await response.blob();
+        console.log(`[R2] File fetched, size: ${blob.size} bytes, uploading...`);
 
         // 3. Upload to R2
         const uploadResponse = await fetch(uploadUrl, {
@@ -74,15 +77,15 @@ export async function uploadToR2(uri: string, key: string, contentType: string) 
             body: blob,
         });
 
+        console.log(`[R2] Upload response status: ${uploadResponse.status}`);
+
         if (!uploadResponse.ok) {
-            throw new Error(`Upload failed with status ${uploadResponse.status}`);
+            const errorText = await uploadResponse.text();
+            console.error(`[R2] Upload failed: ${uploadResponse.status} - ${errorText}`);
+            throw new Error(`Upload failed with status ${uploadResponse.status} - ${errorText}`);
         }
 
         console.log(`[R2] Successfully uploaded ${key}`);
-        // Return the public URL or the key? Returning key is better for storage abstracton.
-        // But for immediate usage we might want a simple public URL if the bucket is public.
-        // Assuming R2 bucket is NOT public by default, we'd need a worker or signed URL to view.
-        // For now, return the Key.
         return key;
     } catch (error) {
         console.error("[R2] Upload Error:", error);
@@ -90,13 +93,16 @@ export async function uploadToR2(uri: string, key: string, contentType: string) 
     }
 }
 
+
 /**
  * Direct Upload for string content (like JSON), bypassing file fetch.
  */
 export async function uploadStringContent(content: string, key: string, contentType: string = 'application/json') {
-    console.log(`[R2] Uploading string content to ${key}`);
+    console.log(`[R2] Uploading string content to ${key} (${content.length} chars)`);
     try {
+        console.log(`[R2] Getting presigned URL for ${key}...`);
         const uploadUrl = await getUploadUrl(key, contentType);
+        console.log(`[R2] Got presigned URL, uploading...`);
 
         const uploadResponse = await fetch(uploadUrl, {
             method: "PUT",
@@ -106,10 +112,19 @@ export async function uploadStringContent(content: string, key: string, contentT
             body: content,
         });
 
-        if (!uploadResponse.ok) throw new Error(`Upload failed: ${uploadResponse.status}`);
+        console.log(`[R2] Upload response status: ${uploadResponse.status}`);
+
+        if (!uploadResponse.ok) {
+            const errorText = await uploadResponse.text();
+            console.error(`[R2] Upload failed: ${uploadResponse.status} - ${errorText}`);
+            throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
+        }
+
+        console.log(`[R2] Successfully uploaded string content to ${key}`);
         return key;
     } catch (e) {
         console.error("[R2] String Upload Error:", e);
         throw e;
     }
 }
+

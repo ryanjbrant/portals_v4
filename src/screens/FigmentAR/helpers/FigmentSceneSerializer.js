@@ -15,6 +15,12 @@ export function serializeFigmentScene(arobjects, ui) {
     if (arobjects.modelItems) {
         Object.values(arobjects.modelItems).forEach((item) => {
             if (!item.hidden) {
+                console.log('[Serializer] Saving model item:', {
+                    id: item.uuid,
+                    position: JSON.stringify(item.position),
+                    rotation: JSON.stringify(item.rotation),
+                    scale: JSON.stringify(item.scale),
+                });
                 const obj = {
                     id: item.uuid,
                     type: 'viro_model',
@@ -59,6 +65,12 @@ export function serializeFigmentScene(arobjects, ui) {
     if (arobjects.mediaItems) {
         Object.values(arobjects.mediaItems).forEach((item) => {
             if (!item.hidden) {
+                console.log('[Serializer] Saving media item:', {
+                    id: item.uuid,
+                    position: item.position,
+                    rotation: item.rotation,
+                    scale: item.scale,
+                });
                 objects.push({
                     id: item.uuid,
                     type: item.type === 'VIDEO' ? 'video' : 'image',

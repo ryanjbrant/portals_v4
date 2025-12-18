@@ -221,6 +221,7 @@ export class figment extends Component {
               hitTestMethod={root._performARHitTest}
               onLoadCallback={root._onLoadCallback}
               onClickStateCallback={root._onPortalsClickStateCallback}
+              onTransformUpdate={root.props.arSceneNavigator?.viroAppProps?.onPortalTransformUpdate}
               bitMask={Math.pow(2, portalBitMask)}
               isHidden={portalItems[currentKey].hidden === true} />
           );

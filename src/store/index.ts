@@ -277,14 +277,36 @@ export const useAppStore = create<AppState>((set, get) => ({
             // version 2: sceneData is missing, fetch from R2 via sceneId
             if (!fullSceneData && draft.sceneId) {
                 console.log("[Store] Fetching heavy scene data from R2...");
-                const { getDownloadUrl } = require('../services/storage/r2');
-                const { sceneJsonKey, assetKey } = require('../services/storage/paths');
+                const { getDownloadUrl, R2_PUBLIC_BASE } = require('../services/storage/r2');
 
-                const jsonKey = sceneJsonKey(draft.sceneId);
-                const signedUrl = await getDownloadUrl(jsonKey);
+                // The storageKey in Firestore already contains the full path
+                // We need to get the scene document to find the storageKey
+                const { db } = require('../config/firebase');
+                const { doc, getDoc } = require('firebase/firestore');
 
-                const res = await fetch(signedUrl);
-                fullSceneData = await res.json();
+                const sceneDoc = await getDoc(doc(db, 'scenes', draft.sceneId));
+                if (!sceneDoc.exists()) {
+                    console.error("[Store] Scene document not found:", draft.sceneId);
+                    return;
+                }
+
+                const sceneData = sceneDoc.data();
+                const storageKey = sceneData.storageKey;
+                console.log("[Store] Using storageKey from Firestore:", storageKey);
+
+                // Try public URL first, fall back to signed URL if needed
+                const publicUrl = `${R2_PUBLIC_BASE}/${storageKey}`;
+                console.log("[Store] Trying public URL:", publicUrl);
+
+                const res = await fetch(publicUrl);
+                if (!res.ok) {
+                    console.log("[Store] Public URL failed, trying signed URL...");
+                    const signedUrl = await getDownloadUrl(storageKey);
+                    const signedRes = await fetch(signedUrl);
+                    fullSceneData = await signedRes.json();
+                } else {
+                    fullSceneData = await res.json();
+                }
                 console.log("[Store] Scene data loaded.");
             }
 
@@ -334,44 +356,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
     saveDraft: async (sceneData, coverImage) => {
         try {
-            console.log("[Store] Saving draft to Scalable Storage...");
+            console.log("[Store] Saving scene (unified draft/scene)...");
             const state = get();
             const userId = state.currentUser?.id || 'anonymous';
 
-            // Use the new Scalable Saver
-            // This handles R2 uploads and proper Firestore structuring
-            const { saveSceneToStorage } = require('../services/sceneSaver'); // Lazy import to avoid cycle if any
-            const sceneId = await saveSceneToStorage(sceneData, coverImage, userId);
+            // Save directly to scenes collection (no separate drafts anymore)
+            const { saveSceneToStorage } = require('../services/sceneSaver');
+            const { sceneId } = await saveSceneToStorage(
+                {
+                    ...sceneData,
+                    status: 'draft', // Mark as draft
+                },
+                coverImage,
+                userId
+            );
 
-            // Update/Create Draft Document
-            // Now the draft doc is TINY, just a reference to the scene
-            const draftRef = sceneData.draftId ? doc(db, 'drafts', sceneData.draftId) : doc(collection(db, 'drafts'));
-            const draftId = sceneData.draftId || draftRef.id;
+            console.log("[Store] Scene saved successfully:", sceneId);
 
-            const newDraft: any = {
-                userId,
-                ownerId: sceneData.ownerId || userId,
-                user: state.currentUser,
-                sceneId: sceneId, // Link to the heavy scene data
-                coverImage: coverImage, // We might want the R2 URL here eventually, but local URI ok for session
-                title: sceneData.title || "Untitled Scene",
-                updatedAt: new Date().toISOString(),
-                collaborators: sceneData.collaborators || [], // Persist collaborators
-            };
-
-            if (!sceneData.draftId) {
-                newDraft.createdAt = new Date().toISOString();
-            }
-
-            await setDoc(draftRef, newDraft, { merge: true });
-
-            console.log("[Store] Draft saved successfully:", draftId);
-
-            // Refresh drafts
+            // Refresh drafts list
             await state.fetchDrafts();
         } catch (e) {
-            console.error("[Store] Error saving draft:", e);
-            // Optionally notify user via UI toast
+            console.error("[Store] Error saving scene:", e);
         }
     },
     fetchDrafts: async () => {
@@ -379,18 +384,21 @@ export const useAppStore = create<AppState>((set, get) => ({
             const state = get();
             if (!state.currentUser) return;
 
-            console.log("[Store] Fetching drafts...");
-            // Fetch owned drafts
+            console.log("[Store] Fetching drafts from scenes collection...");
+
+            // Fetch owned draft scenes
             const qOwned = query(
-                collection(db, "drafts"),
-                where("userId", "==", state.currentUser.id),
+                collection(db, "scenes"),
+                where("ownerId", "==", state.currentUser.id),
+                where("status", "==", "draft"),
                 orderBy("updatedAt", "desc")
             );
 
-            // Fetch shared drafts
+            // Fetch shared draft scenes
             const qShared = query(
-                collection(db, "drafts"),
+                collection(db, "scenes"),
                 where("collaborators", "array-contains", state.currentUser.id),
+                where("status", "==", "draft"),
                 orderBy("updatedAt", "desc")
             );
 
@@ -401,19 +409,42 @@ export const useAppStore = create<AppState>((set, get) => ({
 
             const draftsMap = new Map<string, Draft>();
 
-            // Process Owned Drafts
+            // Process Owned Scenes (as drafts)
             if (results[0].status === 'fulfilled') {
                 results[0].value.forEach(doc => {
-                    draftsMap.set(doc.id, { id: doc.id, ...doc.data() } as Draft);
+                    const data = doc.data();
+                    const coverImage = data.previewPath ? `https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/${data.previewPath}` : null;
+                    console.log('[Store] Draft data:', { id: doc.id, previewPath: data.previewPath, coverImage });
+                    // Map scene fields to draft interface
+                    draftsMap.set(doc.id, {
+                        id: doc.id,
+                        sceneId: doc.id, // Scene ID is the doc ID now
+                        title: data.title || 'Untitled',
+                        coverImage,
+                        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+                        createdAt: data.createdAt?.toDate?.()?.toISOString(),
+                        collaborators: data.collaborators || [],
+                        ownerId: data.ownerId,
+                    } as Draft);
                 });
             } else {
                 console.error("[Store] Failed to fetch owned drafts:", results[0].reason);
             }
 
-            // Process Shared Drafts (May fail if index is building)
+            // Process Shared Scenes (as drafts)
             if (results[1].status === 'fulfilled') {
                 results[1].value.forEach(doc => {
-                    draftsMap.set(doc.id, { id: doc.id, ...doc.data() } as Draft);
+                    const data = doc.data();
+                    draftsMap.set(doc.id, {
+                        id: doc.id,
+                        sceneId: doc.id,
+                        title: data.title || 'Untitled',
+                        coverImage: data.previewPath ? `https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/${data.previewPath}` : null,
+                        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+                        createdAt: data.createdAt?.toDate?.()?.toISOString(),
+                        collaborators: data.collaborators || [],
+                        ownerId: data.ownerId,
+                    } as Draft);
                 });
             } else {
                 console.warn("[Store] Failed to fetch shared drafts (likely index building):", results[1].reason);
@@ -424,16 +455,18 @@ export const useAppStore = create<AppState>((set, get) => ({
             );
 
             set({ drafts });
-            console.log(`[Store] Fetched ${drafts.length} drafts.`);
+            console.log(`[Store] Fetched ${drafts.length} drafts from scenes.`);
         } catch (e) {
             console.error("[Store] Error fetching drafts:", e);
         }
     },
     deleteDraft: async (id) => {
         try {
-            await deleteDoc(doc(db, "drafts", id));
+            // Delete from scenes collection (not drafts)
+            await deleteDoc(doc(db, "scenes", id));
             set(state => ({ drafts: state.drafts.filter(d => d.id !== id) }));
-        } catch (e) { console.error("Error deleting draft:", e); }
+            console.log("[Store] Deleted scene/draft:", id);
+        } catch (e) { console.error("Error deleting scene/draft:", e); }
     },
 
     // Voice

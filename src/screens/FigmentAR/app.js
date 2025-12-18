@@ -169,6 +169,7 @@ export class App extends Component {
     this._onUpdateObjectAnimation = this._onUpdateObjectAnimation.bind(this);
     this._onTransformUpdate = this._onTransformUpdate.bind(this);
     this._onMediaTransformUpdate = this._onMediaTransformUpdate.bind(this);
+    this._onPortalTransformUpdate = this._onPortalTransformUpdate.bind(this);
     // Update viroAppProps to include onBackgroundTap
     this.state.viroAppProps = {
       loadingObjectCallback: this._onListItemLoaded,
@@ -177,6 +178,7 @@ export class App extends Component {
       onUpdateAnimation: this._onUpdateObjectAnimation,
       onTransformUpdate: this._onTransformUpdate,
       onMediaTransformUpdate: this._onMediaTransformUpdate,
+      onPortalTransformUpdate: this._onPortalTransformUpdate,
     };
   }
 
@@ -188,6 +190,11 @@ export class App extends Component {
   _onMediaTransformUpdate(uuid, transforms) {
     console.log('[App] Media transform update for', uuid, transforms);
     this.props.dispatchUpdateMediaTransforms(uuid, transforms);
+  }
+
+  _onPortalTransformUpdate(uuid, transforms) {
+    console.log('[App] Portal transform update for', uuid, transforms);
+    this.props.dispatchUpdatePortalTransforms(uuid, transforms);
   }
 
   componentDidMount() {
@@ -2049,6 +2056,13 @@ const mapDispatchToProps = (dispatch) => {
     }),
     dispatchUpdateMediaTransforms: (uuid, transforms) => dispatch({
       type: 'UPDATE_MEDIA_TRANSFORMS',
+      uuid,
+      position: transforms.position,
+      rotation: transforms.rotation,
+      scale: transforms.scale,
+    }),
+    dispatchUpdatePortalTransforms: (uuid, transforms) => dispatch({
+      type: 'UPDATE_PORTAL_TRANSFORMS',
       uuid,
       position: transforms.position,
       rotation: transforms.rotation,

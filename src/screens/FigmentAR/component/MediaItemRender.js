@@ -26,12 +26,28 @@ var MediaItemRender = createReactClass({
     getInitialState() {
         // Use saved values from mediaItem if loading from draft
         const mediaItem = this.props.mediaItem || {};
-        const isLoadedFromDraft = mediaItem.loading === 'LOADED';
+        // Use explicit isFromDraft flag (set by LOAD_SCENE reducer)
+        const isLoadedFromDraft = mediaItem.isFromDraft === true;
+
+        // Detailed debug logging with actual values
+        console.log('[MediaItemRender] getInitialState DETAILED:', {
+            uuid: mediaItem.uuid,
+            isLoadedFromDraft,
+            propsPosition: JSON.stringify(mediaItem.position),
+            propsRotation: JSON.stringify(mediaItem.rotation),
+            propsScale: JSON.stringify(mediaItem.scale),
+        });
+
+        const finalPosition = isLoadedFromDraft && mediaItem.position ? mediaItem.position : [0, 0, -1];
+        const finalRotation = isLoadedFromDraft && mediaItem.rotation ? mediaItem.rotation : [0, 0, 0];
+        const finalScale = isLoadedFromDraft && mediaItem.scale ? mediaItem.scale : [1, 1, 1];
+
+        console.log('[MediaItemRender] Using position:', JSON.stringify(finalPosition));
 
         return {
-            scale: isLoadedFromDraft && mediaItem.scale ? mediaItem.scale : [1, 1, 1],
-            rotation: isLoadedFromDraft && mediaItem.rotation ? mediaItem.rotation : [0, 0, 0],
-            position: isLoadedFromDraft && mediaItem.position ? mediaItem.position : [0, 0, -1],
+            scale: finalScale,
+            rotation: finalRotation,
+            position: finalPosition,
             nodeIsVisible: true,
         }
     },
@@ -48,6 +64,43 @@ var MediaItemRender = createReactClass({
         }, 100);
     },
 
+    componentDidUpdate(prevProps) {
+        // CRITICAL: Handle case where LOAD_SCENE updates Redux AFTER component mounts
+        // When isFromDraft changes from false/undefined to true, update state with saved transforms
+        const wasFromDraft = prevProps.mediaItem?.isFromDraft === true;
+        const isNowFromDraft = this.props.mediaItem?.isFromDraft === true;
+
+        if (!wasFromDraft && isNowFromDraft) {
+            const newPosition = this.props.mediaItem.position || this.state.position;
+            const newRotation = this.props.mediaItem.rotation || this.state.rotation;
+            const newScale = this.props.mediaItem.scale || this.state.scale;
+
+            console.log('[MediaItemRender] isFromDraft changed to true, updating transforms:', {
+                uuid: this.props.mediaItem.uuid,
+                position: JSON.stringify(newPosition),
+                rotation: JSON.stringify(newRotation),
+                scale: JSON.stringify(newScale),
+            });
+
+            // Update React state with saved transforms from the draft
+            this.setState({
+                position: newPosition,
+                rotation: newRotation,
+                scale: newScale,
+            });
+
+            // CRITICAL: ViroReact caches transforms and ignores React state changes
+            // Must use setNativeProps to force the native component to update
+            if (this.arNodeRef) {
+                this.arNodeRef.setNativeProps({
+                    position: newPosition,
+                    rotation: newRotation,
+                    scale: newScale,
+                });
+            }
+        }
+    },
+
     componentWillUnmount() {
         this._isMounted = false;
     },
@@ -55,6 +108,12 @@ var MediaItemRender = createReactClass({
     _syncToRedux() {
         // Sync transforms back to Redux for serialization
         if (this.props.onTransformUpdate && this.props.mediaItem) {
+            console.log('[MediaItemRender] _syncToRedux called:', {
+                uuid: this.props.mediaItem.uuid,
+                position: JSON.stringify(this.state.position),
+                rotation: JSON.stringify(this.state.rotation),
+                scale: JSON.stringify(this.state.scale),
+            });
             this.props.onTransformUpdate(this.props.mediaItem.uuid, {
                 scale: this.state.scale,
                 position: this.state.position,
@@ -64,34 +123,61 @@ var MediaItemRender = createReactClass({
     },
 
     _onPinch(pinchState, scaleFactor, source) {
-        if (pinchState === 2) {
-            if (!this._initialPinchScale) this._initialPinchScale = this.state.scale;
-            const newScale = this._initialPinchScale.map((x) => x * scaleFactor);
-            this.setState({ scale: newScale });
+        // Capture initial scale on first event
+        if (pinchState === 1 || !this._initialPinchScale) {
+            this._initialPinchScale = this.state.scale;
         }
+
+        const newScale = this._initialPinchScale.map((x) => x * scaleFactor);
+        this.setState({ scale: newScale });
+
+        // Throttle Redux updates
+        const now = Date.now();
+        if (!this._lastPinchSync || now - this._lastPinchSync > 100) {
+            this._lastPinchSync = now;
+            this._syncToRedux();
+        }
+
         if (pinchState === 3) {
             this._initialPinchScale = null;
-            this._syncToRedux(); // Sync on gesture end
+            this._syncToRedux();
         }
     },
 
     _onRotate(rotateState, rotationFactor, source) {
-        if (rotateState === 2) {
-            this.setState(prevState => ({
-                rotation: [prevState.rotation[0], prevState.rotation[1] - rotationFactor, prevState.rotation[2]]
-            }));
+        // Capture initial rotation on first event
+        if (rotateState === 1 || this._initialRotationY === null || this._initialRotationY === undefined) {
+            this._initialRotationY = this.state.rotation[1];
         }
+
+        const newRotationY = (this._initialRotationY || 0) - rotationFactor;
+        const newRotation = [this.state.rotation[0], newRotationY, this.state.rotation[2]];
+        this.setState({ rotation: newRotation });
+
+        // Throttle Redux updates
+        const now = Date.now();
+        if (!this._lastRotateSync || now - this._lastRotateSync > 100) {
+            this._lastRotateSync = now;
+            this._syncToRedux();
+        }
+
         if (rotateState === 3) {
-            this._syncToRedux(); // Sync on gesture end
+            this._initialRotationY = null;
+            this._syncToRedux();
         }
     },
 
-    _onDrag(dragState, position, source) {
-        if (dragState === 2) { // Moving
-            this.setState({ position: position });
-        }
-        if (dragState === 3) { // Drag ended
-            this._syncToRedux(); // Sync on gesture end
+    _onDrag(dragToPos, source) {
+        // ViroReact onDrag provides (dragToPos, source) - not (state, position, source)
+        if (!dragToPos || !Array.isArray(dragToPos)) return;
+
+        this.setState({ position: dragToPos });
+
+        // Throttle Redux updates
+        const now = Date.now();
+        if (!this._lastDragSync || now - this._lastDragSync > 100) {
+            this._lastDragSync = now;
+            this._syncToRedux();
         }
     },
 
