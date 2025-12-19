@@ -184,10 +184,6 @@ var ModelItemRender = createReactClass({
       localModelPath: null,
       isDownloading: false,
       downloadError: null,
-      // Y-lift mode: long-press enables Y-only dragging
-      yLiftMode: false,
-      lockedY: null, // When set, Y position is constrained to this value
-      lockedXZ: null, // When in Y-lift mode, X/Z are locked at these values
     }
   },
 
@@ -698,41 +694,10 @@ var ModelItemRender = createReactClass({
           },
           200
         );
-
-        // Long-press timer for Y-lift mode (1000ms hold)
-        this._longPressTimer = TimerMixin.setTimeout(
-          () => {
-            if (this._isMounted) {
-              console.log('[ModelItemRender] Long-press detected - enabling Y-lift mode at X/Z:', this.state.position[0], this.state.position[2]);
-              this.setState({
-                yLiftMode: true,
-                lockedXZ: [this.state.position[0], this.state.position[2]], // Lock X/Z at this moment
-              });
-            }
-          },
-          1000
-        );
       }
 
       if (clickState == 2) { // clickstate == 2 -> "ClickUp"
         console.log('[ModelItemRender] ClickUp detected, itemClickedDown:', this.state.itemClickedDown);
-
-        // Clear long-press timer
-        if (this._longPressTimer) {
-          TimerMixin.clearTimeout(this._longPressTimer);
-          this._longPressTimer = null;
-        }
-
-        // If in Y-lift mode, lock the Y position and exit lift mode
-        if (this.state.yLiftMode) {
-          console.log('[ModelItemRender] Exiting Y-lift mode, locking Y at:', this.state.position[1]);
-          this.setState({
-            yLiftMode: false,
-            lockedY: this.state.position[1], // Lock Y at current position
-            lockedXZ: null, // Clear locked X/Z
-          });
-        }
-
         // As explained above, within 200 ms, the user's intention is to "tap" the model -> toggle the animation start/stop
         if (this.state.itemClickedDown) {
           { this._onItemClicked() }
@@ -763,31 +728,9 @@ var ModelItemRender = createReactClass({
     if (!this._isMounted) return;
     if (!dragToPos || !Array.isArray(dragToPos)) return;
 
-    let newPosition;
-
-    if (this.state.yLiftMode && this.state.lockedXZ) {
-      // Y-lift mode: Only Y changes, X and Z stay fixed at locked values
-      newPosition = [
-        this.state.lockedXZ[0], // Use locked X from when Y-lift started
-        dragToPos[1],           // Use dragged Y
-        this.state.lockedXZ[1]  // Use locked Z from when Y-lift started
-      ];
-      console.log('[ModelItemRender] Y-lift drag - Y:', dragToPos[1].toFixed(3), 'locked XZ:', this.state.lockedXZ);
-    } else if (this.state.lockedY !== null) {
-      // Locked Y mode: X and Z can change, Y stays at locked value
-      newPosition = [
-        dragToPos[0],           // Use dragged X
-        this.state.lockedY,     // Keep locked Y
-        dragToPos[2]            // Use dragged Z
-      ];
-    } else {
-      // Normal drag: all axes free
-      newPosition = dragToPos;
-    }
-
     // Update state with new drag position
     this.setState({
-      position: newPosition
+      position: dragToPos
     });
 
     // Throttle Redux updates to avoid overwhelming the store
@@ -800,7 +743,7 @@ var ModelItemRender = createReactClass({
       if (this.props.onTransformUpdate) {
         this.props.onTransformUpdate(this.props.modelIDProps.uuid, {
           scale: this.state.scale,
-          position: newPosition,
+          position: dragToPos,
           rotation: this.state.rotation,
         });
       }
