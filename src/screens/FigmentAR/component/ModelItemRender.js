@@ -187,6 +187,7 @@ var ModelItemRender = createReactClass({
       // Y-lift mode: long-press enables Y-only dragging
       yLiftMode: false,
       lockedY: null, // When set, Y position is constrained to this value
+      lockedXZ: null, // When in Y-lift mode, X/Z are locked at these values
     }
   },
 
@@ -702,9 +703,10 @@ var ModelItemRender = createReactClass({
         this._longPressTimer = TimerMixin.setTimeout(
           () => {
             if (this._isMounted) {
-              console.log('[ModelItemRender] Long-press detected - enabling Y-lift mode');
+              console.log('[ModelItemRender] Long-press detected - enabling Y-lift mode at X/Z:', this.state.position[0], this.state.position[2]);
               this.setState({
                 yLiftMode: true,
+                lockedXZ: [this.state.position[0], this.state.position[2]], // Lock X/Z at this moment
               });
             }
           },
@@ -727,6 +729,7 @@ var ModelItemRender = createReactClass({
           this.setState({
             yLiftMode: false,
             lockedY: this.state.position[1], // Lock Y at current position
+            lockedXZ: null, // Clear locked X/Z
           });
         }
 
@@ -762,13 +765,14 @@ var ModelItemRender = createReactClass({
 
     let newPosition;
 
-    if (this.state.yLiftMode) {
-      // Y-lift mode: Only Y changes, X and Z stay fixed
+    if (this.state.yLiftMode && this.state.lockedXZ) {
+      // Y-lift mode: Only Y changes, X and Z stay fixed at locked values
       newPosition = [
-        this.state.position[0], // Keep current X
+        this.state.lockedXZ[0], // Use locked X from when Y-lift started
         dragToPos[1],           // Use dragged Y
-        this.state.position[2]  // Keep current Z
+        this.state.lockedXZ[1]  // Use locked Z from when Y-lift started
       ];
+      console.log('[ModelItemRender] Y-lift drag - Y:', dragToPos[1].toFixed(3), 'locked XZ:', this.state.lockedXZ);
     } else if (this.state.lockedY !== null) {
       // Locked Y mode: X and Z can change, Y stays at locked value
       newPosition = [
