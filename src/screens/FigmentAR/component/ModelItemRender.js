@@ -18,7 +18,7 @@ import * as ModelData from '../model/ModelItems';
 import TimerMixin from 'react-timer-mixin';
 import ParticleEmitter from '../model/emitters/ParticleEmitter';
 import renderIf from '../helpers/renderIf';
-import ObjectGizmo from './ObjectGizmo';
+
 import {
   ViroMaterials,
   ViroNode,
@@ -178,8 +178,6 @@ var ModelItemRender = createReactClass({
       runAnimation: true,
       showParticles: true,
       itemClickedDown: false,
-      showGizmo: false, // Gizmo visibility
-      yOffset: 0, // Height above ground ring gizmo (for Y-only drag on object)
       materialColor: randomColor,
       materialName: materialName,
       // For custom models - track local file path after download
@@ -599,21 +597,9 @@ var ModelItemRender = createReactClass({
 
         {/* Inner ViroNode for model-specific offset (ground alignment, pivot, etc.).
             This offset is defined in ModelItems.js and must be applied for all models,
-            including draft-loaded ones, since the saved outer position doesn't include it.
-            yOffset is added for gizmo-controlled height adjustment. */}
+            including draft-loaded ones, since the saved outer position doesn't include it. */}
         <ViroNode
-          position={[
-            modelItem.position ? modelItem.position[0] : 0,
-            (modelItem.position ? modelItem.position[1] : 0) + this.state.yOffset,
-            modelItem.position ? modelItem.position[2] : 0,
-          ]}
-          onDrag={this.state.showGizmo ? this._onObjectYDrag : undefined}
-          dragType={this.state.showGizmo ? "FixedToPlane" : undefined}
-          dragPlane={this.state.showGizmo ? {
-            planePoint: [0, 0, 0],
-            planeNormal: [1, 0, 0], // Constrain to YZ plane (vertical movement only)
-            maxDistance: 5,
-          } : undefined}>
+          position={modelItem.position || [0, 0, 0]}>
           {/* Render model: bundled OR custom */}
           {(() => {
             // For custom models, use the remote URL directly (ViroReact supports remote GLB)
@@ -638,17 +624,6 @@ var ModelItemRender = createReactClass({
             );
           })()}
 
-          {/* Ground ring gizmo - controls X/Z position, rotation, scale */}
-          {this.state.showGizmo && (
-            <ObjectGizmo
-              scale={this.state.scale[0]}
-              yOffset={this.state.yOffset}
-              isSelected={this.state.showGizmo}
-              onXZDrag={(deltaX, deltaZ) => this._onGizmoXZDrag(deltaX, deltaZ)}
-              onRotate={this._onRotate}
-              onPinch={this._onPinch}
-            />
-          )}
 
 
           {/* Artifact Logic - Title Label */}
@@ -735,44 +710,11 @@ var ModelItemRender = createReactClass({
   },
   _onItemClicked() {
     if (!this._isMounted) return;
-    // Toggle gizmo visibility on tap
     this.setState({
-      showGizmo: !this.state.showGizmo,
       itemClickedDown: false,
     });
   },
 
-  // Gizmo ground ring X/Z drag handler - moves object on horizontal plane
-  _onGizmoXZDrag(deltaX, deltaZ) {
-    if (!this._isMounted) return;
-    this.setState(prevState => ({
-      position: [
-        prevState.position[0] + deltaX,
-        prevState.position[1],
-        prevState.position[2] + deltaZ,
-      ],
-    }));
-  },
-
-  // Object Y-only drag handler - lifts object vertically (updates yOffset)
-  _onObjectYDrag(dragState, position, source) {
-    if (!this._isMounted) return;
-
-    if (dragState === 1) {
-      // Drag started - capture initial Y position
-      this._initialYDragPos = position[1];
-    } else if (dragState === 2 && this._initialYDragPos !== undefined) {
-      // Dragging - calculate delta Y and update yOffset
-      const deltaY = position[1] - this._initialYDragPos;
-      this.setState(prevState => ({
-        yOffset: Math.max(0, prevState.yOffset + deltaY), // Never go below 0
-      }));
-      this._initialYDragPos = position[1];
-    } else if (dragState === 3) {
-      // Drag ended
-      this._initialYDragPos = undefined;
-    }
-  },
 
   /*
    Drag handler - ViroReact provides dragToPos and source.
