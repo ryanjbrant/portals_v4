@@ -173,6 +173,14 @@ export function setSceneTitle(title) {
   };
 }
 
+// action to set the scene ID after saving
+export function setSceneId(sceneId) {
+  return {
+    type: 'SET_SCENE_ID',
+    sceneId: sceneId,
+  };
+}
+
 // action to load a scene from saved draft data
 export function loadScene(sceneData) {
   return {

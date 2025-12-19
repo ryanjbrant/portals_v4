@@ -1,87 +1,194 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, Image, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, Image, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
-import { USERS } from '../mock';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 import { useAppStore } from '../store';
-import { User } from '../types';
+import { User, Notification } from '../types';
 
 export const PeopleScreen = () => {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const initialTab = route.params?.tab || 'Friends';
-    const targetUserId = route.params?.userId || useAppStore.getState().currentUser?.id;
+    const initialTab = route.params?.tab || 'Following';
     const currentUser = useAppStore(state => state.currentUser);
-    const isSelf = targetUserId === currentUser?.id;
 
     const [activeTab, setActiveTab] = useState(initialTab);
     const [search, setSearch] = useState('');
+    const [loading, setLoading] = useState(true);
 
-    // Store State
-    const relationships = useAppStore(state => state.relationships);
-    const approveInvite = useAppStore(state => state.approveInvite);
-    const rejectInvite = useAppStore(state => state.rejectInvite);
-    const followUser = useAppStore(state => state.followUser);
+    // Real data from Firestore
+    const [followingUsers, setFollowingUsers] = useState<User[]>([]);
+    const [followerUsers, setFollowerUsers] = useState<User[]>([]);
+    const [teamUsers, setTeamUsers] = useState<User[]>([]);
+    const [collabInvites, setCollabInvites] = useState<Notification[]>([]);
+
+    // Store actions
     const unfollowUser = useAppStore(state => state.unfollowUser);
-    const removeTeamMember = useAppStore(state => state.removeTeamMember);
+    const respondToCollabInvite = useAppStore(state => state.respondToCollabInvite);
+    const notifications = useAppStore(state => state.notifications);
 
-    // Filter Users based on Tab
-    const getTabUsers = () => {
-        let filteredIds: string[] = [];
+    // Fetch real data on mount
+    useEffect(() => {
+        if (!currentUser?.id) return;
+        fetchAllData();
+    }, [currentUser?.id]);
 
-        // If viewing someone else, we don't have their relationships in store.
-        // For MVP Demo: Mock return some users so the list isn't empty.
-        if (!isSelf) {
-            // Mock data for others: simply return a subset of USERS excluding self
-            // In real app: await fetchUserRelationships(targetUserId)
-            const allIds = USERS.map(u => u.id).filter(id => id !== targetUserId);
-            filteredIds = allIds.slice(0, 3); // Just show 3 random people as followers/following
+    // Update collab invites when notifications change
+    useEffect(() => {
+        const invites = notifications.filter(n => n.type === 'collab_invite' && n.actionStatus === 'pending');
+        setCollabInvites(invites);
+    }, [notifications]);
 
-            // Allow searching full directory if tab is Friends/Following to simulate "Network"
-        } else {
-            // Viewing Self
-            switch (activeTab) {
-                case 'Team': filteredIds = relationships.team; break;
-                case 'Invites': filteredIds = relationships.invites; break;
-                case 'Friends': filteredIds = relationships.friends; break;
-                case 'Following': filteredIds = relationships.following; break;
-                default: filteredIds = [];
+    const fetchAllData = async () => {
+        if (!currentUser?.id) return;
+        setLoading(true);
+
+        try {
+            // Fetch Following
+            const followingRef = collection(db, 'users', currentUser.id, 'following');
+            const followingSnap = await getDocs(followingRef);
+            const followingIds = followingSnap.docs.map(d => d.id);
+            const followingData = await fetchUsersByIds(followingIds);
+            setFollowingUsers(followingData);
+
+            // Fetch Followers
+            const followersRef = collection(db, 'users', currentUser.id, 'followers');
+            const followersSnap = await getDocs(followersRef);
+            const followerIds = followersSnap.docs.map(d => d.id);
+            const followerData = await fetchUsersByIds(followerIds);
+            setFollowerUsers(followerData);
+
+            // Fetch Team from multiple sources:
+            // 1. Local relationships.team (from accepted invites)
+            // 2. Owners of scenes where I'm a collaborator
+            // 3. Other collaborators on scenes I own or collaborate on
+            const teamIdsSet = new Set<string>(useAppStore.getState().relationships.team || []);
+
+            // Query scenes where I'm a collaborator to get owners
+            const collabScenesQuery = query(
+                collection(db, 'scenes'),
+                where('collaborators', 'array-contains', currentUser.id)
+            );
+            const collabScenes = await getDocs(collabScenesQuery);
+            collabScenes.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.ownerId && data.ownerId !== currentUser.id) {
+                    teamIdsSet.add(data.ownerId);
+                }
+            });
+
+            // Query scenes I own to get their collaborators
+            const ownedScenesQuery = query(
+                collection(db, 'scenes'),
+                where('ownerId', '==', currentUser.id)
+            );
+            const ownedScenes = await getDocs(ownedScenesQuery);
+            ownedScenes.docs.forEach(doc => {
+                const data = doc.data();
+                const collabs = data.collaborators || [];
+                collabs.forEach((id: string) => {
+                    if (id !== currentUser.id) teamIdsSet.add(id);
+                });
+            });
+
+            const teamData = await fetchUsersByIds(Array.from(teamIdsSet));
+            setTeamUsers(teamData);
+
+        } catch (e) {
+            console.error('[PeopleScreen] Error fetching data:', e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchUsersByIds = async (ids: string[]): Promise<User[]> => {
+        const users: User[] = [];
+        for (const id of ids) {
+            try {
+                const userDoc = await getDoc(doc(db, 'users', id));
+                if (userDoc.exists()) {
+                    users.push({ id, ...userDoc.data() } as User);
+                }
+            } catch (e) {
+                console.warn(`Failed to fetch user ${id}`);
             }
         }
+        return users;
+    };
 
-        // If tab is 'Friends' and we want to show "Suggested" if empty, we can handle that.
-        // But strictly:
-        const list = USERS.filter(u => filteredIds.includes(u.id));
+    // Get users for current tab
+    const getTabUsers = () => {
+        let list: User[] = [];
 
-        // Search Filter
+        switch (activeTab) {
+            case 'Team':
+                list = teamUsers;
+                break;
+            case 'Followers':
+                list = followerUsers;
+                break;
+            case 'Following':
+                list = followingUsers;
+                break;
+            case 'Invites':
+                // For invites tab, we return the notification senders
+                return collabInvites; // Return notifications, not users
+            default:
+                list = [];
+        }
+
+        // Search filter
         if (search) {
-            return list.filter(u => u.username.toLowerCase().includes(search.toLowerCase()) || u.name?.toLowerCase().includes(search.toLowerCase()));
+            return list.filter(u =>
+                u.username?.toLowerCase().includes(search.toLowerCase()) ||
+                u.name?.toLowerCase().includes(search.toLowerCase())
+            );
         }
         return list;
     };
 
-    const displayUsers = getTabUsers();
+    const displayItems = getTabUsers();
 
     // Actions
-    const onApprove = (id: string) => {
-        approveInvite(id);
-        Alert.alert("Success", "User added to your Team!");
+    const handleAcceptInvite = async (invite: Notification) => {
+        try {
+            await respondToCollabInvite(
+                invite.id,
+                invite.data?.postId || '',
+                invite.user.id,
+                'a scene',
+                true
+            );
+            Alert.alert("Success", "You've joined the collaboration!");
+        } catch (e) {
+            Alert.alert("Error", "Failed to accept invite");
+        }
     };
 
-    const onReject = (id: string) => {
+    const handleDeclineInvite = async (invite: Notification) => {
         Alert.alert(
-            "Reject Invitation",
-            "Are you sure you want to reject this invitation?",
+            "Decline Invitation",
+            "Are you sure you want to decline this collaboration invite?",
             [
                 { text: "Cancel", style: "cancel" },
                 {
-                    text: "Reject",
+                    text: "Decline",
                     style: 'destructive',
-                    onPress: () => {
-                        rejectInvite(id);
-                        // TODO: Log to DB and notify user (Handled by Store action conceptually)
+                    onPress: async () => {
+                        try {
+                            await respondToCollabInvite(
+                                invite.id,
+                                invite.data?.postId || '',
+                                invite.user.id,
+                                'a scene',
+                                false
+                            );
+                        } catch (e) {
+                            Alert.alert("Error", "Failed to decline invite");
+                        }
                     }
                 }
             ]
@@ -99,56 +206,34 @@ export const PeopleScreen = () => {
         );
     };
 
-    const renderItem = ({ item }: { item: any }) => {
-        // const isConnected = connectedUsers.has(item.id); // Replaced by store logic
-        // const isUnfollowing = unfollowingIds.has(item.id); // Replaced by store logic
-
+    const renderUserItem = ({ item }: { item: User }) => {
         return (
-            <View style={styles.userRow}>
-                <Image source={{ uri: item.avatar }} style={styles.avatar} />
+            <TouchableOpacity
+                style={styles.userRow}
+                onPress={() => navigation.navigate('UserProfile', { userId: item.id })}
+            >
+                <Image source={{ uri: item.avatar || 'https://i.pravatar.cc/150' }} style={styles.avatar} />
                 <View style={styles.userInfo}>
-                    <Text style={styles.username}>{item.username}</Text>
-                    <Text style={styles.userStatus}>Online now</Text>
+                    <Text style={styles.username}>@{item.username}</Text>
+                    {item.name && <Text style={styles.userStatus}>{item.name}</Text>}
                 </View>
 
                 {/* --- TEAM TAB --- */}
                 {activeTab === 'Team' && (
-                    <TouchableOpacity
-                        style={[styles.actionButton, styles.connectedButton]}
-                        onPress={() => removeTeamMember(item.id)}
-                    >
-                        <Text style={[styles.actionText, styles.connectedText]}>Remove</Text>
-                    </TouchableOpacity>
-                )}
-
-                {/* --- FRIENDS TAB --- */}
-                {activeTab === 'Friends' && (
-                    <>
-                        <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Chat', { userId: item.id })}>
-                            <Text style={styles.actionText}>Message</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleUnfollowRequest(item.id)}>
-                            <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.textSecondary} />
-                        </TouchableOpacity>
-                    </>
-                )}
-
-                {/* --- INVITES TAB --- */}
-                {activeTab === 'Invites' && (
-                    <View style={styles.inviteContainer}>
-                        <TouchableOpacity
-                            style={[styles.inviteButton, { backgroundColor: theme.colors.primary }]}
-                            onPress={() => onApprove(item.id)}
-                        >
-                            <Text style={styles.actionText}>Approve</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.inviteButton, { backgroundColor: '#333' }]}
-                            onPress={() => onReject(item.id)}
-                        >
-                            <Text style={[styles.actionText, { color: '#FFF' }]}>Reject</Text>
-                        </TouchableOpacity>
+                    <View style={[styles.actionButton, styles.teamBadge]}>
+                        <Ionicons name="people" size={14} color={theme.colors.primary} />
+                        <Text style={styles.teamText}>Collaborator</Text>
                     </View>
+                )}
+
+                {/* --- FOLLOWERS TAB --- */}
+                {activeTab === 'Followers' && (
+                    <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => navigation.navigate('Chat', { userId: item.id })}
+                    >
+                        <Text style={styles.actionText}>Message</Text>
+                    </TouchableOpacity>
                 )}
 
                 {/* --- FOLLOWING TAB --- */}
@@ -160,6 +245,33 @@ export const PeopleScreen = () => {
                         <Text style={[styles.actionText, styles.connectedText]}>Following</Text>
                     </TouchableOpacity>
                 )}
+            </TouchableOpacity>
+        );
+    };
+
+    const renderInviteItem = ({ item }: { item: Notification }) => {
+        return (
+            <View style={styles.userRow}>
+                <Image source={{ uri: item.user?.avatar || 'https://i.pravatar.cc/150' }} style={styles.avatar} />
+                <View style={styles.userInfo}>
+                    <Text style={styles.username}>@{item.user?.username}</Text>
+                    <Text style={styles.userStatus}>{item.message}</Text>
+                </View>
+
+                <View style={styles.inviteContainer}>
+                    <TouchableOpacity
+                        style={[styles.inviteButton, { backgroundColor: theme.colors.primary }]}
+                        onPress={() => handleAcceptInvite(item)}
+                    >
+                        <Text style={styles.actionText}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.inviteButton, { backgroundColor: '#333' }]}
+                        onPress={() => handleDeclineInvite(item)}
+                    >
+                        <Text style={[styles.actionText, { color: '#FFF' }]}>Decline</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
         );
     };
@@ -189,23 +301,49 @@ export const PeopleScreen = () => {
             </View>
 
             <View style={styles.tabs}>
-                {['Team', 'Friends', 'Invites', 'Following'].map(tab => (
+                {['Team', 'Followers', 'Invites', 'Following'].map(tab => (
                     <TouchableOpacity
                         key={tab}
                         style={[styles.tab, activeTab === tab && styles.activeTab]}
                         onPress={() => setActiveTab(tab)}
                     >
-                        <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
+                        <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+                            {tab}
+                            {tab === 'Invites' && collabInvites.length > 0 && (
+                                <Text style={styles.badgeText}> ({collabInvites.length})</Text>
+                            )}
+                        </Text>
                     </TouchableOpacity>
                 ))}
             </View>
 
-            <FlatList
-                data={displayUsers}
-                renderItem={renderItem}
-                keyExtractor={item => item.id}
-                contentContainerStyle={styles.list}
-            />
+            {loading ? (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={theme.colors.primary} />
+                    <Text style={styles.loadingText}>Loading...</Text>
+                </View>
+            ) : (
+                <FlatList
+                    data={displayItems as any}
+                    renderItem={activeTab === 'Invites' ? renderInviteItem : renderUserItem}
+                    keyExtractor={item => item.id}
+                    contentContainerStyle={styles.list}
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <Ionicons
+                                name={activeTab === 'Invites' ? 'mail-outline' : 'people-outline'}
+                                size={48}
+                                color={theme.colors.textDim}
+                            />
+                            <Text style={styles.emptyText}>
+                                {activeTab === 'Invites'
+                                    ? 'No pending invitations'
+                                    : `No ${activeTab.toLowerCase()} yet`}
+                            </Text>
+                        </View>
+                    }
+                />
+            )}
         </SafeAreaView>
     );
 };
@@ -250,7 +388,7 @@ const styles = StyleSheet.create({
     tabs: {
         flexDirection: 'row',
         paddingHorizontal: theme.spacing.m,
-        gap: 12,
+        gap: 8,
         marginBottom: theme.spacing.m,
     },
     tab: {
@@ -265,12 +403,38 @@ const styles = StyleSheet.create({
     tabText: {
         color: theme.colors.textSecondary,
         fontWeight: '600',
+        fontSize: 13,
     },
     activeTabText: {
         color: theme.colors.background,
     },
+    badgeText: {
+        color: theme.colors.primary,
+        fontWeight: 'bold',
+    },
     list: {
         padding: theme.spacing.m,
+        flexGrow: 1,
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        color: theme.colors.textDim,
+        marginTop: 12,
+    },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 60,
+    },
+    emptyText: {
+        color: theme.colors.textDim,
+        marginTop: 12,
+        fontSize: 16,
     },
     userRow: {
         flexDirection: 'row',
@@ -282,6 +446,7 @@ const styles = StyleSheet.create({
         height: 50,
         borderRadius: 25,
         marginRight: theme.spacing.m,
+        backgroundColor: '#333',
     },
     userInfo: {
         flex: 1,
@@ -308,35 +473,34 @@ const styles = StyleSheet.create({
         borderColor: theme.colors.border,
     },
     actionText: {
-        color: '#000', // Default black as requested
+        color: '#000',
         fontWeight: '600',
         fontSize: 12,
     },
     connectedText: {
         color: theme.colors.text,
     },
-
-    // Updated Styles
-    unfollowedButton: {
-        backgroundColor: '#FF6B6B', // Warm Red/Salmon
+    teamBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(206, 255, 29, 0.15)',
+        borderWidth: 1,
+        borderColor: theme.colors.primary,
+        gap: 4,
     },
-    unfollowedText: {
-        color: '#FFF',
+    teamText: {
+        color: theme.colors.primary,
+        fontWeight: '600',
+        fontSize: 12,
     },
-
-    // Invite Styles
     inviteContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         borderRadius: 8,
-        marginRight: theme.spacing.m,
         overflow: 'hidden',
-        // Optional: height to match actionButton if needed
     },
     inviteButton: {
         paddingVertical: 6,
         paddingHorizontal: 16,
-        borderRadius: 0, // Ensure they butt up against each other
     },
-    // Divider removed
 });

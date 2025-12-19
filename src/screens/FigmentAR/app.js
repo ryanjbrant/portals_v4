@@ -30,10 +30,11 @@ import ModelLibraryPanel from './component/ModelLibraryPanel';
 import * as ModelData from './model/ModelItems';
 import * as PortalData from './model/PortalItems';
 import * as LightingData from './model/LightingItems';
-import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, addCustomModel, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme, ARTrackingInitialized, addMedia, setSceneTitle, loadScene } from './redux/actions';
+import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, addCustomModel, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme, ARTrackingInitialized, addMedia, setSceneTitle, setSceneId, loadScene } from './redux/actions';
 import { serializeFigmentScene } from './helpers/FigmentSceneSerializer';
 import { useAppStore } from '../../store';
 import { saveScene as saveSceneToCloud, loadScene as loadSceneFromCloud } from '../../services/scene';
+import { CollaboratorModal } from '../../components/CollaboratorModal';
 
 const kObjSelectMode = 1;
 const kPortalSelectMode = 2;
@@ -173,6 +174,7 @@ export class App extends Component {
       showModelLibraryPanel: false, // New state for Model Library Panel // Portal background picker panel visibility
       objectAnimations: {}, // { [uuid]: { bounce: { active, intensity }, rotate: { active, intensity, axis }... } }
       isVideoBuffering: false, // Track 360 video buffering state for UI overlay
+      showCollaboratorModal: false, // Collaborator invite modal visibility
     };
 
     this._onBackgroundTap = this._onBackgroundTap.bind(this);
@@ -255,6 +257,13 @@ export class App extends Component {
       // Set the scene title if provided
       if (draftTitle) {
         this.props.dispatchSetSceneTitle(draftTitle);
+      }
+
+      // CRITICAL: Set the sceneId so saves update the same scene
+      const draftId = route?.params?.draftId;
+      if (draftId) {
+        this.props.dispatchSetSceneId(draftId);
+        console.log('[App] SceneId set from draft:', draftId);
       }
     }
   }
@@ -368,6 +377,7 @@ export class App extends Component {
       // Prompt for name if untitled
       const proceedToSave = async (title) => {
         sceneData.title = title;
+        sceneData.sceneId = this.props.sceneId || null; // Pass existing sceneId to update, not create new
 
         // Take a screenshot for cover image (optional, can be null)
         let coverImageUri = null;
@@ -382,8 +392,15 @@ export class App extends Component {
           console.warn('[App] Screenshot failed:', e);
         }
 
-        // Save to store
-        await useAppStore.getState().saveDraft(sceneData, coverImageUri);
+        // Save to store and get the new sceneId
+        const newSceneId = await useAppStore.getState().saveDraft(sceneData, coverImageUri);
+
+        // Dispatch sceneId to Redux so Collaborate button works immediately
+        if (newSceneId) {
+          this.props.dispatchSetSceneId(newSceneId);
+          console.log('[App] sceneId dispatched to Redux:', newSceneId);
+        }
+
         Alert.alert('Draft Saved', `"${title}" has been saved.`, [
           {
             text: 'OK',
@@ -393,6 +410,10 @@ export class App extends Component {
                 this.props.navigation.navigate('ProfileGallery', { initialTab: 'drafts' });
               }
             }
+          },
+          {
+            text: 'Continue Editing',
+            style: 'cancel'
           }
         ]);
       };
@@ -519,6 +540,28 @@ export class App extends Component {
                 <Text style={{ color: 'white', marginLeft: 12, fontSize: 16 }}>Save Draft</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.1)' }}
+                onPress={() => {
+                  this.setState({ isMenuOpen: false });
+                  // Require scene to be saved/titled before collaborating
+                  if (!this.props.sceneTitle || this.props.sceneTitle === 'Untitled Scene' || !this.props.sceneId) {
+                    Alert.alert(
+                      'Save Scene First',
+                      'Please save and name your scene before inviting collaborators.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Save Now', onPress: () => this._handleSaveDraft() }
+                      ]
+                    );
+                  } else {
+                    this.setState({ showCollaboratorModal: true });
+                  }
+                }}
+              >
+                <Ionicons name="people-outline" size={20} color="white" />
+                <Text style={{ color: 'white', marginLeft: 12, fontSize: 16 }}>Collaborate</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center', padding: 14 }}
                 onPress={() => {
                   this.setState({ isMenuOpen: false });
@@ -545,6 +588,15 @@ export class App extends Component {
           visible={this.state.showPortalBackgroundPanel}
           onClose={() => this.setState({ showPortalBackgroundPanel: false })}
           onSelectBackground={this._onPortalBackgroundSelected}
+        />
+
+        {/* Collaborator Modal */}
+        <CollaboratorModal
+          visible={this.state.showCollaboratorModal}
+          onClose={() => this.setState({ showCollaboratorModal: false })}
+          draftId={this.props.sceneId || null}
+          draftTitle={this.props.sceneTitle || 'Untitled Scene'}
+          currentCollaborators={[]}
         />
 
         {/* Model Library Panel */}
@@ -2070,6 +2122,7 @@ function selectProps(store) {
     currentItemClickState: store.ui.currentItemClickState,
     currentSelectedItemType: store.ui.currentSelectedItemType,
     sceneTitle: store.ui.sceneTitle,
+    sceneId: store.ui.sceneId,
     selectedHdri: store.ui.selectedHdri,
   };
 }
@@ -2092,6 +2145,7 @@ const mapDispatchToProps = (dispatch) => {
     dispatchChangeHdriTheme: (hdri) => dispatch(changeHdriTheme(hdri)),
     dispatchAddMedia: (source, type, width, height) => dispatch(addMedia(source, type, width, height)),
     dispatchSetSceneTitle: (title) => dispatch(setSceneTitle(title)),
+    dispatchSetSceneId: (sceneId) => dispatch(setSceneId(sceneId)),
     dispatchLoadScene: (sceneData) => dispatch(loadScene(sceneData)),
     dispatchAddCustomModel: (modelData) => dispatch(addCustomModel(modelData)),
     dispatchUpdateModelTransforms: (uuid, transforms) => dispatch({

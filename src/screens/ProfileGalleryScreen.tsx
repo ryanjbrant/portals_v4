@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, Dimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, Dimensions, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -333,9 +333,22 @@ export const ProfileGalleryScreen = () => {
                 keyExtractor={item => item.id}
                 numColumns={3}
                 contentContainerStyle={styles.listContent}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isLoadingDraft}
+                        onRefresh={async () => {
+                            console.log('[ProfileGallery] Pull to refresh - fetching drafts...');
+                            await fetchDrafts();
+                            await fetchFeed();
+                        }}
+                        tintColor={theme.colors.primary}
+                        colors={[theme.colors.primary]}
+                    />
+                }
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyText}>No {activeTab} yet.</Text>
+                        <Text style={styles.emptyHint}>Pull down to refresh</Text>
                     </View>
                 }
             />
@@ -468,6 +481,12 @@ const styles = StyleSheet.create({
     emptyText: {
         color: theme.colors.textDim,
         fontSize: 16,
+    },
+    emptyHint: {
+        color: theme.colors.textDim,
+        fontSize: 12,
+        marginTop: 8,
+        opacity: 0.6,
     },
     selectionHeader: {
         flex: 1,

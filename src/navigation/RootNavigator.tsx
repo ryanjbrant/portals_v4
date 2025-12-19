@@ -83,12 +83,27 @@ export const RootNavigator = () => {
                     if (snap.exists()) {
                         const user = snap.data() as User;
                         useAppStore.setState({ currentUser: user, isAuthenticated: true });
+
+                        // Subscribe to notifications immediately after auth
+                        const { NotificationService } = require('../services/notifications');
+                        const notifUnsubscribe = NotificationService.subscribeToNotifications(
+                            firebaseUser.uid,
+                            (notifications: any) => {
+                                useAppStore.getState().setNotifications(notifications);
+                            }
+                        );
+                        // Store unsubscribe fn for cleanup (optional)
+                        (window as any).__notifUnsubscribe = notifUnsubscribe;
                     }
                 } catch (e) {
                     console.error("Auto-login failed", e);
                 }
             } else {
                 useAppStore.setState({ currentUser: null, isAuthenticated: false });
+                // Cleanup notification subscription on logout
+                if ((window as any).__notifUnsubscribe) {
+                    (window as any).__notifUnsubscribe();
+                }
             }
             setIsLoading(false);
         });

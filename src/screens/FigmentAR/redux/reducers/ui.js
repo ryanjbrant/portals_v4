@@ -20,6 +20,7 @@ const initialState = {
   arTrackingInitialized: false,
   selectedHdri: 'studio-09',
   sceneTitle: 'Untitled Scene',
+  sceneId: null, // ID of saved scene in Firestore
 }
 
 function ui(state = initialState, action) {
@@ -51,6 +52,8 @@ function ui(state = initialState, action) {
       return {
         ...state,
         currentEffectSelectionIndex: 0,
+        sceneId: null, // Clear sceneId when scene is cleared
+        sceneTitle: 'Untitled Scene',
       }
     case 'AR_TRACKING_INITIALIZED':
       return {
@@ -66,6 +69,17 @@ function ui(state = initialState, action) {
       return {
         ...state,
         sceneTitle: action.title,
+      };
+    case 'SET_SCENE_ID':
+      return {
+        ...state,
+        sceneId: action.sceneId,
+      };
+    case 'LOAD_SCENE':
+      return {
+        ...state,
+        sceneTitle: action.sceneData?.title || state.sceneTitle,
+        sceneId: action.sceneData?.id || state.sceneId,
       };
     default:
       return state;

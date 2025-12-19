@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { FeedService } from '../services/feed';
+import { NotificationService } from '../services/notifications';
 import { Comment, User } from '../types';
 import { USERS } from '../mock';
 import { ReportModal } from './ReportModal';
@@ -174,6 +175,7 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
     const sheetTranslateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
 
     const currentUser = useAppStore(state => state.currentUser);
+    const feed = useAppStore(state => state.feed);
     const addNotification = useAppStore(state => state.addNotification);
     const pendingComment = useAppStore(state => state.pendingComment);
     const setPendingComment = useAppStore(state => state.setPendingComment);
@@ -204,6 +206,29 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
             });
         }
     }, [visible]);
+
+    // Keyboard handling - move sheet up when keyboard opens
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+    useEffect(() => {
+        const keyboardWillShow = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            (e) => {
+                setKeyboardHeight(e.endCoordinates.height);
+            }
+        );
+        const keyboardWillHide = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => {
+                setKeyboardHeight(0);
+            }
+        );
+
+        return () => {
+            keyboardWillShow.remove();
+            keyboardWillHide.remove();
+        };
+    }, []);
 
     // Subscribe to comments
     useEffect(() => {
@@ -304,6 +329,17 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
                     currentUser.avatar || '',
                     currentUser.username
                 );
+
+                // Send notification to post owner
+                const post = feed.find(p => p.id === postId);
+                if (post && post.userId !== currentUser.id) {
+                    await NotificationService.sendCommentNotification(
+                        currentUser,
+                        postId,
+                        post.userId,
+                        text
+                    );
+                }
             }
 
             // Note: Don't call addComment to local store - the Firestore real-time listener
@@ -363,11 +399,14 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
                 <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
                     <TouchableOpacity style={styles.dismissArea} onPress={onClose} />
 
-                    <Animated.View style={[styles.sheet, { transform: [{ translateY: sheetTranslateY }] }]}>
-                        <KeyboardAvoidingView
-                            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                            style={{ flex: 1 }}
-                        >
+                    <Animated.View style={[
+                        styles.sheet,
+                        {
+                            transform: [{ translateY: sheetTranslateY }],
+                            paddingBottom: keyboardHeight > 0 ? keyboardHeight - 20 : 0
+                        }
+                    ]}>
+                        <View style={{ flex: 1 }}>
                             {/* Header */}
                             <View style={styles.header}>
                                 <View style={{ width: 24 }} />
@@ -453,7 +492,7 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
                                 </View>
                             </View>
                             <View style={{ height: Platform.OS === 'ios' ? 20 : 0, backgroundColor: theme.colors.surface }} />
-                        </KeyboardAvoidingView>
+                        </View>
                     </Animated.View>
 
                     {/* Report Modal - rendered INSIDE parent modal for proper layering */}

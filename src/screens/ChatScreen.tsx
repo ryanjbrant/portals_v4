@@ -9,6 +9,7 @@ import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { User, Message } from '../types';
 import { MessageService } from '../services/messaging';
+import { NotificationService } from '../services/notifications';
 
 export const ChatScreen = () => {
     const navigation = useNavigation<any>();
@@ -75,6 +76,11 @@ export const ChatScreen = () => {
 
         try {
             await MessageService.sendMessage(conversationId, currentUser.id, text);
+
+            // Send notification to recipient
+            if (userId && userId !== currentUser.id) {
+                await NotificationService.sendMessageNotification(currentUser, userId, text);
+            }
         } catch (error) {
             console.error('[ChatScreen] Send error:', error);
             // Restore input on error

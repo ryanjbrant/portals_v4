@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { Post, User, Notification, Comment, Draft, User as UserType } from '../types';
 import { POSTS, CURRENT_USER, NOTIFICATIONS, DRAFTS, COMMENTS } from '../mock';
-import { collection, query, orderBy, getDocs, limit, deleteDoc, doc, addDoc, setDoc, where } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, limit, deleteDoc, doc, addDoc, setDoc, where, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { NotificationService } from '../services/notifications';
 
 // Voice Context
 interface VoiceContext {
@@ -39,6 +40,7 @@ interface AppState {
     // Notifications
     // Notifications
     notifications: Notification[];
+    setNotifications: (notifications: Notification[]) => void;
     respondToRequest: (notificationId: string, status: 'accepted' | 'declined') => void;
     addNotification: (notification: Notification) => void;
     markAsRead: (id: string) => void;
@@ -64,7 +66,7 @@ interface AppState {
     drafts: Draft[];
     draftPost: Partial<Post> | null;
     setDraftPost: (draft: Partial<Post> | null) => void;
-    saveDraft: (sceneData: any, coverImage?: string) => Promise<void>;
+    saveDraft: (sceneData: any, coverImage?: string) => Promise<string | undefined>;
     fetchDrafts: () => Promise<void>;
     deleteDraft: (id: string) => Promise<void>;
     updateDraftPost: (updates: Partial<Post>) => void;
@@ -77,7 +79,8 @@ interface AppState {
     setVoiceContext: (context: Partial<VoiceContext>) => void;
 
     // Collaboration
-    sendCollaborationInvite: (draftId: string, userId: string) => Promise<void>;
+    sendCollaborationInvite: (draftId: string, userId: string, draftTitle?: string) => Promise<void>;
+    respondToCollabInvite: (notificationId: string, draftId: string, inviterId: string, draftTitle: string, accepted: boolean) => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -264,8 +267,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     pendingComment: null,
     setPendingComment: (pending) => set({ pendingComment: pending }),
 
-    // Notifications
-    notifications: NOTIFICATIONS,
+    // Notifications (start empty, subscribe to Firestore)
+    notifications: [],
+    setNotifications: (notifications) => set({ notifications }),
     respondToRequest: (id, status) => set((state) => ({
         notifications: state.notifications.map(n =>
             n.id === id ? { ...n, actionStatus: status } : n
@@ -444,7 +448,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
             // Save directly to scenes collection (no separate drafts anymore)
             const { saveSceneToStorage } = require('../services/sceneSaver');
-            const { sceneId } = await saveSceneToStorage(
+            const result = await saveSceneToStorage(
                 {
                     ...sceneData,
                     status: 'draft', // Mark as draft
@@ -453,12 +457,35 @@ export const useAppStore = create<AppState>((set, get) => ({
                 userId
             );
 
-            console.log("[Store] Scene saved successfully:", sceneId);
+            const { sceneId, revision, collaborators, ownerId } = result;
+            console.log("[Store] Scene saved successfully:", sceneId, "revision:", revision);
+
+            // Notify all collaborators AND owner (except self) about the update
+            if (state.currentUser && (collaborators?.length > 0 || ownerId)) {
+                const allCollaborators = [...(collaborators || [])];
+                // Include owner if current user is a collaborator (not the owner)
+                if (ownerId && ownerId !== state.currentUser.id && !allCollaborators.includes(ownerId)) {
+                    allCollaborators.push(ownerId);
+                }
+
+                if (allCollaborators.length > 0) {
+                    await NotificationService.sendCollabUpdateNotification(
+                        state.currentUser,
+                        allCollaborators,
+                        sceneId,
+                        sceneData.title || 'Untitled Scene',
+                        revision || 1
+                    );
+                }
+            }
 
             // Refresh drafts list
             await state.fetchDrafts();
+
+            return sceneId; // Return sceneId so caller can update Redux
         } catch (e) {
             console.error("[Store] Error saving scene:", e);
+            return undefined;
         }
     },
     fetchDrafts: async () => {
@@ -476,13 +503,14 @@ export const useAppStore = create<AppState>((set, get) => ({
                 orderBy("updatedAt", "desc")
             );
 
-            // Fetch shared draft scenes
+            // Fetch shared draft scenes (no orderBy to avoid composite index requirement)
             const qShared = query(
                 collection(db, "scenes"),
                 where("collaborators", "array-contains", state.currentUser.id),
-                where("status", "==", "draft"),
-                orderBy("updatedAt", "desc")
+                where("status", "==", "draft")
             );
+
+            console.log("[Store] Querying scenes for user:", state.currentUser.id);
 
             const results = await Promise.allSettled([
                 getDocs(qOwned),
@@ -493,10 +521,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
             // Process Owned Scenes (as drafts)
             if (results[0].status === 'fulfilled') {
+                console.log("[Store] Owned drafts found:", results[0].value.docs.length);
                 results[0].value.forEach(doc => {
                     const data = doc.data();
                     const coverImage = data.previewPath ? `https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/${data.previewPath}` : null;
-                    console.log('[Store] Draft data:', { id: doc.id, previewPath: data.previewPath, coverImage });
+                    console.log('[Store] Draft data:', { id: doc.id, title: data.title, previewPath: data.previewPath, coverImage });
                     // Map scene fields to draft interface
                     draftsMap.set(doc.id, {
                         id: doc.id,
@@ -515,8 +544,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
             // Process Shared Scenes (as drafts)
             if (results[1].status === 'fulfilled') {
+                console.log("[Store] Shared drafts found:", results[1].value.docs.length);
                 results[1].value.forEach(doc => {
                     const data = doc.data();
+                    console.log('[Store] Shared draft:', { id: doc.id, title: data.title, collaborators: data.collaborators });
                     draftsMap.set(doc.id, {
                         id: doc.id,
                         sceneId: doc.id,
@@ -529,7 +560,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                     } as Draft);
                 });
             } else {
-                console.warn("[Store] Failed to fetch shared drafts (likely index building):", results[1].reason);
+                console.warn("[Store] Failed to fetch shared drafts:", results[1].reason);
             }
 
             const drafts = Array.from(draftsMap.values()).sort((a, b) =>
@@ -560,59 +591,92 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
     // Collaboration
-    sendCollaborationInvite: async (draftId, targetUserId) => {
+    sendCollaborationInvite: async (draftId, targetUserId, draftTitle = 'Untitled Scene') => {
         try {
             console.log(`[Store] Sending invite for draft ${draftId} to ${targetUserId}`);
             const state = get();
 
-            // In a real app, we'd fetch the User object for the notification
-            const notification: Notification = {
-                id: `notif_${Date.now()}`,
-                type: 'collab_invite',
-                user: state.currentUser!, // Sender
-                message: `${state.currentUser?.username} invited you to collaborate on a scene.`,
-                timestamp: new Date().toISOString(),
-                read: false,
-                data: {
-                    postId: draftId, // reusing postId field for draftId context
-                },
-                actionStatus: 'pending'
-            };
-
-            // In real app: save to target user's notifications collection
-            // For mock/local: we just log success or add to local store if we were mocking multi-user
-            console.log("Mock Notification Sent:", notification);
-
-            // For the purpose of the demo, let's auto-add the collaborator to the draft 
-            // so we can see the result immediately? 
-            // OR strictly follow "Invite -> Accept".
-            // User requested: "Then once added the invited user should get a notification to accept or reject... If accepts... display in gallery"
-
-            // For now, we simulate the 'Pending' state.
-            // But we don't have a backend to process the accept.
-            // Let's assume the invite IS the add actions for this MVP velocity, OR
-            // we create a 'pendingCollaborators' field?
-            // "once added the invited user should get a notification" -> Implies added first?
-            // No, "invite... accept... display".
-
-            // Simulating "Accept" automatically for MVP Demo if target is 'u3' (Mock Friend)?
-            // Let's just update the draft immediately for velocity so we can verify the "Shared Gallery" feature
-            // without needing a second device or login flow.
-            // Use this logic:
-
-            const draftRef = doc(db, 'drafts', draftId);
-            const draftSnap = await require('firebase/firestore').getDoc(draftRef);
-            if (draftSnap.exists()) {
-                const draftData = draftSnap.data();
-                const currentCollabs = draftData.collaborators || [];
-                if (!currentCollabs.includes(targetUserId)) {
-                    await setDoc(draftRef, { collaborators: [...currentCollabs, targetUserId] }, { merge: true });
-                    console.log(`[Store] Auto-added ${targetUserId} to collaborators (MVP Shortcut)`);
-                }
+            if (!state.currentUser) {
+                console.error('[Store] No current user for sending invite');
+                return;
             }
 
+            // Send real Firestore notification to target user
+            await NotificationService.sendCollabInviteNotification(
+                state.currentUser,
+                targetUserId,
+                draftId,
+                draftTitle
+            );
+
+            console.log(`[Store] Collaboration invite sent to ${targetUserId}`);
         } catch (e) {
             console.error("Error sending invite:", e);
+        }
+    },
+
+    respondToCollabInvite: async (notificationId, draftId, inviterId, draftTitle, accepted) => {
+        try {
+            const state = get();
+            if (!state.currentUser) return;
+
+            console.log(`[Store] Responding to collab invite: ${accepted ? 'ACCEPT' : 'DECLINE'}`);
+
+            // If accepted, add current user to draft's collaborators
+            if (accepted && draftId) {
+                // Try scenes collection first (new structure), fallback to drafts
+                const sceneRef = doc(db, 'scenes', draftId);
+                const sceneSnap = await getDoc(sceneRef);
+
+                if (sceneSnap.exists()) {
+                    await updateDoc(sceneRef, {
+                        collaborators: arrayUnion(state.currentUser.id)
+                    });
+                    console.log(`[Store] Added ${state.currentUser.id} to collaborators on scene ${draftId}`);
+                } else {
+                    // Fallback to drafts collection
+                    const draftRef = doc(db, 'drafts', draftId);
+                    const draftSnap = await getDoc(draftRef);
+                    if (draftSnap.exists()) {
+                        await updateDoc(draftRef, {
+                            collaborators: arrayUnion(state.currentUser.id)
+                        });
+                        console.log(`[Store] Added ${state.currentUser.id} to collaborators on draft ${draftId}`);
+                    }
+                }
+
+                // Add inviter to local team relationships
+                set((state) => ({
+                    relationships: {
+                        ...state.relationships,
+                        team: [...new Set([...state.relationships.team, inviterId])]
+                    }
+                }));
+                console.log(`[Store] Added inviter ${inviterId} to local team`);
+
+                // Refresh drafts to show the shared draft
+                get().fetchDrafts();
+            }
+
+            // Send response notification to the inviter
+            await NotificationService.sendCollabResponseNotification(
+                state.currentUser,
+                inviterId,
+                accepted,
+                draftTitle || 'a scene'
+            );
+
+            // Mark the invite notification as read and update its status locally
+            await NotificationService.markAsRead(state.currentUser.id, notificationId);
+            set((state) => ({
+                notifications: state.notifications.map(n =>
+                    n.id === notificationId ? { ...n, actionStatus: accepted ? 'accepted' : 'declined', read: true } : n
+                )
+            }));
+
+            console.log(`[Store] Collab response sent, invite status updated`);
+        } catch (e) {
+            console.error("Error responding to collab invite:", e);
         }
     }
 }));

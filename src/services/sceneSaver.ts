@@ -76,7 +76,7 @@ const ensureAsset = async (uri: string, type: 'image' | 'texture' | 'model' | 'v
 /**
  * Main Save Function
  */
-export const saveSceneToStorage = async (sceneData: any, coverImageUri?: string, ownerId: string = 'anon'): Promise<{ sceneId: string, previewUrl: string | null }> => {
+export const saveSceneToStorage = async (sceneData: any, coverImageUri?: string, ownerId: string = 'anon'): Promise<{ sceneId: string, previewUrl: string | null, revision: number, collaborators: string[], ownerId: string }> => {
     const sceneId = sceneData.sceneId || `scene_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     console.log(`[Saver] Starting save for ${sceneId}`);
 
@@ -152,20 +152,44 @@ export const saveSceneToStorage = async (sceneData: any, coverImageUri?: string,
 
     // 4. Save Scene Metadata to Firestore (UNIFIED - replaces drafts collection)
     const sceneRef = doc(db, 'scenes', sceneId);
+
+    // Check if scene exists to determine revision number AND preserve owner
+    let revision = 1;
+    let finalOwnerId = ownerId;
+    let existingCollaborators: string[] = [];
+
+    const existingScene = await getDoc(sceneRef);
+    if (existingScene.exists()) {
+        const existingData = existingScene.data();
+        revision = (existingData.revision || 0) + 1;
+        // CRITICAL: Preserve original owner - don't let collaborators overwrite it
+        finalOwnerId = existingData.ownerId || ownerId;
+        // Preserve existing collaborators
+        existingCollaborators = existingData.collaborators || [];
+        console.log(`[Saver] Updating existing scene ${sceneId}, revision ${revision}, preserving owner: ${finalOwnerId}`);
+    } else {
+        console.log(`[Saver] Creating new scene ${sceneId}, owner: ${finalOwnerId}`);
+    }
+
+    // Merge incoming collaborators with existing
+    const mergedCollaborators = [...new Set([...existingCollaborators, ...(sceneData.collaborators || [])])];
+
     const sceneDocData: any = {
-        ownerId,
+        ownerId: finalOwnerId, // Use preserved owner, not current save user
         objectCount: processedObjects.length,
         updatedAt: serverTimestamp(),
         storageKey: jsonKey, // Link to the R2 JSON
         previewPath,
         version: 2, // Schema version
+        revision, // Save revision (v1, v2, v3...)
+        lastEditedBy: ownerId, // Track who made this edit (the current user)
         // NEW: Fields previously in drafts collection
         title: sceneData.title || 'Untitled Scene',
-        collaborators: sceneData.collaborators || [],
+        collaborators: mergedCollaborators, // Merged, not overwritten
         status: sceneData.status || 'draft', // 'draft' or 'published'
     };
     // Only set createdAt for new scenes (avoid overwriting existing)
-    if (!sceneData.createdAt) {
+    if (!existingScene.exists()) {
         sceneDocData.createdAt = serverTimestamp();
     }
     await setDoc(sceneRef, sceneDocData, { merge: true });
@@ -188,19 +212,24 @@ export const saveSceneToStorage = async (sceneData: any, coverImageUri?: string,
             delete safeMetadata.uri;
         }
 
-        batch.set(objRef, {
-            ...safeMetadata,
-            sceneId
-        });
+        // Remove undefined values (Firestore doesn't accept them)
+        const cleanMetadata = Object.fromEntries(
+            Object.entries({ ...safeMetadata, sceneId }).filter(([_, v]) => v !== undefined)
+        );
+
+        batch.set(objRef, cleanMetadata);
     });
 
     await batch.commit();
 
     console.log(`[Saver] Saved ${sceneId}`);
 
-    // Return both sceneId and the public preview URL
+    // Return scene data for notifications
     return {
         sceneId,
-        previewUrl: previewPath ? `https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/${previewPath}` : null
+        previewUrl: previewPath ? `https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/${previewPath}` : null,
+        revision,
+        collaborators: mergedCollaborators,
+        ownerId: finalOwnerId,
     };
 };

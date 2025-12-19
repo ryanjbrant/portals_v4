@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, FlatList, Image, TouchableOpacity, ScrollView } from 'react-native';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
@@ -6,6 +6,7 @@ import { Notification } from '../types';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { AuthService } from '../services/auth';
+import { NotificationService } from '../services/notifications';
 
 type FilterType = 'All' | 'Collabs' | 'Mentions';
 
@@ -13,8 +14,27 @@ export const ActivityScreen = () => {
     const navigation = useNavigation<any>();
     const notifications = useAppStore(state => state.notifications);
     const currentUser = useAppStore(state => state.currentUser);
+    const setNotifications = useAppStore(state => state.setNotifications);
     const respondToRequest = useAppStore(state => state.respondToRequest);
     const markAsRead = useAppStore(state => state.markAsRead);
+
+    // Subscribe to real-time Firestore notifications
+    useEffect(() => {
+        if (!currentUser?.id) return;
+
+        console.log('[ActivityScreen] Subscribing to notifications for:', currentUser.id);
+        const unsubscribe = NotificationService.subscribeToNotifications(
+            currentUser.id,
+            (fetchedNotifications) => {
+                setNotifications(fetchedNotifications);
+            }
+        );
+
+        return () => {
+            console.log('[ActivityScreen] Unsubscribing from notifications');
+            unsubscribe();
+        };
+    }, [currentUser?.id]);
 
     // Track which users we've followed back (local state for UI)
     const [followedBackIds, setFollowedBackIds] = useState<Set<string>>(new Set());
@@ -30,9 +50,22 @@ export const ActivityScreen = () => {
         return true;
     });
 
-    const handleAction = (id: string, action: 'accepted' | 'declined') => {
-        respondToRequest(id, action);
-        markAsRead(id);
+    const handleAction = async (item: Notification, action: 'accepted' | 'declined') => {
+        if (item.type === 'collab_invite') {
+            // Use the new respondToCollabInvite action for real Firestore integration
+            const respondToCollabInvite = useAppStore.getState().respondToCollabInvite;
+            await respondToCollabInvite(
+                item.id,
+                item.data?.postId || '', // draftId stored in postId field
+                item.user.id, // inviterId
+                'a scene', // draftTitle - we could enhance notification data to include this
+                action === 'accepted'
+            );
+        } else {
+            // For other notification types, use the existing local state update
+            respondToRequest(item.id, action);
+            markAsRead(item.id);
+        }
     };
 
     const handleFollowBack = async (userId: string) => {
@@ -82,10 +115,10 @@ export const ActivityScreen = () => {
                 {/* Collab Actions */}
                 {item.type === 'collab_invite' && item.actionStatus === 'pending' && (
                     <View style={styles.actionRow}>
-                        <TouchableOpacity style={[styles.actionBtn, styles.acceptBtn]} onPress={() => handleAction(item.id, 'accepted')}>
+                        <TouchableOpacity style={[styles.actionBtn, styles.acceptBtn]} onPress={() => handleAction(item, 'accepted')}>
                             <Text style={styles.btnText}>Accept</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => handleAction(item.id, 'declined')}>
+                        <TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => handleAction(item, 'declined')}>
                             <Text style={[styles.btnText, styles.declineText]}>Decline</Text>
                         </TouchableOpacity>
                     </View>
