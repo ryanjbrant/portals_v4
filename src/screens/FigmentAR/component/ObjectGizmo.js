@@ -1,157 +1,138 @@
 /**
  * ObjectGizmo.js
  * 
- * Gizmo control handles for precision positioning and rotation of AR objects.
- * - Y-axis handle: Drag to lift/lower object vertically
- * - X-axis handle: Drag to rotate object around Y-axis
+ * Ground ring gizmo for 3D object manipulation.
+ * - Ground ring: Drag to move object on X/Z plane
+ * - Vertical stem: Visual connection between ring and object
+ * 
+ * The object itself handles Y-only drag (height control).
  */
 'use strict';
 
 import React from 'react';
 import {
     ViroNode,
-    ViroSphere,
-    ViroBox,
+    ViroImage,
+    ViroPolyline,
     ViroMaterials,
 } from '@reactvision/react-viro';
 
 // Create gizmo materials
 ViroMaterials.createMaterials({
-    gizmoWhite: {
-        diffuseColor: '#FFFFFF',
-        lightingModel: 'Constant',
-    },
-    gizmoYellow: {
-        diffuseColor: '#FFFF00',
+    gizmoStem: {
+        diffuseColor: '#00FFFF',
         lightingModel: 'Constant',
     },
 });
 
 var createReactClass = require('create-react-class');
 
+// Gizmo ring asset
+const GIZMO_RING = require('../res/gizmo_ring.png');
+
 /**
  * ObjectGizmo Component
  * 
  * Props:
- * - onYAxisDrag: (deltaY) => void - Called when Y handle is dragged
- * - onXAxisDrag: (deltaRotation) => void - Called when X handle is dragged (rotation)
- * - scale: number - Base scale for gizmo size (default 0.5)
+ * - onXZDrag: (deltaX, deltaZ) => void - Called when ground ring is dragged (X/Z plane movement)
+ * - onRotate: (rotateState, rotationFactor, source) => void - Called when ring is rotated
+ * - onPinch: (pinchState, scaleFactor, source) => void - Called when ring is pinched
+ * - scale: number - Base scale for gizmo size (default 1.0)
+ * - yOffset: number - Height of object above the ring (for stem)
+ * - isSelected: boolean - Whether object is currently selected
  */
 var ObjectGizmo = createReactClass({
     getInitialState() {
         return {
-            yHandleActive: false,
-            xHandleActive: false,
-            initialYDragPos: null,
-            initialXDragPos: null,
+            ringActive: false,
+            initialDragPos: null,
         };
     },
 
-    // Y-axis handle drag - controls vertical position
-    _onYHandleDrag(dragState, position, source) {
+    // Ground ring drag - controls X/Z position
+    _onRingDrag(dragState, position, source) {
         if (dragState === 1) {
             // Drag started - capture initial position
             this.setState({
-                yHandleActive: true,
-                initialYDragPos: position[1],
+                ringActive: true,
+                initialDragPos: { x: position[0], z: position[2] },
             });
         } else if (dragState === 2) {
-            // Dragging - calculate delta Y
-            if (this.state.initialYDragPos !== null && this.props.onYAxisDrag) {
-                const deltaY = position[1] - this.state.initialYDragPos;
-                this.props.onYAxisDrag(deltaY);
+            // Dragging - calculate delta X/Z
+            if (this.state.initialDragPos && this.props.onXZDrag) {
+                const deltaX = position[0] - this.state.initialDragPos.x;
+                const deltaZ = position[2] - this.state.initialDragPos.z;
+                this.props.onXZDrag(deltaX, deltaZ);
                 // Update initial position for continuous drag
-                this.setState({ initialYDragPos: position[1] });
+                this.setState({ initialDragPos: { x: position[0], z: position[2] } });
             }
         } else if (dragState === 3) {
             // Drag ended
             this.setState({
-                yHandleActive: false,
-                initialYDragPos: null,
+                ringActive: false,
+                initialDragPos: null,
             });
         }
     },
 
-    // X-axis handle drag - controls Y rotation
-    _onXHandleDrag(dragState, position, source) {
-        if (dragState === 1) {
-            // Drag started
-            this.setState({
-                xHandleActive: true,
-                initialXDragPos: position[0],
-            });
-        } else if (dragState === 2) {
-            // Dragging - map X movement to rotation
-            if (this.state.initialXDragPos !== null && this.props.onXAxisDrag) {
-                const deltaX = position[0] - this.state.initialXDragPos;
-                // Convert X movement to rotation (multiply by sensitivity factor)
-                const rotationDelta = deltaX * 50; // 50 degrees per meter of drag
-                this.props.onXAxisDrag(rotationDelta);
-                // Update initial position for continuous drag
-                this.setState({ initialXDragPos: position[0] });
-            }
-        } else if (dragState === 3) {
-            // Drag ended
-            this.setState({
-                xHandleActive: false,
-                initialXDragPos: null,
-            });
+    // Forward rotation to parent
+    _onRingRotate(rotateState, rotationFactor, source) {
+        if (this.props.onRotate) {
+            this.props.onRotate(rotateState, rotationFactor, source);
+        }
+    },
+
+    // Forward pinch to parent
+    _onRingPinch(pinchState, scaleFactor, source) {
+        if (this.props.onPinch) {
+            this.props.onPinch(pinchState, scaleFactor, source);
         }
     },
 
     render() {
-        const gizmoScale = this.props.scale || 0.5;
-        const handleRadius = 0.08 * gizmoScale;
-        const barThickness = 0.02 * gizmoScale;
-        const barLength = 0.4 * gizmoScale;
+        const gizmoScale = this.props.scale || 1.0;
+        const yOffset = this.props.yOffset || 0;
+        const ringSize = 0.3 * gizmoScale; // Ring diameter
+        const isSelected = this.props.isSelected !== false;
+
+        if (!isSelected) {
+            return null; // Don't render if not selected
+        }
 
         return (
             <ViroNode>
-                {/* Y-Axis (Vertical) - bar and handle */}
-                <ViroNode position={[0, barLength / 2, 0]}>
-                    {/* Vertical bar */}
-                    <ViroBox
-                        position={[0, 0, 0]}
-                        scale={[barThickness, barLength, barThickness]}
-                        materials={['gizmoWhite']}
-                    />
-                    {/* Y-axis handle (sphere at top) */}
-                    <ViroSphere
-                        position={[0, barLength / 2 + handleRadius, 0]}
-                        radius={handleRadius}
-                        materials={[this.state.yHandleActive ? 'gizmoYellow' : 'gizmoWhite']}
-                        onDrag={this._onYHandleDrag}
-                        dragType="FixedToPlane"
-                        dragPlane={{
-                            planePoint: [0, 0, 0],
-                            planeNormal: [1, 0, 0], // Constrain to YZ plane (vertical movement)
-                            maxDistance: 5,
-                        }}
-                    />
-                </ViroNode>
-
-                {/* X-Axis (Horizontal) - bar and handle for rotation */}
-                <ViroNode position={[barLength / 2, 0, 0]}>
-                    {/* Horizontal bar */}
-                    <ViroBox
-                        position={[0, 0, 0]}
-                        scale={[barLength, barThickness, barThickness]}
-                        materials={['gizmoWhite']}
-                    />
-                    {/* X-axis handle (sphere at end) */}
-                    <ViroSphere
-                        position={[barLength / 2 + handleRadius, 0, 0]}
-                        radius={handleRadius}
-                        materials={[this.state.xHandleActive ? 'gizmoYellow' : 'gizmoWhite']}
-                        onDrag={this._onXHandleDrag}
+                {/* Ground ring - positioned at Y=0 relative to object's base position */}
+                <ViroNode position={[0, -yOffset, 0]}>
+                    {/* The ring image - handles X/Z drag, rotate, pinch */}
+                    <ViroImage
+                        source={GIZMO_RING}
+                        position={[0, 0.01, 0]} // Slightly above ground to prevent z-fighting
+                        rotation={[-90, 0, 0]} // Lay flat on ground
+                        scale={[ringSize, ringSize, ringSize]}
+                        opacity={this.state.ringActive ? 1.0 : 0.8}
+                        onDrag={this._onRingDrag}
+                        onRotate={this._onRingRotate}
+                        onPinch={this._onRingPinch}
                         dragType="FixedToPlane"
                         dragPlane={{
                             planePoint: [0, 0, 0],
                             planeNormal: [0, 1, 0], // Constrain to XZ plane (horizontal movement)
-                            maxDistance: 5,
+                            maxDistance: 10,
                         }}
                     />
                 </ViroNode>
+
+                {/* Vertical stem connecting ring to object */}
+                {yOffset > 0.05 && (
+                    <ViroPolyline
+                        points={[
+                            [0, -yOffset + 0.02, 0], // Bottom (at ring)
+                            [0, -0.02, 0],          // Top (at object base)
+                        ]}
+                        thickness={0.005}
+                        materials={['gizmoStem']}
+                    />
+                )}
             </ViroNode>
         );
     },
