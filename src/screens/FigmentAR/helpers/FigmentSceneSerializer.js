@@ -119,6 +119,7 @@ export function serializeFigmentScene(arobjects, ui) {
         objects,
         effects: arobjects.effectItems || [],
         postProcessEffects: arobjects.postProcessEffects,
+        objectAnimations: arobjects.objectAnimations || {}, // Animation states for each object
         hdri: ui.selectedHdri,
         createdAt: new Date().toISOString(),
         sceneType: 'figment_ar', // Identify this as a Figment AR scene

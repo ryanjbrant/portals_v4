@@ -490,6 +490,7 @@ function arobjects(state = initialState, action) {
         portalItems: loadedPortals,
         mediaItems: loadedMedia,
         audioItems: loadedAudio,
+        objectAnimations: action.sceneData?.objectAnimations || {}, // Restore animation states
         postProcessEffects: action.sceneData?.postProcessEffects || EffectsConstants.EFFECT_NONE,
       }
     case 'CHANGE_MODEL_LOAD_STATE':
