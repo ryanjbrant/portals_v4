@@ -13,6 +13,13 @@ export const ComposerPublishScreen = () => {
 
     const [caption, setCaption] = useState('');
     const [isPublishing, setIsPublishing] = useState(false);
+
+    // Detect artifact in scene
+    const hasArtifact = React.useMemo(() => {
+        if (!scene?.objects) return false;
+        return scene.objects.some((obj: any) => obj.artifact && obj.artifact.isArtifact);
+    }, [scene]);
+
     const addPost = useAppStore(state => state.addPost);
 
     const handlePublish = async () => {
@@ -37,7 +44,9 @@ export const ComposerPublishScreen = () => {
                 comments: 0,
                 shares: 0,
                 isLiked: false,
-                sceneId: sceneId // Link to scene 
+
+                sceneId: sceneId, // Link to scene 
+                isArtifact: hasArtifact, // Save artifact status
             };
 
             // Using existing addPost action (which expects a different shape, but we force it for now)
@@ -68,7 +77,15 @@ export const ComposerPublishScreen = () => {
                 </TouchableOpacity>
             </View>
 
+
+
             <View style={styles.content}>
+                {hasArtifact && (
+                    <View style={styles.artifactBanner}>
+                        <Ionicons name="diamond" size={20} color={theme.colors.secondary} />
+                        <Text style={styles.artifactBannerText}>This scene contains an Artifact</Text>
+                    </View>
+                )}
                 <View style={styles.mediaRow}>
                     {/* Cover image preview */}
                     {coverImage ? (
@@ -92,7 +109,7 @@ export const ComposerPublishScreen = () => {
                     />
                 </View>
             </View>
-        </SafeAreaView>
+        </SafeAreaView >
     );
 };
 
@@ -105,5 +122,22 @@ const styles = StyleSheet.create({
     mediaRow: { flexDirection: 'row', gap: 16 },
     thumbPlaceholder: { width: 80, height: 120, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
     thumbPreview: { width: 80, height: 120, borderRadius: 8 },
-    input: { flex: 1, color: 'white', fontSize: 16, paddingTop: 8 }
+    thumbPreview: { width: 80, height: 120, borderRadius: 8 },
+    input: { flex: 1, color: 'white', fontSize: 16, paddingTop: 8 },
+    artifactBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 215, 0, 0.15)', // Gold/Secondary tint
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 16,
+        gap: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.secondary,
+    },
+    artifactBannerText: {
+        color: theme.colors.secondary,
+        fontWeight: '600',
+        fontSize: 14,
+    }
 });

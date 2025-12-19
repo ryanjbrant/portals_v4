@@ -355,4 +355,53 @@ export const NotificationService = {
             }
         }
     },
+
+    /**
+     * Delete a single notification
+     */
+    async deleteNotification(userId: string, notificationId: string): Promise<void> {
+        if (!userId || !notificationId) return;
+
+        const { deleteDoc } = await import('firebase/firestore');
+        const notificationRef = doc(db, 'users', userId, 'notifications', notificationId);
+        await deleteDoc(notificationRef);
+        console.log('[NotificationService] Deleted notification:', notificationId);
+    },
+
+    /**
+     * Delete multiple notifications (bulk delete with batch write)
+     */
+    async deleteNotifications(userId: string, notificationIds: string[]): Promise<void> {
+        if (!userId || !notificationIds?.length) return;
+
+        const batch = writeBatch(db);
+
+        for (const notificationId of notificationIds) {
+            const notificationRef = doc(db, 'users', userId, 'notifications', notificationId);
+            batch.delete(notificationRef);
+        }
+
+        await batch.commit();
+        console.log(`[NotificationService] Deleted ${notificationIds.length} notifications`);
+    },
+
+    /**
+     * Delete all notifications for a user
+     */
+    async deleteAllNotifications(userId: string): Promise<void> {
+        if (!userId) return;
+
+        const notificationsRef = collection(db, 'users', userId, 'notifications');
+        const snapshot = await getDocs(notificationsRef);
+
+        if (snapshot.empty) return;
+
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(docSnap => {
+            batch.delete(docSnap.ref);
+        });
+        await batch.commit();
+
+        console.log(`[NotificationService] Deleted all ${snapshot.size} notifications for ${userId}`);
+    },
 };

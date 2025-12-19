@@ -10,6 +10,7 @@
 'use strict';
 
 import React, { Component } from 'react';
+import { StyleSheet } from 'react-native';
 import PropTypes from 'prop-types';
 import * as LoadConstants from '../redux/LoadingStateConstants';
 import * as UIConstants from '../redux/UIConstants';
@@ -26,6 +27,7 @@ import {
   ViroAmbientLight,
   ViroQuad,
   ViroAnimations,
+  ViroText,
 } from '@reactvision/react-viro';
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -256,10 +258,13 @@ var ModelItemRender = createReactClass({
   },
 
   componentDidUpdate(prevProps) {
-    // Re-render when objectAnimations change
+    // Re-render when objectAnimations change and start/stop animation loop
     if (JSON.stringify(prevProps.objectAnimations) !== JSON.stringify(this.props.objectAnimations)) {
-      console.log('[ModelItemRender] objectAnimations changed for UUID:', this.props.modelIDProps.uuid);
+      console.log('[ModelItemRender] objectAnimations changed for UUID:', this.props.modelIDProps.uuid, 'new anims:', JSON.stringify(this.props.objectAnimations));
+      // Start or stop JS-driven animation based on new state
+      this._updateAnimationState();
     }
+
 
     // CRITICAL: Handle case where LOAD_SCENE updates Redux AFTER component mounts
     // When isFromDraft changes from false/undefined to true, update state with saved transforms
@@ -302,7 +307,206 @@ var ModelItemRender = createReactClass({
   componentWillUnmount() {
     console.log('[ModelItemRender] componentWillUnmount - UUID:', this.props.modelIDProps.uuid);
     this._isMounted = false;
+    // Clean up animation loop
+    this._stopAnimationLoop();
   },
+
+  // ===== JS-DRIVEN ANIMATION SYSTEM =====
+  // ViroReact's animation prop on Viro3DObject causes native crashes (see README Section 4)
+  // This system manually animates transforms using setNativeProps
+
+  _startAnimationLoop() {
+    if (this._animationInterval) return; // Already running
+
+    const activeAnim = this._getActiveAnimationType();
+    if (!activeAnim) return;
+
+    console.log('[ModelItemRender] Starting JS animation loop:', activeAnim, 'for UUID:', this.props.modelIDProps.uuid);
+
+    this._animationStartTime = Date.now();
+    this._animationPhase = 0; // 0 = first half, 1 = second half
+
+    // Run animation at 30fps (33ms interval)
+    this._animationInterval = this.setInterval(() => {
+      if (!this._isMounted || !this.arNodeRef) {
+        this._stopAnimationLoop();
+        return;
+      }
+      this._tickAnimation();
+    }, 33);
+  },
+
+  _stopAnimationLoop() {
+    if (this._animationInterval) {
+      console.log('[ModelItemRender] Stopping JS animation loop for UUID:', this.props.modelIDProps.uuid);
+      this.clearInterval(this._animationInterval);
+      this._animationInterval = null;
+    }
+  },
+
+  _getActiveAnimationType() {
+    const objectAnims = this.props.objectAnimations || {};
+    const animOrder = ['bounce', 'pulse', 'rotate', 'scale', 'wiggle', 'random'];
+    for (const animType of animOrder) {
+      if (objectAnims[animType]?.active) {
+        return animType;
+      }
+    }
+    return null;
+  },
+
+  _tickAnimation() {
+    if (!this.arNodeRef) return;
+
+    const objectAnims = this.props.objectAnimations || {};
+    const elapsed = Date.now() - this._animationStartTime;
+
+    // Calculate combined transform offsets from ALL active animations
+    let positionOffset = [0, 0, 0];
+    let rotationOffset = [0, 0, 0];
+    let scaleMultiplier = [1, 1, 1];
+
+    // Process each animation type
+    const animOrder = ['bounce', 'pulse', 'rotate', 'scale', 'wiggle', 'random'];
+
+    for (const animType of animOrder) {
+      const animData = objectAnims[animType];
+      if (!animData?.active) continue;
+
+      const intensity = animData.intensity || 1.0;
+      const cycleDuration = this._getAnimationCycleDuration(animType);
+      const cycleProgress = (elapsed % cycleDuration) / cycleDuration;
+
+      switch (animType) {
+        case 'bounce':
+          // Bounce up and down - sine wave on Y position
+          const bounceHeight = 0.15 * intensity;
+          positionOffset[1] += Math.sin(cycleProgress * Math.PI * 2) * bounceHeight;
+          break;
+
+        case 'pulse':
+          // Pulse scale up and down (multiplicative, so we accumulate)
+          const pulseAmount = 0.15 * intensity;
+          const pulseFactor = 1 + Math.sin(cycleProgress * Math.PI * 2) * pulseAmount;
+          scaleMultiplier[0] *= pulseFactor;
+          scaleMultiplier[1] *= pulseFactor;
+          scaleMultiplier[2] *= pulseFactor;
+          break;
+
+        case 'rotate':
+          // Continuous rotation on selected axes (additive)
+          const rotateSpeed = intensity; // 1.0 = 1 full rotation per cycle
+          const rotateAngle = cycleProgress * 360 * rotateSpeed;
+          const axis = animData.axis || { x: false, y: true, z: false }; // Default to Y-axis
+          if (axis.x) rotationOffset[0] += rotateAngle;
+          if (axis.y) rotationOffset[1] += rotateAngle;
+          if (axis.z) rotationOffset[2] += rotateAngle;
+          break;
+
+        case 'scale':
+          // Scale up and down (larger amplitude)
+          const scaleAmount = 0.3 * intensity;
+          const scaleFactor = 1 + Math.sin(cycleProgress * Math.PI * 2) * scaleAmount;
+          scaleMultiplier[0] *= scaleFactor;
+          scaleMultiplier[1] *= scaleFactor;
+          scaleMultiplier[2] *= scaleFactor;
+          break;
+
+        case 'wiggle':
+          // Wiggle rotation on Z axis
+          const wiggleAngle = 5 * intensity;
+          rotationOffset[2] += Math.sin(cycleProgress * Math.PI * 4) * wiggleAngle;
+          break;
+
+        case 'random':
+        case 'float':
+          // Ocean wave-like looping motion using Lissajous curves
+          // Creates organic floating movement that always returns to origin
+          // Uses different frequencies for each axis to create complex but looping path
+          const distance = animData.distance || 1.0; // Distance multiplier for travel range
+          const baseAmplitude = 0.1 * intensity * distance; // Intensity controls feel, distance controls range
+
+          // Lissajous curve parameters - different frequencies create organic looping
+          // X: slow drift left-right (frequency ratio 2)
+          // Y: gentle bob up-down (frequency ratio 3)  
+          // Z: medium drift forward-back (frequency ratio 2, phase shifted)
+
+          const xFreq = 2; // Completes 2 cycles per loop
+          const yFreq = 3; // Completes 3 cycles per loop (creates figure-8 style)
+          const zFreq = 2; // Same as X but phase shifted
+
+          // Phase offsets create the "pushed around" feeling
+          const xPhase = 0;
+          const yPhase = Math.PI / 4; // 45 degree offset
+          const zPhase = Math.PI / 2; // 90 degree offset from X
+
+          // Calculate position offsets following the Lissajous curve
+          positionOffset[0] += Math.sin(cycleProgress * Math.PI * 2 * xFreq + xPhase) * baseAmplitude;
+          positionOffset[1] += Math.sin(cycleProgress * Math.PI * 2 * yFreq + yPhase) * baseAmplitude * 0.6; // Y is more subtle
+          positionOffset[2] += Math.sin(cycleProgress * Math.PI * 2 * zFreq + zPhase) * baseAmplitude;
+          break;
+      }
+    }
+
+    // Apply combined transforms via setNativeProps
+    const basePosition = this.state.position;
+    const baseRotation = this.state.rotation;
+    const baseScale = this.state.scale;
+
+    const newPosition = [
+      basePosition[0] + positionOffset[0],
+      basePosition[1] + positionOffset[1],
+      basePosition[2] + positionOffset[2],
+    ];
+    const newRotation = [
+      baseRotation[0] + rotationOffset[0],
+      baseRotation[1] + rotationOffset[1],
+      baseRotation[2] + rotationOffset[2],
+    ];
+    const newScale = [
+      baseScale[0] * scaleMultiplier[0],
+      baseScale[1] * scaleMultiplier[1],
+      baseScale[2] * scaleMultiplier[2],
+    ];
+
+    this.arNodeRef.setNativeProps({
+      position: newPosition,
+      rotation: newRotation,
+      scale: newScale,
+    });
+  },
+
+  _getAnimationCycleDuration(animType) {
+    // Duration in milliseconds for one complete cycle
+    switch (animType) {
+      case 'bounce': return 600;
+      case 'pulse': return 800;
+      case 'rotate': return 2000;
+      case 'scale': return 1000;
+      case 'wiggle': return 300;
+      case 'random':
+      case 'float': return 4000; // 4 seconds for smooth Lissajous wave motion
+      default: return 1000;
+    }
+  },
+
+  _updateAnimationState() {
+    const activeAnim = this._getActiveAnimationType();
+    if (activeAnim && !this._animationInterval) {
+      this._startAnimationLoop();
+    } else if (!activeAnim && this._animationInterval) {
+      this._stopAnimationLoop();
+      // Reset to base transforms when animation stops
+      if (this.arNodeRef && this._isMounted) {
+        this.arNodeRef.setNativeProps({
+          position: this.state.position,
+          rotation: this.state.rotation,
+          scale: this.state.scale,
+        });
+      }
+    }
+  },
+
 
   render: function () {
     const isCustom = this.props.modelIDProps.index === -1;
@@ -321,13 +525,24 @@ var ModelItemRender = createReactClass({
     let activeAnimation = null;
     let animationName = null;
 
+    // DEBUG: Log the raw objectAnimations prop
+    console.log('[ModelItemRender] render() objectAnimations:', {
+      uuid: this.props.modelIDProps.uuid,
+      objectAnimations: JSON.stringify(this.props.objectAnimations),
+      hasAnims: Object.keys(objectAnims).length > 0,
+    });
+
     // Priority order: bounce, pulse, rotate, scale, wiggle, random
     const animOrder = ['bounce', 'pulse', 'rotate', 'scale', 'wiggle', 'random'];
     for (const animType of animOrder) {
-      if (objectAnims[animType]?.active) {
+      const animData = objectAnims[animType];
+      if (animData) {
+        console.log('[ModelItemRender] Found anim type:', animType, 'data:', animData, 'active:', animData?.active);
+      }
+      if (animData?.active) {
         // For rotate, check which axis
         if (animType === 'rotate') {
-          const axis = objectAnims[animType].axis || { x: false, y: true, z: false };
+          const axis = animData.axis || { x: false, y: true, z: false };
           if (axis.x) animationName = 'rotateX';
           else if (axis.z) animationName = 'rotateZ';
           else animationName = 'rotateY';
@@ -335,10 +550,11 @@ var ModelItemRender = createReactClass({
           animationName = animType;
         }
         activeAnimation = { name: animationName, run: true, loop: true };
-        console.log('[ModelItemRender] Animation applied:', animationName, 'for UUID:', this.props.modelIDProps.uuid);
+        console.log('[ModelItemRender] *** Animation APPLIED ***:', animationName, 'for UUID:', this.props.modelIDProps.uuid);
         break;
       }
     }
+
 
     return (
 
@@ -384,8 +600,7 @@ var ModelItemRender = createReactClass({
             This offset is defined in ModelItems.js and must be applied for all models,
             including draft-loaded ones, since the saved outer position doesn't include it. */}
         <ViroNode
-          position={modelItem.position || [0, 0, 0]}
-          animation={activeAnimation}>
+          position={modelItem.position || [0, 0, 0]}>
           {/* Render model: bundled OR custom */}
           {(() => {
             // For custom models, use the remote URL directly (ViroReact supports remote GLB)
@@ -418,6 +633,31 @@ var ModelItemRender = createReactClass({
               onXAxisDrag={(deltaRot) => this._onGizmoXDrag(deltaRot)}
             />
           )}
+
+
+          {/* Artifact Logic - Title Label */}
+          {modelItem.artifact && modelItem.artifact.isArtifact && (
+            <ViroText
+              text={modelItem.artifact.title || "Artifact"}
+              scale={[0.2, 0.2, 0.2]}
+              position={[0, 0.6, 0]}
+              transformBehaviors={["billboard"]}
+            />
+          )}
+
+          {/* Artifact Logic - Floating Diamond Icon */}
+          {modelItem.artifact && modelItem.artifact.isArtifact && (
+            <ViroText
+              text="💎"
+              scale={[0.3, 0.3, 0.3]}
+              position={[0, 0.9, 0]}
+              style={styles.artifactIconStyle}
+              transformBehaviors={["billboard"]}
+              animation={{ name: "rotate", run: true, loop: true }}
+            />
+          )}
+
+
         </ViroNode>
       </ViroNode>
     );
@@ -437,6 +677,12 @@ var ModelItemRender = createReactClass({
    */
   _onClickState(uuid) {
     return (clickState, position, source) => {
+      console.log('[ModelItemRender] _onClickState:', {
+        uuid,
+        clickState,
+        position,
+        itemClickedDown: this.state.itemClickedDown,
+      });
       if (clickState == 1) {
         // clickState == 1 -> "ClickDown", we set the state itemClickedDown = true here,
         // which gets "reset" in 200 miliseconds. If a "ClickUp" happens in these 200 ms then
@@ -460,11 +706,13 @@ var ModelItemRender = createReactClass({
       }
 
       if (clickState == 2) { // clickstate == 2 -> "ClickUp"
+        console.log('[ModelItemRender] ClickUp detected, itemClickedDown:', this.state.itemClickedDown);
         // As explained above, within 200 ms, the user's intention is to "tap" the model -> toggle the animation start/stop
         if (this.state.itemClickedDown) {
           { this._onItemClicked() }
         }
         // Irrespective of 200 ms, we call the callback provided in props -> this brings up the context menu on top right
+        console.log('[ModelItemRender] Calling onClickStateCallback with uuid:', uuid);
         this.props.onClickStateCallback(uuid, clickState, UIConstants.LIST_MODE_MODEL);
       }
     }
@@ -876,38 +1124,54 @@ ViroMaterials.createMaterials({
   },
 });
 
-// Register animations for Figment AR objects
+// Register animations for Figment AR objects (following Viro documentation)
 ViroAnimations.registerAnimations({
-  // Bounce animation - sequential: up then down
+  // Bounce animation - sequential: up then down (using additive syntax)
   bounceUp: { properties: { positionY: "+=0.15" }, easing: "EaseInEaseOut", duration: 300 },
   bounceDown: { properties: { positionY: "-=0.15" }, easing: "EaseInEaseOut", duration: 300 },
   bounce: [["bounceUp", "bounceDown"]],
 
-  // Pulse animation (scale) - sequential: grow then shrink
-  pulseUp: { properties: { scaleX: 1.15, scaleY: 1.15, scaleZ: 1.15 }, easing: "EaseInEaseOut", duration: 400 },
-  pulseDown: { properties: { scaleX: 1.0, scaleY: 1.0, scaleZ: 1.0 }, easing: "EaseInEaseOut", duration: 400 },
-  pulse: [["pulseUp", "pulseDown"]],
+  // Pulse animation (scale) - using additive/multiplicative syntax for scale
+  pulseGrow: { properties: { scaleX: "*=1.15", scaleY: "*=1.15", scaleZ: "*=1.15" }, easing: "EaseInEaseOut", duration: 400 },
+  pulseShrink: { properties: { scaleX: "/=1.15", scaleY: "/=1.15", scaleZ: "/=1.15" }, easing: "EaseInEaseOut", duration: 400 },
+  pulse: [["pulseGrow", "pulseShrink"]],
 
-  // Rotate animations - loopable single rotation
+  // Rotate animations - loopable single rotation (additive)
   rotateY: { properties: { rotateY: "+=45" }, duration: 500 },
   rotateX: { properties: { rotateX: "+=45" }, duration: 500 },
   rotateZ: { properties: { rotateZ: "+=45" }, duration: 500 },
 
-  // Scale animation (oscillating) - sequential: grow then shrink
-  scaleUp: { properties: { scaleX: 1.3, scaleY: 1.3, scaleZ: 1.3 }, easing: "EaseInEaseOut", duration: 500 },
-  scaleDown: { properties: { scaleX: 1.0, scaleY: 1.0, scaleZ: 1.0 }, easing: "EaseInEaseOut", duration: 500 },
-  scale: [["scaleUp", "scaleDown"]],
+  // Scale animation (oscillating) - using multiplicative for relative scaling
+  scaleGrow: { properties: { scaleX: "*=1.3", scaleY: "*=1.3", scaleZ: "*=1.3" }, easing: "EaseInEaseOut", duration: 500 },
+  scaleShrink: { properties: { scaleX: "/=1.3", scaleY: "/=1.3", scaleZ: "/=1.3" }, easing: "EaseInEaseOut", duration: 500 },
+  scale: [["scaleGrow", "scaleShrink"]],
 
-  // Wiggle animation - sequential: left, right, center
+  // Wiggle animation - sequential: left, right, center (additive rotation)
   wiggleLeft: { properties: { rotateZ: "+=5" }, easing: "EaseInEaseOut", duration: 100 },
   wiggleRight: { properties: { rotateZ: "-=10" }, easing: "EaseInEaseOut", duration: 100 },
   wiggleCenter: { properties: { rotateZ: "+=5" }, easing: "EaseInEaseOut", duration: 100 },
   wiggle: [["wiggleLeft", "wiggleRight", "wiggleCenter"]],
 
-  // Random/float animation - sequential: up then down
+  // Float/random animation - gentle up and down motion
   floatUp: { properties: { positionY: "+=0.05" }, easing: "EaseInEaseOut", duration: 1000 },
   floatDown: { properties: { positionY: "-=0.05" }, easing: "EaseInEaseOut", duration: 1000 },
   random: [["floatUp", "floatDown"]],
+});
+
+var styles = StyleSheet.create({
+  artifactTextStyle: {
+    fontFamily: 'Arial',
+    fontSize: 30,
+    color: '#ffffff',
+    textAlignVertical: 'center',
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  artifactIconStyle: {
+    fontSize: 40,
+    textAlignVertical: 'center',
+    textAlign: 'center',
+  }
 });
 
 module.exports = ModelItemRender;

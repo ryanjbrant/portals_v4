@@ -163,10 +163,16 @@ export class figment extends Component {
       Object.keys(modelItems).forEach(function (currentKey) {
         // Keep rendering items to prevent unmount crash - hidden items will set visible=false
         if (modelItems[currentKey] != null && modelItems[currentKey] != undefined) {
-          // Get animations for this model from viroAppProps
+          // Get animations for this model from Redux props (NOT viroAppProps - those don't trigger re-render)
           const uuid = modelItems[currentKey].uuid;
-          const objectAnimations = root.props.arSceneNavigator?.viroAppProps?.objectAnimations || {};
+          const objectAnimations = root.props.objectAnimations || {};
           const modelAnimations = objectAnimations[uuid] || {};
+
+          // DEBUG: Log the objectAnimations from Redux props (only if non-empty)
+          if (Object.keys(modelAnimations).length > 0) {
+            console.log('[Figment] _renderModels - Redux objectAnimations for UUID:', uuid,
+              'modelAnimations:', JSON.stringify(modelAnimations));
+          }
 
           renderedObjects.push(
             <ModelItemRender key={modelItems[currentKey].uuid}
@@ -341,6 +347,7 @@ function selectProps(store) {
     audioItems: store.arobjects.audioItems, // Added for spatial audio
     effectItems: store.arobjects.effectItems,
     postProcessEffects: store.arobjects.postProcessEffects,
+    objectAnimations: store.arobjects.objectAnimations, // Added for JS-driven animations
     selectedHdri: store.ui.selectedHdri,
   };
 }

@@ -28,14 +28,16 @@ const CommentItem = ({
     onDelete,
     onReport,
     currentUserId,
-    depth = 0
+    depth = 0,
+    parentCommentId
 }: {
     item: Comment,
-    onReply: (username: string, id: string) => void,
+    onReply: (username: string, id: string, parentId?: string) => void,
     onDelete?: (commentId: string) => void,
     onReport?: (comment: Comment) => void,
     currentUserId?: string,
-    depth?: number
+    depth?: number,
+    parentCommentId?: string  // The root parent comment ID for nested replies
 }) => {
     // ... existing code ...
     const [showReplies, setShowReplies] = useState(false);
@@ -108,7 +110,12 @@ const CommentItem = ({
                         <Text style={styles.metaText}>{item.timestamp || 'now'}</Text>
                         {/* Hide Reply button beyond depth 2 (TikTok-style max 3 levels) */}
                         {depth < 2 && (
-                            <TouchableOpacity onPress={() => onReply(item.user.username, item.id)}>
+                            <TouchableOpacity onPress={() => {
+                                // For nested replies, use the parentCommentId (passed from parent)
+                                // For top-level comments (depth === 0), use this comment's ID
+                                const rootParentId = depth === 0 ? item.id : parentCommentId;
+                                onReply(item.user.username, item.id, rootParentId);
+                            }}>
                                 <Text style={styles.replyButtonText}>Reply</Text>
                             </TouchableOpacity>
                         )}
@@ -143,6 +150,7 @@ const CommentItem = ({
                                     onReport={onReport}
                                     currentUserId={currentUserId}
                                     depth={depth + 1}
+                                    parentCommentId={depth === 0 ? item.id : parentCommentId}  // Pass down the root parent ID
                                 />
                             ))}
                         </View>
@@ -164,7 +172,7 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
     const [newComment, setNewComment] = useState('');
     const [showUserList, setShowUserList] = useState(false);
     const [showEmojiList, setShowEmojiList] = useState(false);
-    const [replyingTo, setReplyingTo] = useState<{ username: string, id: string } | null>(null);
+    const [replyingTo, setReplyingTo] = useState<{ username: string, id: string, parentId?: string } | null>(null);
     const [reportingComment, setReportingComment] = useState<Comment | null>(null);
 
     // Internal state to keep modal mounted during close animation
@@ -254,8 +262,10 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
         }
     }, [visible, pendingComment, postId]);
 
-    const handleReply = (username: string, id: string) => {
-        setReplyingTo({ username, id });
+    const handleReply = (username: string, id: string, parentId?: string) => {
+        // If parentId is provided, use it (for nested replies)
+        // Otherwise, use the id itself (for top-level comments)
+        setReplyingTo({ username, id, parentId: parentId || id });
         setNewComment(`@${username} `);
         inputRef.current?.focus();
     };
@@ -312,9 +322,11 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
             // 2. Add Comment or Reply
             if (replyingTo) {
                 // Add as a reply to parent comment
+                // Use parentId (the root comment's Firestore doc ID) for the updateDoc call
+                const parentCommentId = replyingTo.parentId || replyingTo.id;
                 await FeedService.addReply(
                     postId,
-                    replyingTo.id,
+                    parentCommentId,
                     currentUser.id,
                     text,
                     currentUser.avatar || '',

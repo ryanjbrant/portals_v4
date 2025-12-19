@@ -164,6 +164,12 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
                         ))}
                     </View>
                 )}
+                {post.isArtifact && (
+                    <View style={styles.artifactTag}>
+                        <Ionicons name="diamond" size={12} color={theme.colors.secondary} />
+                        <Text style={styles.artifactText}>ARTIFACT</Text>
+                    </View>
+                )}
             </View>
         </View>
     );
@@ -273,6 +279,27 @@ const styles = StyleSheet.create({
         textShadowColor: 'rgba(0,0,0,0.5)',
         textShadowOffset: { width: 1, height: 1 },
         textShadowRadius: 2,
+    },
+
+
+    artifactTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 215, 0, 0.2)', // Gold tint background
+        alignSelf: 'flex-start',
+        borderWidth: 1,
+        borderColor: theme.colors.secondary,
+        borderRadius: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        marginTop: 8,
+        gap: 4,
+    },
+    artifactText: {
+        color: theme.colors.secondary,
+        fontSize: 10,
+        fontWeight: 'bold',
+        letterSpacing: 0.5,
     },
 
 });

@@ -55,8 +55,7 @@ export const ProfileGalleryScreen = () => {
                 // Filter by target user
                 return feed.filter(p => p.userId === targetUserId);
             case 'artifacts':
-                // Mock artifacts - just subset of posts to show differentiation
-                return feed.slice(0, 2);
+                return feed.filter(p => p.userId === targetUserId && p.isArtifact);
             case 'likes':
             // Posts I have liked
             case 'likes':
@@ -266,6 +265,12 @@ export const ProfileGalleryScreen = () => {
                 {isSelectionMode && <SelectionOverlay />}
 
                 {activeTab === 'artifacts' && (
+                    <View style={styles.diamondBadge}>
+                        <Ionicons name="diamond" size={12} color={theme.colors.secondary} />
+                    </View>
+                )}
+                {/* Also show badge on Posts tab if it is an artifact */}
+                {activeTab === 'posts' && item.isArtifact && (
                     <View style={styles.diamondBadge}>
                         <Ionicons name="diamond" size={12} color={theme.colors.secondary} />
                     </View>

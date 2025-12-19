@@ -24,13 +24,18 @@ import ShareScreenButton from './component/ShareScreenButtonComponent';
 import FigmentListView from './component/FigmentListView';
 import PhotosSelector from './component/PhotosSelector';
 import ARInitializationUI from './component/ARInitializationUI.js';
-import AnimationPanel from './component/AnimationPanel';
+import ObjectPropertiesPanel from './component/ObjectPropertiesPanel';
 import PortalBackgroundPanel from './component/PortalBackgroundPanel';
 import ModelLibraryPanel from './component/ModelLibraryPanel';
 import * as ModelData from './model/ModelItems';
 import * as PortalData from './model/PortalItems';
 import * as LightingData from './model/LightingItems';
-import { addPortalWithIndex, removePortalWithUUID, addModelWithIndex, addCustomModel, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme, ARTrackingInitialized, addMedia, setSceneTitle, setSceneId, loadScene } from './redux/actions';
+import {
+  addPortalWithIndex, removePortalWithUUID, addModelWithIndex, addCustomModel, removeAll, removeModelWithUUID, toggleEffectSelection, changePortalLoadState, changePortalPhoto, changeModelLoadState, changeItemClickState, switchListMode, removeARObject, displayUIScreen, changeHdriTheme, ARTrackingInitialized, addMedia, setSceneTitle, setSceneId,
+  loadScene,
+  updateModelArtifact,
+  updateObjectAnimation,
+} from './redux/actions';
 import { serializeFigmentScene } from './helpers/FigmentSceneSerializer';
 import { useAppStore } from '../../store';
 import { saveScene as saveSceneToCloud, loadScene as loadSceneFromCloud } from '../../services/scene';
@@ -179,6 +184,7 @@ export class App extends Component {
 
     this._onBackgroundTap = this._onBackgroundTap.bind(this);
     this._onUpdateObjectAnimation = this._onUpdateObjectAnimation.bind(this);
+    this._onUpdateObjectArtifact = this._onUpdateObjectArtifact.bind(this);
     this._onTransformUpdate = this._onTransformUpdate.bind(this);
     this._onMediaTransformUpdate = this._onMediaTransformUpdate.bind(this);
     this._onPortalTransformUpdate = this._onPortalTransformUpdate.bind(this);
@@ -196,6 +202,7 @@ export class App extends Component {
       onPortalTransformUpdate: this._onPortalTransformUpdate,
       onAudioTransformUpdate: this._onAudioTransformUpdate,
       onVideoBuffering: this._onVideoBuffering,
+      objectAnimations: this.state.objectAnimations, // Include animations for figment.js
     };
   }
 
@@ -288,44 +295,42 @@ export class App extends Component {
     }
   }
 
-  // Handle animation update for selected object
+  // Handle animation update for selected object - dispatches to Redux
   _onUpdateObjectAnimation(type, params, active) {
     const uuid = this.props.currentItemSelectionIndex;
     if (uuid === -1) return;
 
-    console.log('[App] Animation update:', type, params, active, 'for UUID:', uuid);
+    console.log('[App] Animation update (dispatching Redux):', type, params, active, 'for UUID:', uuid);
 
-    this.setState(prevState => {
-      const currentAnims = prevState.objectAnimations[uuid] || {};
-      const typeAnims = currentAnims[type] || { active: false, intensity: 1.0 };
+    // Build animation data object
+    const animationData = {
+      ...params,
+      active,
+    };
 
-      const newTypeAnims = {
-        ...typeAnims,
-        ...params,
-        active,
-      };
+    // Dispatch Redux action instead of setState
+    // This will flow through Redux → figment.js props → ModelItemRender
+    this.props.dispatchUpdateObjectAnimation(uuid, type, animationData);
+  }
 
-      return {
-        objectAnimations: {
-          ...prevState.objectAnimations,
-          [uuid]: {
-            ...currentAnims,
-            [type]: newTypeAnims,
-          },
-        },
-        // Update viroAppProps to trigger re-render with new animations
-        viroAppProps: {
-          ...prevState.viroAppProps,
-          objectAnimations: {
-            ...prevState.objectAnimations,
-            [uuid]: {
-              ...currentAnims,
-              [type]: newTypeAnims,
-            },
-          },
-        },
-      };
+  // Handle artifact update for selected object
+  _onUpdateObjectArtifact(data) {
+    const uuid = this.props.currentItemSelectionIndex;
+    console.log('[App] _onUpdateObjectArtifact CALLED:', {
+      data,
+      uuid,
+      currentSelection: this.props.currentItemSelectionIndex,
+      modelItemExists: !!this.props.modelItems[uuid],
     });
+    if (uuid === -1) {
+      console.warn('[App] _onUpdateObjectArtifact: No selection, aborting');
+      return;
+    }
+
+    console.log('[App] Dispatching updateModelArtifact for UUID:', uuid);
+    // Dispatch to Redux
+    this.props.dispatchUpdateModelArtifact(uuid, data);
+    console.log('[App] updateModelArtifact dispatched');
   }
 
   // Handle rename scene
@@ -575,12 +580,15 @@ export class App extends Component {
           </View>
         )}
 
-        {/* Animation Panel - show only when contextual menu is explicitly opened */}
-        <AnimationPanel
+        {/* Object Properties Panel (Artifacts + Animation) - show only when contextual menu is explicitly opened */}
+        <ObjectPropertiesPanel
           visible={this.state.showContextualMenu}
           onClose={() => this.setState({ showContextualMenu: false })}
-          currentAnimations={this.props.currentItemSelectionIndex !== -1 ? (this.state.objectAnimations[this.props.currentItemSelectionIndex] || {}) : {}}
+          currentAnimations={this.props.currentItemSelectionIndex !== -1 ? (this.props.objectAnimations[this.props.currentItemSelectionIndex] || {}) : {}}
+          currentArtifact={this.props.currentItemSelectionIndex !== -1 && this.props.modelItems[this.props.currentItemSelectionIndex] ? this.props.modelItems[this.props.currentItemSelectionIndex].artifact : undefined}
           onUpdateAnimation={(type, params, active) => this._onUpdateObjectAnimation(type, params, active)}
+          onUpdateArtifact={(data) => this._onUpdateObjectArtifact(data)}
+          selectedItemName={this.props.currentItemSelectionIndex !== -1 && this.props.modelItems[this.props.currentItemSelectionIndex] ? (this.props.modelItems[this.props.currentItemSelectionIndex].name || 'Object') : undefined}
         />
 
         {/* Portal Background Panel */}
@@ -742,12 +750,22 @@ export class App extends Component {
     if (selectedItemIndex != -1 && clickState == 2) {
       // If a valid object (or portal) was clicked, reset the items "click state" after 3.5 seconds 
       // So that the item can "clicked" again.
-      TimerMixin.setTimeout(
-        () => {
-          this.props.dispatchChangeItemClickState(-1, '', '');
-        },
-        3500
-      );
+      // IMPORTANT: Do NOT reset if the user has the properties panel open (showContextualMenu)
+      // This prevents deselection while editing artifact details
+      if (!this.state.showContextualMenu) {
+        TimerMixin.setTimeout(
+          () => {
+            // Double-check the panel isn't open when the timer fires
+            if (!this.state.showContextualMenu) {
+              console.log('[App] Auto-deselecting after 3.5s timeout');
+              this.props.dispatchChangeItemClickState(-1, '', '');
+            } else {
+              console.log('[App] Skipping auto-deselect: panel is open');
+            }
+          },
+          3500
+        );
+      }
     }
     return (
       <View style={{ flex: 1, position: 'absolute', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'flex-end', top: '25%', right: 10, width: 80, height: 220 }}>
@@ -1195,18 +1213,24 @@ export class App extends Component {
       : null;
 
     // Serialize the current scene
-    const scene = serializeFigmentScene(
-      this.props.modelItems,
-      this.props.portalItems,
-      this.props.effectItems,
-      this.props.mediaItems,
-      this.state.sceneTitle || 'Untitled Scene'
-    );
+    const arobjects = {
+      modelItems: this.props.modelItems,
+      portalItems: this.props.portalItems,
+      effectItems: this.props.effectItems,
+      mediaItems: this.props.mediaItems,
+    };
+    const ui = {
+      sceneTitle: this.props.sceneTitle || 'Untitled Scene',
+      selectedHdri: this.props.selectedHdri,
+    };
+    const scene = serializeFigmentScene(arobjects, ui);
 
     console.log('[App] Publishing scene with:', {
       hasVideo: !!videoUrl,
       hasCover: !!coverImage,
       objectCount: Object.keys(this.props.modelItems || {}).length,
+      sceneObjects: scene.objects?.length || 0,
+      hasArtifact: scene.objects?.some(o => o.artifact?.isArtifact),
     });
 
     // Navigate to PostDetails with full form (tags, channels, people, locations)
@@ -1904,6 +1928,13 @@ export class App extends Component {
   // When an AR object (Object or Portal) in the scene is clicked; 
   // dispatch this event to redux -> which results in context menu appearing on top left
   _onItemClickedInScene(index, clickState, itemType) {
+    console.log('[App] _onItemClickedInScene CALLED:', {
+      index,
+      clickState,
+      itemType,
+      currentSelection: this.props.currentItemSelectionIndex,
+      showContextualMenu: this.state.showContextualMenu,
+    });
     this.props.dispatchChangeItemClickState(index, clickState, itemType);
     // Hide menu when interacting with an object
     if (this.props.listMode !== UIConstants.LIST_MODE_NONE) {
@@ -2115,6 +2146,7 @@ function selectProps(store) {
     mediaItems: store.arobjects.mediaItems,
     effectItems: store.arobjects.effectItems,
     postProcessEffects: store.arobjects.postProcessEffects,
+    objectAnimations: store.arobjects.objectAnimations, // Animation states from Redux
     currentScreen: store.ui.currentScreen,
     listMode: store.ui.listMode,
     listTitle: store.ui.listTitle,
@@ -2193,6 +2225,8 @@ const mapDispatchToProps = (dispatch) => {
     dispatchRemoveAll: () => dispatch({
       type: 'REMOVE_ALL',
     }),
+    dispatchUpdateModelArtifact: (uuid, data) => dispatch(updateModelArtifact(uuid, data)),
+    dispatchUpdateObjectAnimation: (uuid, animationType, animationData) => dispatch(updateObjectAnimation(uuid, animationType, animationData)),
   }
 }
 

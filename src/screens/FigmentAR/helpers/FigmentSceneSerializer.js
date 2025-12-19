@@ -34,6 +34,7 @@ export function serializeFigmentScene(arobjects, ui) {
                 if (item.source?.uri) obj.uri = item.source.uri;
                 if (item.name) obj.name = item.name;
                 if (item.animation) obj.animation = item.animation;
+                if (item.artifact) obj.artifact = item.artifact;
                 if (item.materials) obj.materials = item.materials;
                 if (item.physics) obj.physics = item.physics;
 

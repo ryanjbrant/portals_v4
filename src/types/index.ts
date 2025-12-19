@@ -47,6 +47,7 @@ export interface Post {
     sceneData?: any; // Serialized Scene Data
     sceneId?: string; // ID if already saved
     linkedArtifact?: Artifact;
+    isArtifact?: boolean;
 }
 
 export interface Comment {

@@ -37,6 +37,12 @@ function ui(state = initialState, action) {
         listTitle: action.listTitle,
       };
     case 'CHANGE_ITEM_CLICK_STATE':
+      console.log('[ui.js REDUCER] CHANGE_ITEM_CLICK_STATE:', {
+        newIndex: action.index,
+        clickState: action.clickState,
+        itemType: action.itemType,
+        previousIndex: state.currentItemSelectionIndex,
+      });
       return {
         ...state,
         currentItemSelectionIndex: action.index,

@@ -38,13 +38,24 @@ interface AppState {
     setPendingComment: (pending: { postId: string; text: string } | null) => void;
 
     // Notifications
-    // Notifications
     notifications: Notification[];
     setNotifications: (notifications: Notification[]) => void;
     respondToRequest: (notificationId: string, status: 'accepted' | 'declined') => void;
     addNotification: (notification: Notification) => void;
     markAsRead: (id: string) => void;
     markAllAsRead: () => void;
+
+    // Notification Selection Mode
+    selectedNotificationIds: Set<string>;
+    isSelectionMode: boolean;
+    enterSelectionMode: () => void;
+    exitSelectionMode: () => void;
+    toggleNotificationSelection: (id: string) => void;
+    selectAllNotifications: () => void;
+    clearSelection: () => void;
+    deleteSelectedNotifications: () => Promise<void>;
+    deleteNotification: (id: string) => Promise<void>;
+    markAllAsReadAndClear: () => Promise<void>;
 
     // Social Relationships
     relationships: {
@@ -282,6 +293,69 @@ export const useAppStore = create<AppState>((set, get) => ({
     markAllAsRead: () => set((state) => ({
         notifications: state.notifications.map(n => ({ ...n, read: true }))
     })),
+
+    // Notification Selection Mode
+    selectedNotificationIds: new Set(),
+    isSelectionMode: false,
+    enterSelectionMode: () => set({ isSelectionMode: true }),
+    exitSelectionMode: () => set({ isSelectionMode: false, selectedNotificationIds: new Set() }),
+    toggleNotificationSelection: (id) => set((state) => {
+        const newSet = new Set(state.selectedNotificationIds);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+        } else {
+            newSet.add(id);
+        }
+        return { selectedNotificationIds: newSet };
+    }),
+    selectAllNotifications: () => set((state) => ({
+        selectedNotificationIds: new Set(state.notifications.map(n => n.id))
+    })),
+    clearSelection: () => set({ selectedNotificationIds: new Set() }),
+    deleteSelectedNotifications: async () => {
+        const state = get();
+        if (!state.currentUser || state.selectedNotificationIds.size === 0) return;
+
+        try {
+            const idsToDelete = Array.from(state.selectedNotificationIds);
+            await NotificationService.deleteNotifications(state.currentUser.id, idsToDelete);
+
+            // Optimistic update
+            set((s) => ({
+                notifications: s.notifications.filter(n => !idsToDelete.includes(n.id)),
+                selectedNotificationIds: new Set(),
+                isSelectionMode: false,
+            }));
+        } catch (error) {
+            console.error('[Store] Error deleting notifications:', error);
+        }
+    },
+    deleteNotification: async (id) => {
+        const state = get();
+        if (!state.currentUser) return;
+
+        try {
+            await NotificationService.deleteNotification(state.currentUser.id, id);
+            set((s) => ({
+                notifications: s.notifications.filter(n => n.id !== id)
+            }));
+        } catch (error) {
+            console.error('[Store] Error deleting notification:', error);
+        }
+    },
+    markAllAsReadAndClear: async () => {
+        const state = get();
+        if (!state.currentUser) return;
+
+        try {
+            await NotificationService.markAllAsRead(state.currentUser.id);
+            set((s) => ({
+                notifications: s.notifications.map(n => ({ ...n, read: true }))
+            }));
+        } catch (error) {
+            console.error('[Store] Error marking all as read:', error);
+        }
+    },
 
     // Social Relationships
     relationships: {

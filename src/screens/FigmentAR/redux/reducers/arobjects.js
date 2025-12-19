@@ -33,6 +33,7 @@ const initialState = {
   audioItems: {}, // Added for audio (ViroSound, ViroSoundField, ViroSpatialSound)
   effectItems: EffectData.getInitEffectArray(),
   postProcessEffects: EffectsConstants.EFFECT_NONE,
+  objectAnimations: {}, // Added for JS-driven animations (keyed by UUID)
 }
 
 // Creates a new model item with the given index from the data model in ModelItems.js
@@ -405,6 +406,7 @@ function arobjects(state = initialState, action) {
               animation: obj.animation || { name: "02", delay: 0, loop: true, run: true },
               materials: obj.materials,
               physics: obj.physics,
+              artifact: obj.artifact || null,
               resources: [],
             };
           } else if (obj.type === 'viro_portal') {
@@ -576,6 +578,46 @@ function arobjects(state = initialState, action) {
           }
         }
       }
+    case 'UPDATE_MODEL_ARTIFACT':
+      console.log('[arobjects.js REDUCER] UPDATE_MODEL_ARTIFACT:', {
+        uuid: action.uuid,
+        artifact: action.artifact,
+        modelExists: !!state.modelItems[action.uuid],
+      });
+      if (state.modelItems[action.uuid]) {
+        const result = {
+          ...state,
+          modelItems: {
+            ...state.modelItems,
+            [action.uuid]: {
+              ...state.modelItems[action.uuid],
+              artifact: action.artifact,
+            }
+          }
+        };
+        console.log('[arobjects.js REDUCER] Updated modelItem artifact:', result.modelItems[action.uuid].artifact);
+        return result;
+      }
+      console.warn('[arobjects.js REDUCER] Model not found for UUID:', action.uuid);
+      return state;
+
+    case 'UPDATE_OBJECT_ANIMATION':
+      console.log('[arobjects.js REDUCER] UPDATE_OBJECT_ANIMATION:', {
+        uuid: action.uuid,
+        animationType: action.animationType,
+        animationData: action.animationData,
+      });
+      return {
+        ...state,
+        objectAnimations: {
+          ...state.objectAnimations,
+          [action.uuid]: {
+            ...(state.objectAnimations?.[action.uuid] || {}),
+            [action.animationType]: action.animationData,
+          },
+        },
+      };
+
     default:
       return state;
   }

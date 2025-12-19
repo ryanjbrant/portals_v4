@@ -188,3 +188,22 @@ export function loadScene(sceneData) {
     sceneData: sceneData,
   };
 }
+
+// action to update object artifact data
+export function updateModelArtifact(uuid, artifactData) {
+  return {
+    type: 'UPDATE_MODEL_ARTIFACT',
+    uuid: uuid,
+    artifact: artifactData,
+  };
+}
+
+// action to update object animation state (for JS-driven animations)
+export function updateObjectAnimation(uuid, animationType, animationData) {
+  return {
+    type: 'UPDATE_OBJECT_ANIMATION',
+    uuid: uuid,
+    animationType: animationType,
+    animationData: animationData,
+  };
+}

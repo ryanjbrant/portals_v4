@@ -1,22 +1,212 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, FlatList, Image, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+    View,
+    Text,
+    StyleSheet,
+    SafeAreaView,
+    FlatList,
+    Image,
+    TouchableOpacity,
+    ScrollView,
+    Animated,
+    LayoutAnimation,
+    Platform,
+    UIManager,
+    Alert,
+    Dimensions,
+} from 'react-native';
+import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { Notification } from '../types';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { AuthService } from '../services/auth';
 import { NotificationService } from '../services/notifications';
+import * as Haptics from 'expo-haptics';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type FilterType = 'All' | 'Collabs' | 'Mentions';
 
+// Swipeable notification item component
+const NotificationItem = ({
+    item,
+    isSelectionMode,
+    isSelected,
+    onPress,
+    onLongPress,
+    onToggleSelect,
+    onDelete,
+    onFollowBack,
+    hasFollowedBack,
+    currentUserId,
+    renderIconBadge,
+}: {
+    item: Notification;
+    isSelectionMode: boolean;
+    isSelected: boolean;
+    onPress: () => void;
+    onLongPress: () => void;
+    onToggleSelect: () => void;
+    onDelete: () => void;
+    onFollowBack?: () => void;
+    hasFollowedBack?: boolean;
+    currentUserId?: string;
+    renderIconBadge: (type: string) => React.ReactNode;
+}) => {
+    const swipeableRef = useRef<Swipeable>(null);
+    const fadeAnim = useRef(new Animated.Value(1)).current;
+
+    const renderRightActions = (
+        progress: Animated.AnimatedInterpolation<number>,
+        dragX: Animated.AnimatedInterpolation<number>
+    ) => {
+        const scale = dragX.interpolate({
+            inputRange: [-80, 0],
+            outputRange: [1, 0.5],
+            extrapolate: 'clamp',
+        });
+
+        return (
+            <TouchableOpacity
+                style={styles.deleteAction}
+                onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    swipeableRef.current?.close();
+                    onDelete();
+                }}
+            >
+                <Animated.View style={{ transform: [{ scale }] }}>
+                    <Ionicons name="trash-outline" size={24} color="white" />
+                </Animated.View>
+            </TouchableOpacity>
+        );
+    };
+
+    const handlePress = () => {
+        if (isSelectionMode) {
+            Haptics.selectionAsync();
+            onToggleSelect();
+        } else {
+            onPress();
+        }
+    };
+
+    const handleLongPress = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onLongPress();
+    };
+
+    return (
+        <Swipeable
+            ref={swipeableRef}
+            renderRightActions={renderRightActions}
+            friction={2}
+            rightThreshold={40}
+            enabled={!isSelectionMode}
+        >
+            <TouchableOpacity
+                style={[
+                    styles.row,
+                    !item.read && styles.unreadRow,
+                    isSelected && styles.selectedRow,
+                ]}
+                onPress={handlePress}
+                onLongPress={handleLongPress}
+                activeOpacity={0.7}
+                delayLongPress={300}
+            >
+                {/* Selection Checkbox */}
+                {isSelectionMode && (
+                    <View style={styles.checkboxContainer}>
+                        <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                            {isSelected && <Ionicons name="checkmark" size={14} color="black" />}
+                        </View>
+                    </View>
+                )}
+
+                {/* Avatar with badge */}
+                <View style={styles.avatarContainer}>
+                    <Image source={{ uri: item.user.avatar }} style={styles.avatar} />
+                    {renderIconBadge(item.type)}
+                    {!item.read && <View style={styles.unreadDot} />}
+                </View>
+
+                {/* Content */}
+                <View style={styles.content}>
+                    <View style={styles.textContainer}>
+                        <Text style={styles.text} numberOfLines={2}>
+                            <Text style={styles.username}>{item.user.name || item.user.username}</Text>{' '}
+                            {item.message}
+                        </Text>
+                        <Text style={styles.timestamp}>{item.timestamp}</Text>
+                    </View>
+
+                    {/* Follow Back Action */}
+                    {item.type === 'follow' && !hasFollowedBack && !isSelectionMode && (
+                        <TouchableOpacity
+                            style={styles.followBackBtn}
+                            onPress={onFollowBack}
+                        >
+                            <Text style={styles.followBackText}>Follow Back</Text>
+                        </TouchableOpacity>
+                    )}
+                    {item.type === 'follow' && hasFollowedBack && (
+                        <Text style={styles.statusText}>Following</Text>
+                    )}
+
+                    {/* Message Reply */}
+                    {item.type === 'message' && !isSelectionMode && (
+                        <TouchableOpacity style={styles.replyBtn} onPress={onPress}>
+                            <Ionicons name="arrow-undo" size={14} color={theme.colors.textDim} />
+                            <Text style={styles.replyText}>Reply</Text>
+                        </TouchableOpacity>
+                    )}
+
+                    {/* Collab Status */}
+                    {item.type === 'collab_invite' && item.actionStatus !== 'pending' && (
+                        <Text style={styles.statusText}>
+                            {item.actionStatus === 'accepted' ? 'Accepted' : 'Declined'}
+                        </Text>
+                    )}
+                </View>
+
+                {/* Media Preview */}
+                {item.data?.previewMedia && !isSelectionMode && (
+                    <Image source={{ uri: item.data.previewMedia }} style={styles.postPreview} />
+                )}
+            </TouchableOpacity>
+        </Swipeable>
+    );
+};
+
 export const ActivityScreen = () => {
     const navigation = useNavigation<any>();
-    const notifications = useAppStore(state => state.notifications);
     const currentUser = useAppStore(state => state.currentUser);
+    const notifications = useAppStore(state => state.notifications);
     const setNotifications = useAppStore(state => state.setNotifications);
-    const respondToRequest = useAppStore(state => state.respondToRequest);
     const markAsRead = useAppStore(state => state.markAsRead);
+    const markAllAsReadAndClear = useAppStore(state => state.markAllAsReadAndClear);
+
+    // Selection mode state from store
+    const isSelectionMode = useAppStore(state => state.isSelectionMode);
+    const selectedNotificationIds = useAppStore(state => state.selectedNotificationIds);
+    const enterSelectionMode = useAppStore(state => state.enterSelectionMode);
+    const exitSelectionMode = useAppStore(state => state.exitSelectionMode);
+    const toggleNotificationSelection = useAppStore(state => state.toggleNotificationSelection);
+    const selectAllNotifications = useAppStore(state => state.selectAllNotifications);
+    const deleteSelectedNotifications = useAppStore(state => state.deleteSelectedNotifications);
+    const deleteNotification = useAppStore(state => state.deleteNotification);
+
+    // Local state
+    const [followedBackIds, setFollowedBackIds] = useState<Set<string>>(new Set());
+    const [activeFilter, setActiveFilter] = useState<FilterType>('All');
 
     // Subscribe to real-time Firestore notifications
     useEffect(() => {
@@ -36,13 +226,23 @@ export const ActivityScreen = () => {
         };
     }, [currentUser?.id]);
 
-    // Track which users we've followed back (local state for UI)
-    const [followedBackIds, setFollowedBackIds] = useState<Set<string>>(new Set());
+    // Mark all as read when leaving the screen
+    useFocusEffect(
+        useCallback(() => {
+            // On focus: nothing special
+            return () => {
+                // On blur (leaving screen): mark all as read
+                console.log('[ActivityScreen] Screen blur - marking all as read');
+                markAllAsReadAndClear();
+                // Also exit selection mode if active
+                if (isSelectionMode) {
+                    exitSelectionMode();
+                }
+            };
+        }, [markAllAsReadAndClear, isSelectionMode, exitSelectionMode])
+    );
 
-    // Filter State
-    const [activeFilter, setActiveFilter] = useState<FilterType>('All');
-
-    // Derived State
+    // Filtered notifications
     const filteredNotifications = notifications.filter(n => {
         if (activeFilter === 'All') return true;
         if (activeFilter === 'Collabs') return n.type === 'collab_invite';
@@ -50,26 +250,9 @@ export const ActivityScreen = () => {
         return true;
     });
 
-    const handleAction = async (item: Notification, action: 'accepted' | 'declined') => {
-        if (item.type === 'collab_invite') {
-            // Use the new respondToCollabInvite action for real Firestore integration
-            const respondToCollabInvite = useAppStore.getState().respondToCollabInvite;
-            await respondToCollabInvite(
-                item.id,
-                item.data?.postId || '', // draftId stored in postId field
-                item.user.id, // inviterId
-                'a scene', // draftTitle - we could enhance notification data to include this
-                action === 'accepted'
-            );
-        } else {
-            // For other notification types, use the existing local state update
-            respondToRequest(item.id, action);
-            markAsRead(item.id);
-        }
-    };
-
     const handleFollowBack = async (userId: string) => {
         if (!currentUser) return;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setFollowedBackIds(prev => new Set(prev).add(userId));
         try {
             await AuthService.followUser(currentUser.id, userId);
@@ -88,77 +271,54 @@ export const ActivityScreen = () => {
         if (item.type === 'message') {
             navigation.navigate('Chat', { userId: item.user.id });
         } else if (item.data?.postId) {
-            // navigation.navigate('PostDetail', { postId: item.data.postId }); // Placeholder
+            // navigation.navigate('PostDetail', { postId: item.data.postId });
         }
     };
 
-    const renderItem = ({ item }: { item: Notification }) => (
-        <TouchableOpacity
-            style={[styles.row, item.read ? null : styles.unreadRow]}
-            onPress={() => handleNotificationPress(item)}
-            activeOpacity={0.7}
-        >
-            <View style={styles.avatarContainer}>
-                <Image source={{ uri: item.user.avatar }} style={styles.avatar} />
-                {renderIconBadge(item.type)}
-            </View>
+    const handleLongPress = (item: Notification) => {
+        if (!isSelectionMode) {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            enterSelectionMode();
+            toggleNotificationSelection(item.id);
+        }
+    };
 
-            <View style={styles.content}>
-                <View style={styles.textContainer}>
-                    <Text style={styles.text}>
-                        <Text style={styles.username}>{item.user.name || item.user.username}</Text>{' '}
-                        {item.message}
-                    </Text>
-                    <Text style={styles.timestamp}>{item.timestamp}</Text>
-                </View>
+    const handleDeleteItem = (id: string) => {
+        Alert.alert(
+            'Delete Notification',
+            'Are you sure you want to delete this notification?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        deleteNotification(id);
+                    },
+                },
+            ]
+        );
+    };
 
-                {/* Collab Actions */}
-                {item.type === 'collab_invite' && item.actionStatus === 'pending' && (
-                    <View style={styles.actionRow}>
-                        <TouchableOpacity style={[styles.actionBtn, styles.acceptBtn]} onPress={() => handleAction(item, 'accepted')}>
-                            <Text style={styles.btnText}>Accept</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => handleAction(item, 'declined')}>
-                            <Text style={[styles.btnText, styles.declineText]}>Decline</Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
-
-                {/* Collab Status */}
-                {item.type === 'collab_invite' && item.actionStatus !== 'pending' && (
-                    <Text style={styles.statusText}>
-                        {item.actionStatus === 'accepted' ? 'Accepted' : 'Declined'}
-                    </Text>
-                )}
-
-                {/* Message Reply Action */}
-                {item.type === 'message' && (
-                    <TouchableOpacity style={styles.replyBtn} onPress={() => handleNotificationPress(item)}>
-                        <Ionicons name="arrow-undo" size={14} color={theme.colors.textDim} />
-                        <Text style={styles.replyText}>Reply</Text>
-                    </TouchableOpacity>
-                )}
-
-                {/* Follow Back Action */}
-                {item.type === 'follow' && !followedBackIds.has(item.user.id) && (
-                    <TouchableOpacity
-                        style={[styles.actionBtn, styles.acceptBtn]}
-                        onPress={() => handleFollowBack(item.user.id)}
-                    >
-                        <Text style={styles.btnText}>Follow Back</Text>
-                    </TouchableOpacity>
-                )}
-                {item.type === 'follow' && followedBackIds.has(item.user.id) && (
-                    <Text style={styles.statusText}>Following</Text>
-                )}
-            </View>
-
-            {/* Media Preview (Right Side) */}
-            {item.data?.previewMedia && (
-                <Image source={{ uri: item.data.previewMedia }} style={styles.postPreview} />
-            )}
-        </TouchableOpacity>
-    );
+    const handleDeleteSelected = () => {
+        const count = selectedNotificationIds.size;
+        Alert.alert(
+            'Delete Notifications',
+            `Delete ${count} notification${count > 1 ? 's' : ''}?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        deleteSelectedNotifications();
+                    },
+                },
+            ]
+        );
+    };
 
     const renderIconBadge = (type: string) => {
         let icon = 'notifications';
@@ -168,12 +328,14 @@ export const ActivityScreen = () => {
         switch (type) {
             case 'like_post': icon = 'heart'; color = '#E91E63'; break;
             case 'collab_invite': icon = 'people'; color = '#9C27B0'; break;
+            case 'collab_update': icon = 'sync'; color = '#673AB7'; break;
             case 'mention': icon = 'at'; color = '#2196F3'; break;
             case 'message': icon = 'chatbubble'; color = '#4CAF50'; break;
+            case 'comment': icon = 'chatbubble-ellipses'; color = '#FF9800'; break;
             case 'follow':
                 icon = 'person-add';
                 color = theme.colors.primary;
-                iconColor = 'black'; // Fix visibility on yellow
+                iconColor = 'black';
                 break;
         }
 
@@ -184,43 +346,142 @@ export const ActivityScreen = () => {
         );
     };
 
+    const renderItem = ({ item }: { item: Notification }) => (
+        <NotificationItem
+            item={item}
+            isSelectionMode={isSelectionMode}
+            isSelected={selectedNotificationIds.has(item.id)}
+            onPress={() => handleNotificationPress(item)}
+            onLongPress={() => handleLongPress(item)}
+            onToggleSelect={() => toggleNotificationSelection(item.id)}
+            onDelete={() => handleDeleteItem(item.id)}
+            onFollowBack={() => handleFollowBack(item.user.id)}
+            hasFollowedBack={followedBackIds.has(item.user.id)}
+            currentUserId={currentUser?.id}
+            renderIconBadge={renderIconBadge}
+        />
+    );
+
+    const unreadCount = notifications.filter(n => !n.read).length;
+
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <View style={styles.headerRow}>
-                    {navigation.canGoBack() && (
-                        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                            <Ionicons name="chevron-back" size={28} color={theme.colors.text} />
-                        </TouchableOpacity>
-                    )}
-                    <Text style={styles.title}>Activity</Text>
-                </View>
-            </View>
-
-            {/* Filter Tabs */}
-            <View style={styles.tabsContainer}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
-                    {(['All', 'Collabs', 'Mentions'] as FilterType[]).map((filter) => (
-                        <TouchableOpacity
-                            key={filter}
-                            style={[styles.tab, activeFilter === filter && styles.activeTab]}
-                            onPress={() => setActiveFilter(filter)}
-                        >
-                            <Text style={[styles.tabText, activeFilter === filter && styles.activeTabText]}>
-                                {filter}
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <SafeAreaView style={styles.container}>
+                {/* Header */}
+                <View style={styles.header}>
+                    {isSelectionMode ? (
+                        // Selection Mode Header
+                        <View style={styles.selectionHeader}>
+                            <TouchableOpacity onPress={exitSelectionMode} style={styles.headerBtn}>
+                                <Text style={styles.cancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.selectionCount}>
+                                {selectedNotificationIds.size} Selected
                             </Text>
-                        </TouchableOpacity>
-                    ))}
-                </ScrollView>
-            </View>
+                            <TouchableOpacity
+                                onPress={handleDeleteSelected}
+                                style={styles.headerBtn}
+                                disabled={selectedNotificationIds.size === 0}
+                            >
+                                <Text style={[
+                                    styles.deleteText,
+                                    selectedNotificationIds.size === 0 && styles.deleteTextDisabled
+                                ]}>
+                                    Delete
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        // Normal Header
+                        <View style={styles.headerRow}>
+                            {navigation.canGoBack() && (
+                                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                                    <Ionicons name="chevron-back" size={28} color={theme.colors.text} />
+                                </TouchableOpacity>
+                            )}
+                            <View style={styles.titleContainer}>
+                                <Text style={styles.title}>Activity</Text>
+                                {unreadCount > 0 && (
+                                    <View style={styles.unreadBadge}>
+                                        <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
+                                    </View>
+                                )}
+                            </View>
+                            <TouchableOpacity
+                                onPress={enterSelectionMode}
+                                style={styles.editButton}
+                                disabled={notifications.length === 0}
+                            >
+                                <Text style={[
+                                    styles.editText,
+                                    notifications.length === 0 && styles.editTextDisabled
+                                ]}>
+                                    Edit
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+                </View>
 
-            <FlatList
-                data={filteredNotifications}
-                renderItem={renderItem}
-                keyExtractor={item => item.id}
-                contentContainerStyle={styles.list}
-            />
-        </SafeAreaView>
+                {/* Filter Tabs */}
+                {!isSelectionMode && (
+                    <View style={styles.tabsContainer}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
+                            {(['All', 'Collabs', 'Mentions'] as FilterType[]).map((filter) => (
+                                <TouchableOpacity
+                                    key={filter}
+                                    style={[styles.tab, activeFilter === filter && styles.activeTab]}
+                                    onPress={() => setActiveFilter(filter)}
+                                >
+                                    <Text style={[styles.tabText, activeFilter === filter && styles.activeTabText]}>
+                                        {filter}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
+
+                {/* Selection Actions Bar */}
+                {isSelectionMode && (
+                    <View style={styles.selectionActionsBar}>
+                        <TouchableOpacity
+                            style={styles.selectAllBtn}
+                            onPress={() => {
+                                if (selectedNotificationIds.size === notifications.length) {
+                                    exitSelectionMode();
+                                } else {
+                                    selectAllNotifications();
+                                }
+                            }}
+                        >
+                            <Ionicons
+                                name={selectedNotificationIds.size === notifications.length ? "checkbox" : "checkbox-outline"}
+                                size={20}
+                                color={theme.colors.primary}
+                            />
+                            <Text style={styles.selectAllText}>Select All</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Notification List */}
+                <FlatList
+                    data={filteredNotifications}
+                    renderItem={renderItem}
+                    keyExtractor={item => item.id}
+                    contentContainerStyle={styles.list}
+                    ItemSeparatorComponent={() => <View style={styles.separator} />}
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <Ionicons name="notifications-off-outline" size={64} color={theme.colors.textDim} />
+                            <Text style={styles.emptyTitle}>No Notifications</Text>
+                            <Text style={styles.emptyText}>When you get notifications, they'll show up here</Text>
+                        </View>
+                    }
+                />
+            </SafeAreaView>
+        </GestureHandlerRootView>
     );
 };
 
@@ -237,15 +498,75 @@ const styles = StyleSheet.create({
     headerRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    selectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    headerBtn: {
+        paddingVertical: 4,
+        paddingHorizontal: 8,
     },
     backButton: {
-        marginRight: theme.spacing.s,
         padding: 4,
+    },
+    titleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+        marginLeft: 4,
     },
     title: {
         ...theme.typography.h2,
         color: theme.colors.text,
         fontSize: 28,
+    },
+    unreadBadge: {
+        backgroundColor: '#FE2C55',
+        borderRadius: 10,
+        minWidth: 20,
+        height: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 8,
+        paddingHorizontal: 6,
+    },
+    unreadBadgeText: {
+        color: 'white',
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    editButton: {
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+    },
+    editText: {
+        color: theme.colors.primary,
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    editTextDisabled: {
+        color: theme.colors.textDim,
+    },
+    cancelText: {
+        color: theme.colors.text,
+        fontSize: 16,
+        fontWeight: '500',
+    },
+    selectionCount: {
+        color: theme.colors.text,
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    deleteText: {
+        color: '#FE2C55',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    deleteTextDisabled: {
+        color: theme.colors.textDim,
     },
     tabsContainer: {
         marginBottom: theme.spacing.s,
@@ -274,20 +595,66 @@ const styles = StyleSheet.create({
     activeTabText: {
         color: theme.colors.background,
     },
+    selectionActionsBar: {
+        flexDirection: 'row',
+        paddingHorizontal: theme.spacing.m,
+        paddingVertical: theme.spacing.s,
+        borderBottomWidth: 0.5,
+        borderBottomColor: theme.colors.border,
+    },
+    selectAllBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    selectAllText: {
+        color: theme.colors.primary,
+        fontSize: 14,
+        fontWeight: '600',
+    },
     list: {
         paddingVertical: theme.spacing.s,
+        flexGrow: 1,
+    },
+    separator: {
+        height: 0.5,
+        backgroundColor: theme.colors.border,
+        marginLeft: 76,
     },
     row: {
         flexDirection: 'row',
-        paddingVertical: 12,
+        paddingVertical: 14,
         paddingHorizontal: theme.spacing.m,
         alignItems: 'flex-start',
+        backgroundColor: theme.colors.background,
     },
     unreadRow: {
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    },
+    selectedRow: {
+        backgroundColor: 'rgba(254, 214, 10, 0.1)',
+    },
+    checkboxContainer: {
+        justifyContent: 'center',
+        marginRight: 12,
+        paddingTop: 4,
+    },
+    checkbox: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        borderWidth: 2,
+        borderColor: theme.colors.textDim,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    checkboxSelected: {
+        backgroundColor: theme.colors.primary,
+        borderColor: theme.colors.primary,
     },
     avatarContainer: {
         marginRight: 12,
+        position: 'relative',
     },
     avatar: {
         width: 48,
@@ -304,6 +671,17 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         justifyContent: 'center',
         alignItems: 'center',
+        borderWidth: 2,
+        borderColor: theme.colors.background,
+    },
+    unreadDot: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: '#FE2C55',
         borderWidth: 2,
         borderColor: theme.colors.background,
     },
@@ -330,35 +708,22 @@ const styles = StyleSheet.create({
     },
     postPreview: {
         width: 48,
-        height: 64, // Portrait Aspect
+        height: 64,
         borderRadius: 4,
         backgroundColor: theme.colors.surfaceHighlight,
     },
-    actionRow: {
-        flexDirection: 'row',
-        marginTop: 8,
-        gap: 8,
-    },
-    actionBtn: {
+    followBackBtn: {
+        backgroundColor: theme.colors.primary,
         paddingVertical: 6,
         paddingHorizontal: 16,
         borderRadius: 6,
+        alignSelf: 'flex-start',
+        marginTop: 8,
     },
-    acceptBtn: {
-        backgroundColor: theme.colors.primary,
-    },
-    declineBtn: {
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-    },
-    btnText: {
+    followBackText: {
         color: 'black',
         fontWeight: '600',
         fontSize: 12,
-    },
-    declineText: {
-        color: theme.colors.textDim,
     },
     statusText: {
         marginTop: 6,
@@ -376,5 +741,29 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
         marginLeft: 4,
-    }
+    },
+    deleteAction: {
+        backgroundColor: '#FE2C55',
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: 80,
+    },
+    emptyContainer: {
+        flex: 1,
+        paddingTop: 100,
+        alignItems: 'center',
+        paddingHorizontal: 40,
+    },
+    emptyTitle: {
+        color: theme.colors.text,
+        fontSize: 20,
+        fontWeight: '700',
+        marginTop: 16,
+    },
+    emptyText: {
+        color: theme.colors.textDim,
+        fontSize: 14,
+        textAlign: 'center',
+        marginTop: 8,
+    },
 });

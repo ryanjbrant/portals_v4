@@ -25,6 +25,13 @@ export const PostDetailsScreen = () => {
 
     const coverImage = route.params?.coverImage;
 
+    // Detect artifact in scene
+    const hasArtifact = React.useMemo(() => {
+        const sceneData = draftPost?.sceneData || route.params?.sceneData;
+        if (!sceneData?.objects) return false;
+        return sceneData.objects.some((obj: any) => obj.artifact && obj.artifact.isArtifact);
+    }, [draftPost?.sceneData, route.params?.sceneData]);
+
     // Initialize draft on mount
     // Initialize draft on mount
     React.useEffect(() => {
@@ -90,9 +97,10 @@ export const PostDetailsScreen = () => {
 
             // Determine if we need to save the scene (real save to R2)
             if (draftPost.sceneData) {
-                // Use the scalable saver
+                // Use the scalable saver - mark as published so it doesn't appear in drafts
+                const publishedSceneData = { ...draftPost.sceneData, status: 'published' };
                 const { saveSceneToStorage } = require('../services/sceneSaver');
-                const { sceneId: savedSceneId } = await saveSceneToStorage(draftPost.sceneData, coverImage, currentUser.id);
+                const { sceneId: savedSceneId } = await saveSceneToStorage(publishedSceneData, coverImage, currentUser.id);
                 sceneId = savedSceneId;
             }
 
@@ -145,6 +153,7 @@ export const PostDetailsScreen = () => {
                 sceneData: null, // CRITICAL: Do NOT store heavy scene JSON in Firestore. Only the ID.
                 mediaUri: finalMediaUri || null,
                 coverImage: finalCoverUri || null,
+                isArtifact: hasArtifact, // Save artifact status for feed/gallery filtering
                 createdAt: serverTimestamp()
             };
 
@@ -195,6 +204,13 @@ export const PostDetailsScreen = () => {
             </View>
 
             <ScrollView style={styles.content}>
+                {/* Artifact Banner */}
+                {hasArtifact && (
+                    <View style={styles.artifactBanner}>
+                        <Ionicons name="diamond" size={20} color={theme.colors.secondary} />
+                        <Text style={styles.artifactBannerText}>This scene contains an Artifact</Text>
+                    </View>
+                )}
                 <View style={styles.mediaPreview}>
                     {mediaUri ? (
                         <>
@@ -421,6 +437,23 @@ const styles = StyleSheet.create({
     },
     tagText: {
         color: theme.colors.primary,
+    },
+    artifactBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
+        padding: 12,
+        borderRadius: 8,
+        marginHorizontal: theme.spacing.m,
+        marginBottom: theme.spacing.m,
+        gap: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.secondary,
+    },
+    artifactBannerText: {
+        color: theme.colors.secondary,
+        fontWeight: '600',
+        fontSize: 14,
     },
     channelContainer: {
         marginBottom: theme.spacing.m,
