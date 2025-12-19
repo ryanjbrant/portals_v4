@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Dimensions, StatusBar, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Dimensions, StatusBar, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent, Animated } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
@@ -12,7 +12,7 @@ const { width, height } = Dimensions.get('window');
 const CATEGORIES = ["Live", "Feed", "Friends", "Artifacts", "Exclusive", "Creative", "Countdown", "Music", "Sports", "Entertainment"];
 
 // --- Category Feed Component ---
-const CategoryFeed = ({ category, isActive, onCommentPress }: { category: string, isActive: boolean, onCommentPress: (id: string) => void }) => {
+const CategoryFeed = ({ category, isActive, onCommentPress, hideControls }: { category: string, isActive: boolean, onCommentPress: (id: string) => void, hideControls?: boolean }) => {
     // Determine data based on category (Mock logic)
     const allFeed = useAppStore(state => state.feed);
     const relationships = useAppStore(state => state.relationships);
@@ -38,7 +38,7 @@ const CategoryFeed = ({ category, isActive, onCommentPress }: { category: string
     };
 
     const renderItem = ({ item }: { item: any }) => (
-        <FeedItem post={item} onCommentPress={() => onCommentPress(item.id)} />
+        <FeedItem post={item} onCommentPress={() => onCommentPress(item.id)} hideControls={hideControls} />
     );
 
     const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
@@ -90,6 +90,9 @@ export const FeedScreen = () => {
     const feedListRef = useRef<FlatList>(null);
     const tabsListRef = useRef<FlatList>(null);
 
+    // Animation for video shrink when comments open
+    const videoScale = useRef(new Animated.Value(1)).current;
+
     // Fetch posts from Firestore on mount
     useEffect(() => {
         fetchFeed();
@@ -101,6 +104,15 @@ export const FeedScreen = () => {
             setSelectedPostId(pendingComment.postId);
         }
     }, [pendingComment]);
+
+    // Animate video scale when comments open/close
+    useEffect(() => {
+        Animated.timing(videoScale, {
+            toValue: selectedPostId ? 0.45 : 1, // Shrink to 45% when comments open
+            duration: 300,
+            useNativeDriver: true,
+        }).start();
+    }, [selectedPostId]);
 
     const handleTabPress = (index: number) => {
         setActiveIndex(index);
@@ -134,49 +146,51 @@ export const FeedScreen = () => {
         <View style={styles.container}>
             <StatusBar barStyle="light-content" translucent />
 
-            {/* Top Categories Tab Bar */}
-            <View style={styles.topTabsContainer}>
-                <FlatList
-                    ref={tabsListRef}
-                    data={CATEGORIES}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    keyExtractor={item => item}
-                    contentContainerStyle={styles.tabsContent}
-                    ListHeaderComponent={<View style={{ width: width / 2 - 40 }} />}
-                    ListFooterComponent={<View style={{ width: width / 2 - 40 }} />}
-                    renderItem={({ item, index }) => {
-                        const isActive = index === activeIndex;
-                        // Dynamic opacity based on distance from center
-                        const distance = Math.abs(index - activeIndex);
-                        const opacity = Math.max(0.35, 1 - (distance * 0.3));
+            {/* Top Categories Tab Bar - hidden when comments open */}
+            {!selectedPostId && (
+                <View style={styles.topTabsContainer}>
+                    <FlatList
+                        ref={tabsListRef}
+                        data={CATEGORIES}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        keyExtractor={item => item}
+                        contentContainerStyle={styles.tabsContent}
+                        ListHeaderComponent={<View style={{ width: width / 2 - 40 }} />}
+                        ListFooterComponent={<View style={{ width: width / 2 - 40 }} />}
+                        renderItem={({ item, index }) => {
+                            const isActive = index === activeIndex;
+                            // Dynamic opacity based on distance from center
+                            const distance = Math.abs(index - activeIndex);
+                            const opacity = Math.max(0.35, 1 - (distance * 0.3));
 
-                        return (
-                            <TouchableOpacity onPress={() => handleTabPress(index)} style={[styles.tabItem, { opacity }]}>
-                                <Text style={[styles.tabText, isActive && styles.activeTabText]}>
-                                    {item}
-                                </Text>
-                                {isActive && <View style={styles.activeIndicator} />}
-                            </TouchableOpacity>
-                        );
-                    }}
-                    // Remove fixed initialScrollIndex to avoid conflicts with centering logic
-                    onLayout={() => {
-                        tabsListRef.current?.scrollToIndex({
-                            index: activeIndex,
-                            animated: false,
-                            viewPosition: 0.5
-                        });
-                    }}
-                    initialNumToRender={CATEGORIES.length}
-                    onScrollToIndexFailed={info => {
-                        const wait = new Promise(resolve => setTimeout(resolve, 500));
-                        wait.then(() => {
-                            tabsListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
-                        });
-                    }}
-                />
-            </View>
+                            return (
+                                <TouchableOpacity onPress={() => handleTabPress(index)} style={[styles.tabItem, { opacity }]}>
+                                    <Text style={[styles.tabText, isActive && styles.activeTabText]}>
+                                        {item}
+                                    </Text>
+                                    {isActive && <View style={styles.activeIndicator} />}
+                                </TouchableOpacity>
+                            );
+                        }}
+                        // Remove fixed initialScrollIndex to avoid conflicts with centering logic
+                        onLayout={() => {
+                            tabsListRef.current?.scrollToIndex({
+                                index: activeIndex,
+                                animated: false,
+                                viewPosition: 0.5
+                            });
+                        }}
+                        initialNumToRender={CATEGORIES.length}
+                        onScrollToIndexFailed={info => {
+                            const wait = new Promise(resolve => setTimeout(resolve, 500));
+                            wait.then(() => {
+                                tabsListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
+                            });
+                        }}
+                    />
+                </View>
+            )}
 
             {/* Search Button */}
             <TouchableOpacity
@@ -186,25 +200,43 @@ export const FeedScreen = () => {
                 <Ionicons name="search" size={28} color="white" />
             </TouchableOpacity>
 
-            {/* Horizontal Feed Pager */}
-            <FlatList
-                ref={feedListRef}
-                data={CATEGORIES}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={item => item}
-                onMomentumScrollEnd={onMomentumScrollEnd}
-                initialScrollIndex={1}
-                getItemLayout={(data, index) => ({ length: width, offset: width * index, index })}
-                renderItem={({ item, index }) => (
-                    <CategoryFeed
-                        category={item}
-                        isActive={index === activeIndex}
-                        onCommentPress={setSelectedPostId}
-                    />
-                )}
-            />
+            {/* Animated Video Container - shrinks when comments open */}
+            <Animated.View style={[
+                styles.videoContainer,
+                {
+                    transform: [
+                        { scale: videoScale },
+                        // Keep video at top when shrinking
+                        {
+                            translateY: videoScale.interpolate({
+                                inputRange: [0.45, 1],
+                                outputRange: [-(height - 80) * 0.66, 0]
+                            })
+                        }
+                    ]
+                }
+            ]}>
+                {/* Horizontal Feed Pager */}
+                <FlatList
+                    ref={feedListRef}
+                    data={CATEGORIES}
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    keyExtractor={item => item}
+                    onMomentumScrollEnd={onMomentumScrollEnd}
+                    initialScrollIndex={1}
+                    getItemLayout={(data, index) => ({ length: width, offset: width * index, index })}
+                    renderItem={({ item, index }) => (
+                        <CategoryFeed
+                            category={item}
+                            isActive={index === activeIndex}
+                            onCommentPress={setSelectedPostId}
+                            hideControls={!!selectedPostId}
+                        />
+                    )}
+                />
+            </Animated.View>
 
             <CommentsSheet
                 visible={!!selectedPostId}
@@ -219,6 +251,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: theme.colors.background
+    },
+    videoContainer: {
+        flex: 1,
     },
     topTabsContainer: {
         position: 'absolute',

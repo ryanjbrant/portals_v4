@@ -28,9 +28,10 @@ const getRelativeTime = (dateString: string) => {
 interface FeedItemProps {
     post: Post;
     onCommentPress: () => void;
+    hideControls?: boolean;
 }
 
-export const FeedItem = ({ post, onCommentPress }: FeedItemProps) => {
+export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) => {
     const navigation = useNavigation<any>();
     const currentUser = useAppStore(state => state.currentUser);
     const toggleLike = useAppStore(state => state.toggleLike);
@@ -105,48 +106,49 @@ export const FeedItem = ({ post, onCommentPress }: FeedItemProps) => {
                 </LinearGradient>
             )}
 
-            {/* Right Action Bar */}
-            <View style={styles.rightContainer}>
-                <View style={styles.actionButton}>
-                    <View style={styles.avatarContainer}>
-                        <TouchableOpacity onPress={handleProfilePress}>
-                            <Image source={{ uri: post.user.avatar }} style={styles.avatar} />
-                        </TouchableOpacity>
-
-                        {!isFollowing && currentUser?.id !== post.user.id && (
-                            <TouchableOpacity style={styles.followBadge} onPress={handleFollow}>
-                                <Ionicons name="add" size={12} color="#000" />
+            {/* Right Action Bar - hidden when comments open */}
+            {!hideControls && (
+                <View style={styles.rightContainer}>
+                    <View style={styles.actionButton}>
+                        <View style={styles.avatarContainer}>
+                            <TouchableOpacity onPress={handleProfilePress}>
+                                <Image source={{ uri: post.user.avatar }} style={styles.avatar} />
                             </TouchableOpacity>
-                        )}
+
+                            {!isFollowing && currentUser?.id !== post.user.id && (
+                                <TouchableOpacity style={styles.followBadge} onPress={handleFollow}>
+                                    <Ionicons name="add" size={12} color="#000" />
+                                </TouchableOpacity>
+                            )}
+                        </View>
                     </View>
+
+                    <TouchableOpacity style={styles.actionButton} onPress={() => toggleLike(post.id)}>
+                        <Ionicons
+                            name="heart"
+                            size={35}
+                            color={post.isLiked ? theme.colors.primary : theme.colors.white}
+                        />
+                        <Text style={styles.actionText}>{post.likes}</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.actionButton} onPress={onCommentPress}>
+                        <Ionicons name="chatbubble-ellipses" size={35} color={theme.colors.white} />
+                        <Text style={styles.actionText}>{post.comments}</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
+                        <Ionicons name="share-social" size={35} color={theme.colors.white} />
+                        <Text style={styles.actionText}>{post.shares}</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('ARViewer', { sceneId: post.sceneId || 'demo_scene' })}>
+                        <Ionicons name="eye" size={35} color={theme.colors.white} />
+                        <Text style={styles.actionText}>View</Text>
+                    </TouchableOpacity>
+
                 </View>
-
-                <TouchableOpacity style={styles.actionButton} onPress={() => toggleLike(post.id)}>
-                    <Ionicons
-                        name="heart"
-                        size={35}
-                        color={post.isLiked ? theme.colors.primary : theme.colors.white}
-                    />
-                    <Text style={styles.actionText}>{post.likes}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionButton} onPress={onCommentPress}>
-                    <Ionicons name="chatbubble-ellipses" size={35} color={theme.colors.white} />
-                    <Text style={styles.actionText}>{post.comments}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
-                    <Ionicons name="share-social" size={35} color={theme.colors.white} />
-                    <Text style={styles.actionText}>{post.shares}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('ARViewer', { sceneId: post.sceneId || 'demo_scene' })}>
-                    <Ionicons name="eye" size={35} color={theme.colors.white} />
-                    <Text style={styles.actionText}>View</Text>
-                </TouchableOpacity>
-
-
-            </View>
+            )}
 
             {/* Bottom Info Overlay */}
             <View style={styles.bottomContainer}>

@@ -1,13 +1,35 @@
 import {
     AudioModule,
-    RecordingPresets,
+    IOSOutputFormat,
     requestRecordingPermissionsAsync,
     setAudioModeAsync,
     type AudioRecorder as AudioRecorderType
 } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
-import { getGenerativeModel } from 'firebase/ai';
-import { vertexAI } from '../config/firebase';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// Use Google AI SDK directly instead of Firebase Vertex AI for better audio support
+const GEMINI_API_KEY = 'AIzaSyCrI1tru2J5mapuoDkF8B9eCqSfwGYNFdU';
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+// Recording options for WAV format (LINEARPCM) - better compatibility with Gemini
+const WAV_RECORDING_OPTIONS = {
+    isMeteringEnabled: true,
+    sampleRate: 16000, // 16kHz is optimal for speech recognition
+    numberOfChannels: 1, // Mono
+    bitRate: 256000,
+    extension: '.wav',
+    ios: {
+        outputFormat: IOSOutputFormat.LINEARPCM,
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        bitRate: 256000,
+    },
+    android: {
+        extension: '.wav',
+        sampleRate: 16000,
+    },
+};
 
 export const VoiceService = {
     audioRecorder: null as AudioRecorderType | null,
@@ -28,7 +50,8 @@ export const VoiceService = {
                 playsInSilentMode: true,
             });
 
-            const recorder = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
+            // Create recorder with WAV format options
+            const recorder = new AudioModule.AudioRecorder(WAV_RECORDING_OPTIONS);
             this.audioRecorder = recorder;
 
             await recorder.prepareToRecordAsync();
@@ -44,7 +67,7 @@ export const VoiceService = {
             }, 100);
 
             await recorder.record();
-            console.log('Recording started');
+            console.log('Recording started (WAV format)');
             return true;
         } catch (error) {
             console.error('Failed to start recording', error);
@@ -78,7 +101,7 @@ export const VoiceService = {
         if (!audioUri) return { action: 'none', text: "No audio recorded." };
 
         try {
-            console.log("Processing audio with Gemini 2.0 Flash...");
+            console.log("Processing audio with Google Generative AI SDK...");
             console.log("Context:", context);
 
             // 1. Read Audio File as Base64
@@ -88,9 +111,10 @@ export const VoiceService = {
 
             // Debug: Log audio data size
             console.log("Audio base64 length:", base64Audio.length);
+            console.log("Audio URI extension:", audioUri.split('.').pop());
 
-            // 2. Initialize Model (using stable GA model)
-            const model = getGenerativeModel(vertexAI, { model: 'gemini-2.0-flash' });
+            // 2. Initialize Model (using Google AI SDK directly)
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
             // 3. Define Prompt
             const prompt = `
@@ -126,13 +150,12 @@ export const VoiceService = {
             `;
 
             // 4. Generate Content (Multimodal: Text + Audio)
-            // Supported MIME types: audio/m4a, audio/mp4, audio/mp3, audio/wav, audio/ogg, audio/aac
-            console.log("Sending request with audio/m4a MIME type...");
+            // WAV uses audio/wav MIME type
             const result = await model.generateContent([
                 prompt,
                 {
                     inlineData: {
-                        mimeType: 'audio/m4a', // M4A is supported
+                        mimeType: 'audio/wav',
                         data: base64Audio
                     }
                 }
@@ -147,9 +170,8 @@ export const VoiceService = {
 
             return command;
 
-        } catch (error: any) {
+        } catch (error) {
             console.error("Gemini Error:", error);
-            console.error("Error details:", error?.message, error?.status, error?.statusText);
             return { action: 'none', text: "Sorry, I couldn't understand that." };
         }
     }

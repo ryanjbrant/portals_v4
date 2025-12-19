@@ -147,46 +147,51 @@ export const FeedService = {
         const q = query(commentsRef, orderBy('timestamp', 'asc'));
 
         return onSnapshot(q, (snapshot) => {
-            const firestoreComments = snapshot.docs.map(doc => {
-                const data = doc.data();
-                // Parse replies with user objects
-                const replies = (data.replies || []).map((reply: any) => ({
-                    id: reply.id,
-                    text: reply.text,
-                    timestamp: 'Just now',
-                    likes: reply.likes || 0,
-                    isLiked: false,
-                    userId: reply.userId,
-                    user: {
-                        id: reply.userId,
-                        username: reply.username,
-                        avatar: reply.avatar,
-                        followers: 0,
-                        following: 0,
-                        friends: 0,
-                        flames: 0
-                    }
-                }));
+            const firestoreComments = snapshot.docs
+                // Filter out flagged comments
+                .filter(doc => !doc.data().flagged)
+                .map(doc => {
+                    const data = doc.data();
+                    // Parse replies with user objects (also filter flagged replies)
+                    const replies = (data.replies || [])
+                        .filter((reply: any) => !reply.flagged)
+                        .map((reply: any) => ({
+                            id: reply.id,
+                            text: reply.text,
+                            timestamp: 'Just now',
+                            likes: reply.likes || 0,
+                            isLiked: false,
+                            userId: reply.userId,
+                            user: {
+                                id: reply.userId,
+                                username: reply.username,
+                                avatar: reply.avatar,
+                                followers: 0,
+                                following: 0,
+                                friends: 0,
+                                flames: 0
+                            }
+                        }));
 
-                return {
-                    id: doc.id,
-                    text: data.text,
-                    timestamp: 'Just now',
-                    likes: data.likes || 0,
-                    isLiked: false,
-                    replies,
-                    userId: data.userId,
-                    user: {
-                        id: data.userId,
-                        username: data.username,
-                        avatar: data.avatar,
-                        followers: 0,
-                        following: 0,
-                        friends: 0,
-                        flames: 0
-                    }
-                } as Comment;
-            });
+                    return {
+                        id: doc.id,
+                        text: data.text,
+                        timestamp: 'Just now',
+                        likes: data.likes || 0,
+                        isLiked: false,
+                        replies,
+                        userId: data.userId,
+                        user: {
+                            id: data.userId,
+                            username: data.username,
+                            avatar: data.avatar,
+                            followers: 0,
+                            following: 0,
+                            friends: 0,
+                            flames: 0
+                        }
+                    } as Comment;
+                });
 
             // Merge with Mock Data if p1
             let allComments = firestoreComments;
@@ -197,5 +202,21 @@ export const FeedService = {
 
             onUpdate(allComments);
         });
+    },
+
+    // Delete a comment
+    async deleteComment(postId: string, commentId: string): Promise<void> {
+        const commentRef = doc(db, 'posts', postId, 'comments', commentId);
+        const postRef = doc(db, 'posts', postId);
+
+        try {
+            await deleteDoc(commentRef);
+            await updateDoc(postRef, {
+                comments: increment(-1)
+            });
+        } catch (error) {
+            console.error("Error deleting comment:", error);
+            throw error;
+        }
     }
 };

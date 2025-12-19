@@ -3,6 +3,9 @@ PODS:
     - ExpoModulesCore
   - EXApplication (7.0.8):
     - ExpoModulesCore
+  - EXAV (16.0.8):
+    - ExpoModulesCore
+    - ReactCommon/turbomodule/core
   - EXConstants (18.0.12):
     - ExpoModulesCore
   - EXImageLoader (6.0.0):
@@ -2174,6 +2177,7 @@ PODS:
 DEPENDENCIES:
   - ArViewRecorder (from `../modules/ar-view-recorder/ios`)
   - EXApplication (from `../node_modules/expo-auth-session/node_modules/expo-application/ios`)
+  - EXAV (from `../node_modules/expo-av/ios`)
   - EXConstants (from `../node_modules/expo-constants/ios`)
   - EXImageLoader (from `../node_modules/expo-image-loader/ios`)
   - Expo (from `../node_modules/expo`)
@@ -2289,6 +2293,8 @@ EXTERNAL SOURCES:
     :path: "../modules/ar-view-recorder/ios"
   EXApplication:
     :path: "../node_modules/expo-auth-session/node_modules/expo-application/ios"
+  EXAV:
+    :path: "../node_modules/expo-av/ios"
   EXConstants:
     :path: "../node_modules/expo-constants/ios"
   EXImageLoader:
@@ -2500,6 +2506,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   ArViewRecorder: 02bc429245945b3518e1b64279b1f0a7405960b2
   EXApplication: 13420f8139864183f8a04fd6099077bdf8cfb186
+  EXAV: c2de1057f4d9b0bcbdd908c6f2dcff48ece36f2b
   EXConstants: 6c818a84354d194cb4d5d78990108a7c0f590e30
   EXImageLoader: e501c001bc40b8326605e82e6e80363c80fe06b5
   Expo: 75d43a6426a4268510a460c77e2cce8929d108d3
