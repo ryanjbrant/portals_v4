@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, Share, Animated, ActivityIndicator } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, Share } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { Post } from '../types';
@@ -25,45 +25,6 @@ const getRelativeTime = (dateString: string) => {
     return `${Math.floor(diffInSeconds / 604800)}w`;
 };
 
-// Shimmer Avatar Component - animated gradient sweep
-const ShimmerAvatar = ({ size = 50 }: { size?: number }) => {
-    const shimmerAnim = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-        Animated.loop(
-            Animated.timing(shimmerAnim, {
-                toValue: 1,
-                duration: 1500,
-                useNativeDriver: true,
-            })
-        ).start();
-    }, []);
-
-    const translateX = shimmerAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [-size, size],
-    });
-
-    return (
-        <View style={[styles.shimmerContainer, { width: size, height: size, borderRadius: size / 2 }]}>
-            <LinearGradient
-                colors={['#2a2a2a', '#3a3a3a', '#4a4a4a', '#3a3a3a', '#2a2a2a']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={StyleSheet.absoluteFill}
-            />
-            <Animated.View style={[styles.shimmerOverlay, { transform: [{ translateX }] }]}>
-                <LinearGradient
-                    colors={['transparent', 'rgba(255,255,255,0.3)', 'transparent']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={{ width: size, height: size }}
-                />
-            </Animated.View>
-        </View>
-    );
-};
-
 interface FeedItemProps {
     post: Post;
     onCommentPress: () => void;
@@ -75,11 +36,6 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
     const currentUser = useAppStore(state => state.currentUser);
     const toggleLike = useAppStore(state => state.toggleLike);
     const [isFollowing, setIsFollowing] = React.useState(false);
-    const [isAvatarLoaded, setIsAvatarLoaded] = useState(false);
-    const [isVideoReady, setIsVideoReady] = useState(false);
-
-    // Video fade-in animation
-    const videoOpacity = useRef(new Animated.Value(0)).current;
 
     // Check if already following on mount
     useEffect(() => {
@@ -96,27 +52,6 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
         player.muted = false;
         player.play();
     });
-
-    // Listen for video ready state
-    useEffect(() => {
-        if (!player) return;
-
-        const subscription = player.addListener('statusChange', (status) => {
-            if (status.status === 'readyToPlay' && !isVideoReady) {
-                setIsVideoReady(true);
-                // Fade in the video cinematically
-                Animated.timing(videoOpacity, {
-                    toValue: 1,
-                    duration: 400,
-                    useNativeDriver: true,
-                }).start();
-            }
-        });
-
-        return () => {
-            subscription?.remove();
-        };
-    }, [player, isVideoReady]);
 
     const handleFollow = async () => {
         if (!currentUser) return;
@@ -154,27 +89,21 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
 
     return (
         <View style={styles.container}>
-            {/* Loading Spinner - shown until video is ready */}
-            {post.mediaUri && !isVideoReady && (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={theme.colors.primary} />
-                </View>
-            )}
-
-            {/* Background Media with fade-in */}
+            {/* Background Media */}
             {post.mediaUri ? (
-                <Animated.View style={[styles.mediaContainer, { opacity: videoOpacity }]}>
-                    <VideoView
-                        style={StyleSheet.absoluteFill}
-                        player={player}
-                        contentFit="cover"
-                        nativeControls={false}
-                    />
-                </Animated.View>
+                <VideoView
+                    style={styles.mediaContainer}
+                    player={player}
+                    contentFit="cover"
+                    nativeControls={false}
+                />
             ) : (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={theme.colors.primary} />
-                </View>
+                <LinearGradient
+                    colors={['#1c0f24', '#0f1724']}
+                    style={styles.mediaContainer}
+                >
+                    <Text style={styles.placeholderText}>Video Placeholder</Text>
+                </LinearGradient>
             )}
 
             {/* Right Action Bar - hidden when comments open */}
@@ -183,15 +112,7 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
                     <View style={styles.actionButton}>
                         <View style={styles.avatarContainer}>
                             <TouchableOpacity onPress={handleProfilePress}>
-                                {!isAvatarLoaded && <ShimmerAvatar size={50} />}
-                                <Image
-                                    source={{ uri: post.user.avatar }}
-                                    style={[
-                                        styles.avatar,
-                                        !isAvatarLoaded && styles.hiddenAvatar
-                                    ]}
-                                    onLoad={() => setIsAvatarLoaded(true)}
-                                />
+                                <Image source={{ uri: post.user.avatar }} style={styles.avatar} />
                             </TouchableOpacity>
 
                             {!isFollowing && currentUser?.id !== post.user.id && (
@@ -267,11 +188,10 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    loadingContainer: {
-        ...StyleSheet.absoluteFillObject,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#0a0a0a',
+    placeholderText: {
+        color: '#333',
+        fontWeight: 'bold',
+        fontSize: 24,
     },
     rightContainer: {
         position: 'absolute',
@@ -292,18 +212,6 @@ const styles = StyleSheet.create({
         borderRadius: 25,
         borderWidth: 2,
         borderColor: theme.colors.white,
-    },
-    hiddenAvatar: {
-        position: 'absolute',
-        opacity: 0,
-    },
-    shimmerContainer: {
-        overflow: 'hidden',
-        borderWidth: 2,
-        borderColor: theme.colors.white,
-    },
-    shimmerOverlay: {
-        ...StyleSheet.absoluteFillObject,
     },
     followBadge: {
         position: 'absolute',
