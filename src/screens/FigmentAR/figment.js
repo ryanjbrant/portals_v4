@@ -53,6 +53,86 @@ export class figment extends Component {
     this._onModelsClickStateCallback = this._onModelsClickStateCallback.bind(this);
     this._onPortalsClickStateCallback = this._onPortalsClickStateCallback.bind(this);
     this._onSceneClick = this._onSceneClick.bind(this);
+    this._renderLightingSetup = this._renderLightingSetup.bind(this);
+  }
+
+  /**
+   * Renders the dynamic lighting setup based on selectedHdri prop
+   * Each lighting setup defines ambient light and an array of spot/directional lights
+   */
+  _renderLightingSetup() {
+    const setupName = this.props.selectedHdri;
+    const setup = LightingData.getLightingSetup(setupName);
+
+    // Default fallback lighting if no setup selected
+    if (!setup) {
+      console.log('[Figment] No lighting setup found for:', setupName, '- using default');
+      return (
+        <>
+          <ViroAmbientLight color="#ffffff" intensity={100} />
+          <ViroDirectionalLight color="#ffffff" direction={[0, -1, -0.2]} />
+        </>
+      );
+    }
+
+    console.log('[Figment] Loading lighting setup:', setup.name);
+
+    const lights = [];
+
+    // Add ambient light
+    lights.push(
+      <ViroAmbientLight
+        key="ambient"
+        color={setup.ambientColor || '#ffffff'}
+        intensity={setup.ambientIntensity || 50}
+      />
+    );
+
+    // Add each light from the setup
+    setup.lights.forEach((light, index) => {
+      if (light.type === 'spot') {
+        const spotProps = {
+          key: `spot-${index}`,
+          position: light.position,
+          direction: light.direction,
+          color: light.color || '#ffffff',
+          intensity: light.intensity || 500,
+          innerAngle: light.innerAngle || 15,
+          outerAngle: light.outerAngle || 45,
+          attenuationStartDistance: light.attenuationStart || 3,
+          attenuationEndDistance: light.attenuationEnd || 15,
+          castsShadow: light.castsShadow || false,
+        };
+
+        // Add shadow props only when shadows are enabled
+        if (light.castsShadow) {
+          spotProps.shadowMapSize = 512;
+          spotProps.shadowNearZ = 2;
+          spotProps.shadowFarZ = 20;
+          spotProps.shadowOpacity = light.shadowOpacity || 0.4;
+        }
+
+        lights.push(<ViroSpotLight {...spotProps} />);
+      } else if (light.type === 'directional') {
+        lights.push(
+          <ViroDirectionalLight
+            key={`dir-${index}`}
+            direction={light.direction}
+            color={light.color || '#ffffff'}
+          />
+        );
+      } else if (light.type === 'ambient') {
+        lights.push(
+          <ViroAmbientLight
+            key={`amb-${index}`}
+            color={light.color || '#ffffff'}
+            intensity={light.intensity || 100}
+          />
+        );
+      }
+    });
+
+    return <>{lights}</>;
   }
 
   // ... (existing helper methods)
@@ -101,39 +181,29 @@ export class figment extends Component {
     return (
       <ViroARScene ref={component => { this.arSceneRef = component }} physicsWorld={{ gravity: [0, -9.81, 0] }} postProcessEffects={[this.props.postProcessEffects]}
         onTrackingUpdated={this._onTrackingUpdated}>
-        {this.props.selectedHdri && LightingData.getHDRISource(this.props.selectedHdri) && (
-          <ViroLightingEnvironment
-            source={LightingData.getHDRISource(this.props.selectedHdri)}
-            onLoadStart={() => console.log('[Figment] HDRI Loading:', this.props.selectedHdri)}
-            onLoadEnd={() => console.log('[Figment] HDRI Loaded:', this.props.selectedHdri)}
-            onError={(event) => console.log('[Figment] HDRI Error:', event.nativeEvent, this.props.selectedHdri)}
-          />
-        )}
+        {/* Dynamic Lighting Setup based on selectedHdri */}
+        {this._renderLightingSetup()}
 
-        {/* Soft ambient fill light - Matched to ARComposer */}
-        <ViroAmbientLight color="#ffffff" intensity={150} />
-        <ViroAmbientLight color="#ffffff" intensity={200} />
-
-        {/* DirectionalLight (Restored per user request to work in tandem) */}
-        <ViroDirectionalLight color="#ffffff" direction={[0, -1, -.2]} />
-
-        {/* Spotlight with Shadows - Tuned for Photo Realistic Soft Shadows */}
+        {/* Dedicated Shadow Light - Always present to ensure shadows work */}
         <ViroSpotLight
-          innerAngle={5}
-          outerAngle={45}
-          direction={[0, -1, -.2]}
-          position={[0, 8, 0]}
+          innerAngle={15}
+          outerAngle={60}
+          direction={[-0.2, -0.9, -0.3]}
+          position={[1, 8, 2]}
           color="#ffffff"
+          intensity={100}
+          attenuationStartDistance={5}
+          attenuationEndDistance={20}
           castsShadow={true}
-          shadowMapSize={4096}
+          shadowMapSize={512}
           shadowNearZ={2}
-          shadowFarZ={15}
-          shadowOpacity={0.3}
+          shadowFarZ={20}
+          shadowOpacity={0.35}
         />
 
         {/* Global Shadow Receiver Plane (Invisible, catches shadows) */}
         <ViroQuad
-          position={[0, -1.0, 0]}
+          position={[0, -0.75, 0]}
           rotation={[-90, 0, 0]}
           width={100}
           height={100}

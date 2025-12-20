@@ -250,6 +250,43 @@ componentDidUpdate(prevProps) {
 
 ---
 
+### 7. IBL Reflection Rotation Bug
+
+**Problem:** When using `ViroLightingEnvironment` for Image-Based Lighting (IBL), environment map reflections appear to rotate with 3D models as they move/rotate, instead of remaining fixed in world space. This creates unrealistic reflections that break immersion.
+
+**Root Cause:** ViroReact's native rendering engine samples the environment cubemap in **object space** rather than **world space**. When the object rotates, the reflection direction vector rotates with it in the shader.
+
+**Workaround (Current):** Use matte materials with low metalness and high roughness to minimize the visibility of reflections:
+
+```javascript
+ViroMaterials.createMaterials({
+  [materialName]: {
+    lightingModel: 'PBR',
+    diffuseColor: randomColor,
+    metalness: 0.05,  // Low metalness = minimal reflections
+    roughness: 0.7,   // High roughness = diffuse, matte appearance
+  },
+});
+```
+
+**Proper Fix (TODO):** Fork ViroReact and modify the PBR shader to sample the environment map using world-space reflection vectors instead of object-space:
+
+```metal
+// iOS Metal shader fix:
+// Before (object space):
+float3 reflectDir = reflect(-viewDir, normal);
+
+// After (world space):
+float3 worldReflectDir = (modelMatrix * float4(reflect(-viewDir, normal), 0.0)).xyz;
+```
+
+**Files modified:**
+| File | Change |
+|------|--------|
+| `component/ModelItemRender.js` | Applied matte material workaround (metalness: 0.05, roughness: 0.7) |
+
+---
+
 ## Critical Functions Flow
 
 ### Adding an Object
@@ -378,6 +415,7 @@ If something breaks, compare with: `_ref/figment-ar/js/`
 | 2024-12-16 | Fixed async crashes (_isMounted guards) |
 | 2024-12-16 | Simplified Viro3DObject props |
 | 2024-12-19 | Added JS-driven animation system (bypasses native crashes) |
+| 2024-12-20 | Applied matte material workaround for IBL reflection rotation bug |
 
 ---
 
