@@ -10,6 +10,7 @@ export interface User {
     following: number;
     friends: number; // For "Friends" count specifically if different from following
     flames: number; // Total likes received
+    fuelBalance?: number; // Earned fuel from walking/rewards (spendable)
     isPrivate?: boolean;
     fuelStats?: {
         totalEarned: number;

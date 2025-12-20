@@ -31,8 +31,16 @@ export const ProfileScreen = () => {
 
     React.useEffect(() => {
         const loadProfile = async () => {
-            if (isSelf) {
-                setProfileUser(currentUser);
+            if (isSelf && currentUser) {
+                // Recalculate stats from actual subcollections (self-healing)
+                await AuthService.recalculateUserStats(currentUser.id);
+                // Refetch updated user doc
+                const snap = await getDoc(doc(db, 'users', currentUser.id));
+                if (snap.exists()) {
+                    setProfileUser(snap.data() as User);
+                } else {
+                    setProfileUser(currentUser);
+                }
                 return;
             }
 
@@ -132,7 +140,7 @@ export const ProfileScreen = () => {
                         </TouchableOpacity>
                         <View style={styles.statDivider} />
                         <View style={styles.statItem}>
-                            <Text style={styles.statNumber}>{profileUser.flames}</Text>
+                            <Text style={styles.statNumber}>{profileUser.fuelBalance || 0}</Text>
                             <Text style={styles.statLabel}>Fuel</Text>
                         </View>
                     </View>

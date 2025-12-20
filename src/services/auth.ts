@@ -184,5 +184,40 @@ export const AuthService = {
         const docRef = doc(db, 'users', currentUserId, 'following', targetUserId);
         const snap = await getDoc(docRef);
         return snap.exists();
+    },
+
+    /**
+     * Recalculate user stats from actual subcollection counts.
+     * This self-heals any counter drift that may occur.
+     */
+    async recalculateUserStats(userId: string): Promise<{ following: number; followers: number }> {
+        if (!userId) return { following: 0, followers: 0 };
+
+        try {
+            const { collection, getDocs, updateDoc } = await import('firebase/firestore');
+
+            // Count actual following
+            const followingRef = collection(db, 'users', userId, 'following');
+            const followingSnap = await getDocs(followingRef);
+            const followingCount = followingSnap.size;
+
+            // Count actual followers
+            const followersRef = collection(db, 'users', userId, 'followers');
+            const followersSnap = await getDocs(followersRef);
+            const followersCount = followersSnap.size;
+
+            // Update the user doc with accurate counts
+            const userRef = doc(db, 'users', userId);
+            await updateDoc(userRef, {
+                following: followingCount,
+                followers: followersCount
+            });
+
+            console.log(`[AuthService] Recalculated stats for ${userId}: following=${followingCount}, followers=${followersCount}`);
+            return { following: followingCount, followers: followersCount };
+        } catch (e) {
+            console.error('[AuthService] Failed to recalculate stats:', e);
+            return { following: 0, followers: 0 };
+        }
     }
 };
