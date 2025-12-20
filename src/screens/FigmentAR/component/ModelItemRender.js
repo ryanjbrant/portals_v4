@@ -618,13 +618,25 @@ var ModelItemRender = createReactClass({
             // - For custom GLB files: use default animation (ViroReact auto-discovers embedded anims)
             // - For models without animation: undefined
             let animationConfig = undefined;
+
+            // Check if this is a GLB file (various ways to detect)
+            const isGLB = modelItem.type === 'GLB' ||
+              modelItem.extension === 'glb' ||
+              (modelItem.source?.uri && modelItem.source.uri.toLowerCase().endsWith('.glb')) ||
+              (modelItem.uri && modelItem.uri.toLowerCase().endsWith('.glb')) ||
+              (modelItem.name && modelItem.name.toLowerCase().endsWith('.glb'));
+
             if (modelItem.animation) {
               // Bundled model with predefined animation
               animationConfig = { ...modelItem.animation, run: this.state.runAnimation };
-            } else if (isCustom && modelItem.type === 'GLB') {
-              // Custom GLB - enable embedded animations by default
-              // ViroReact will auto-discover animation names from the GLB
-              animationConfig = { name: '', delay: 0, loop: true, run: this.state.runAnimation };
+              console.log('[ModelItemRender] Using bundled animation:', modelItem.animation.name);
+            } else if (isCustom && isGLB) {
+              // Custom GLB - try common animation names from 3D software exports
+              // Cinema4D exports as 'Take 001', Blender as 'Action', Maya as 'Take 001'
+              animationConfig = { name: 'Take 001', delay: 0, loop: true, run: this.state.runAnimation };
+              console.log('[ModelItemRender] Custom GLB animation enabled with name "Take 001" for:', this.props.modelIDProps.uuid);
+            } else {
+              console.log('[ModelItemRender] No animation for:', this.props.modelIDProps.uuid, 'isCustom:', isCustom, 'isGLB:', isGLB, 'type:', modelItem.type, 'extension:', modelItem.extension);
             }
 
             return (
