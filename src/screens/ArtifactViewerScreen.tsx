@@ -1,41 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
+    Text,
     StyleSheet,
     TouchableOpacity,
     Animated,
     Dimensions,
     ActivityIndicator,
+    Image,
 } from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Provider } from 'react-redux';
-import { legacy_createStore as createStore } from 'redux';
+import { BlurView } from 'expo-blur';
 import { theme } from '../theme/theme';
-import { ArtifactDetailsPanel } from '../components/ArtifactDetailsPanel';
 import { useAppStore } from '../store';
 import { Post } from '../types';
 import { loadSceneById } from '../services/scene';
 
-// @ts-ignore - FigmentAR is written in JS
-import App from './FigmentAR/app';
-// @ts-ignore
-import reducers from './FigmentAR/redux/reducers';
-
-const store = createStore(reducers);
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export const ArtifactViewerScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { post }: { post: Post } = route.params || {};
 
-    const [showPanel, setShowPanel] = useState(false);
-    const [isCollected, setIsCollected] = useState(false);
     const [sceneData, setSceneData] = useState<any>(null);
     const [loadingScene, setLoadingScene] = useState(true);
-    const closeOpacity = useRef(new Animated.Value(0)).current;
+    const [isCollected, setIsCollected] = useState(false);
+    const videoRef = useRef<Video>(null);
+    const fadeAnim = useRef(new Animated.Value(0)).current;
 
     const collectArtifact = useAppStore(state => state.collectArtifact);
     const collectedArtifacts = useAppStore(state => state.collectedArtifacts);
@@ -44,16 +39,13 @@ export const ArtifactViewerScreen = () => {
     useEffect(() => {
         const fetchSceneData = async () => {
             if (!post?.sceneId) {
-                console.log('[ArtifactViewer] No sceneId, using post.sceneData');
                 setSceneData(post?.sceneData || null);
                 setLoadingScene(false);
                 return;
             }
 
             try {
-                console.log('[ArtifactViewer] Fetching scene:', post.sceneId);
                 const data = await loadSceneById(post.sceneId);
-                console.log('[ArtifactViewer] Scene loaded, objects:', data?.objects?.length);
                 setSceneData(data);
             } catch (error) {
                 console.error('[ArtifactViewer] Failed to load scene:', error);
@@ -73,19 +65,32 @@ export const ArtifactViewerScreen = () => {
         }
     }, [post?.id, collectedArtifacts]);
 
-    // Animate in UI after short delay (let AR scene load)
+    // Fade in UI
     useEffect(() => {
-        const timer = setTimeout(() => {
-            setShowPanel(true);
-            Animated.timing(closeOpacity, {
-                toValue: 1,
-                duration: 300,
-                useNativeDriver: true,
-            }).start();
-        }, 1500);
-
-        return () => clearTimeout(timer);
+        Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+        }).start();
     }, []);
+
+    // Extract artifact data from scene objects
+    const getArtifactData = () => {
+        if (!sceneData?.objects) return null;
+        const artifactObject = sceneData.objects.find((obj: any) => obj.artifact?.isArtifact);
+        return artifactObject?.artifact || null;
+    };
+
+    const artifactData = getArtifactData();
+
+    const handleViewScene = () => {
+        // Navigate to Figment AR view with the scene
+        navigation.navigate('Figment', {
+            postData: post,
+            isRemix: true,
+            viewOnly: true,
+        });
+    };
 
     const handleCollect = async () => {
         if (!post || isCollected) return;
@@ -93,14 +98,6 @@ export const ArtifactViewerScreen = () => {
         try {
             await collectArtifact(post);
             setIsCollected(true);
-
-            // Navigate to Artifacts gallery after short delay
-            setTimeout(() => {
-                navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Tabs', params: { screen: 'Artifacts' } }],
-                });
-            }, 1200);
         } catch (error) {
             console.error('[ArtifactViewer] Collection failed:', error);
         }
@@ -110,61 +107,109 @@ export const ArtifactViewerScreen = () => {
         navigation.goBack();
     };
 
-    // Extract artifact data from scene objects
-    const getArtifactData = () => {
-        if (!sceneData?.objects) return null;
-
-        // Find the first object with artifact data
-        const artifactObject = sceneData.objects.find((obj: any) => obj.artifact?.isArtifact);
-        if (artifactObject?.artifact) {
-            console.log('[ArtifactViewer] Found artifact data:', artifactObject.artifact);
-        }
-        return artifactObject?.artifact || null;
-    };
-
-    const artifactData = getArtifactData();
-
     return (
         <View style={styles.container}>
-            {/* Loading indicator while fetching scene */}
+            {/* Video Background */}
+            {post?.mediaUri ? (
+                <Video
+                    ref={videoRef}
+                    source={{ uri: post.mediaUri }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode={ResizeMode.COVER}
+                    shouldPlay
+                    isLooping
+                    isMuted={false}
+                />
+            ) : post?.coverImage ? (
+                <Image
+                    source={{ uri: post.coverImage }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="cover"
+                />
+            ) : (
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1a1a1a' }]} />
+            )}
+
+            {/* Gradient Overlay for readability */}
+            <View style={styles.gradient} />
+
+            {/* Header - Close button */}
+            <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
+                <SafeAreaView edges={['top']}>
+                    <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+                        <Ionicons name="close" size={28} color="white" />
+                    </TouchableOpacity>
+                </SafeAreaView>
+            </Animated.View>
+
+            {/* Loading indicator */}
             {loadingScene && (
                 <View style={styles.loadingOverlay}>
                     <ActivityIndicator size="large" color={theme.colors.primary} />
                 </View>
             )}
 
-            {/* AR Scene - FigmentAR in view-only mode */}
-            <Provider store={store}>
-                <App
-                    route={{
-                        params: {
-                            postData: post,
-                            isRemix: true, // Triggers scene loading
-                            viewOnly: true, // Custom flag to hide UI
-                        }
-                    }}
-                    navigation={navigation}
-                />
-            </Provider>
+            {/* Bottom Content */}
+            <Animated.View style={[styles.bottomContent, { opacity: fadeAnim }]}>
+                <SafeAreaView edges={['bottom']}>
+                    {/* Artifact Info */}
+                    <View style={styles.artifactInfo}>
+                        <View style={styles.artifactBadge}>
+                            <Ionicons name="diamond" size={16} color={theme.colors.secondary} />
+                            <Text style={styles.badgeText}>ARTIFACT</Text>
+                        </View>
 
-            {/* Minimal Close Button */}
-            <Animated.View style={[styles.closeContainer, { opacity: closeOpacity }]}>
-                <SafeAreaView edges={['top']}>
-                    <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-                        <Ionicons name="close" size={24} color="white" />
-                    </TouchableOpacity>
+                        <Text style={styles.title}>
+                            {artifactData?.title || post?.caption || 'Untitled Artifact'}
+                        </Text>
+
+                        {artifactData?.description && (
+                            <Text style={styles.description} numberOfLines={2}>
+                                {artifactData.description}
+                            </Text>
+                        )}
+
+                        {/* Creator info */}
+                        {post?.user && (
+                            <View style={styles.creatorRow}>
+                                <Image
+                                    source={{ uri: post.user.avatar || 'https://via.placeholder.com/32' }}
+                                    style={styles.avatar}
+                                />
+                                <Text style={styles.creatorName}>@{post.user.username}</Text>
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Action Buttons */}
+                    <View style={styles.actions}>
+                        {/* View Scene Button - Primary */}
+                        <TouchableOpacity
+                            style={styles.viewSceneButton}
+                            onPress={handleViewScene}
+                        >
+                            <Ionicons name="cube-outline" size={22} color="black" />
+                            <Text style={styles.viewSceneText}>View Scene</Text>
+                        </TouchableOpacity>
+
+                        {/* Collect Button - Secondary */}
+                        {!isCollected ? (
+                            <TouchableOpacity
+                                style={styles.collectButton}
+                                onPress={handleCollect}
+                            >
+                                <Ionicons name="add-circle-outline" size={22} color="white" />
+                                <Text style={styles.collectText}>Collect</Text>
+                            </TouchableOpacity>
+                        ) : (
+                            <View style={styles.collectedBadge}>
+                                <Ionicons name="checkmark-circle" size={22} color="#4CAF50" />
+                                <Text style={styles.collectedText}>Collected</Text>
+                            </View>
+                        )}
+                    </View>
                 </SafeAreaView>
             </Animated.View>
-
-            {/* Artifact Details Panel */}
-            <ArtifactDetailsPanel
-                visible={showPanel && !loadingScene}
-                post={post}
-                artifactData={artifactData}
-                isCollected={isCollected}
-                onCollect={handleCollect}
-                onClose={handleClose}
-            />
         </View>
     );
 };
@@ -174,27 +219,137 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: 'black',
     },
+    gradient: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'transparent',
+        // Simulated gradient overlay
+        opacity: 0.6,
+    },
+    header: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
+        paddingHorizontal: 16,
+    },
+    closeButton: {
+        marginTop: 8,
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        zIndex: 50,
+        backgroundColor: 'rgba(0,0,0,0.3)',
     },
-    closeContainer: {
+    bottomContent: {
         position: 'absolute',
-        top: 0,
-        right: 16,
-        zIndex: 100,
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 16,
+        backgroundColor: 'rgba(0,0,0,0.7)',
     },
-    closeButton: {
-        marginTop: 8,
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center',
+    artifactInfo: {
+        marginBottom: 20,
+    },
+    artifactBadge: {
+        flexDirection: 'row',
         alignItems: 'center',
+        gap: 6,
+        marginBottom: 8,
+    },
+    badgeText: {
+        color: theme.colors.secondary,
+        fontSize: 12,
+        fontWeight: 'bold',
+        letterSpacing: 1,
+    },
+    title: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: 'white',
+        marginBottom: 8,
+    },
+    description: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.8)',
+        lineHeight: 20,
+        marginBottom: 12,
+    },
+    creatorRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    avatar: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+    },
+    creatorName: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.7)',
+    },
+    actions: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    viewSceneButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: theme.colors.primary,
+        paddingVertical: 16,
+        borderRadius: 12,
+    },
+    viewSceneText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: 'black',
+    },
+    collectButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        paddingVertical: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+    collectText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: 'white',
+    },
+    collectedBadge: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+        paddingVertical: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#4CAF50',
+    },
+    collectedText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#4CAF50',
     },
 });
-

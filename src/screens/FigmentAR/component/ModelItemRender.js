@@ -632,9 +632,9 @@ var ModelItemRender = createReactClass({
               console.log('[ModelItemRender] Using bundled animation:', modelItem.animation.name);
             } else if (isCustom && isGLB) {
               // Custom GLB - try common animation names from 3D software exports
-              // Cinema4D exports as 'Take 001', Blender as 'Action', Maya as 'Take 001'
-              animationConfig = { name: 'Take 001', delay: 0, loop: true, run: this.state.runAnimation };
-              console.log('[ModelItemRender] Custom GLB animation enabled with name "Take 001" for:', this.props.modelIDProps.uuid);
+              // Cinema4D default is 'Main', some use 'Take 001', Blender uses 'Action'
+              animationConfig = { name: 'Main', delay: 0, loop: true, run: this.state.runAnimation };
+              console.log('[ModelItemRender] Custom GLB animation enabled with name "Main" for:', this.props.modelIDProps.uuid);
             } else {
               console.log('[ModelItemRender] No animation for:', this.props.modelIDProps.uuid, 'isCustom:', isCustom, 'isGLB:', isGLB, 'type:', modelItem.type, 'extension:', modelItem.extension);
             }
@@ -644,13 +644,14 @@ var ModelItemRender = createReactClass({
                 source={modelSource}
                 type={modelItem.type}
                 resources={modelItem.resources || []}
-                materials={isCustom ? undefined : (modelItem.type === 'GLB' ? [this.state.materialName] : modelItem.materials)}
+                materials={isCustom ? ["pbr"] : (modelItem.type === 'GLB' ? [this.state.materialName] : modelItem.materials)}
                 scale={this.state.scale}
                 animation={animationConfig}
                 onClickState={this._onClickState(this.props.modelIDProps.uuid)}
                 onError={this._onError(this.props.modelIDProps.uuid)}
                 onLoadStart={this._onObjectLoadStart(this.props.modelIDProps.uuid)}
-                onLoadEnd={this._onObjectLoadEnd(this.props.modelIDProps.uuid)} />
+                onLoadEnd={this._onObjectLoadEnd(this.props.modelIDProps.uuid)}
+                lightReceivingBitMask={this.props.bitMask | 1} />
             );
           })()}
 

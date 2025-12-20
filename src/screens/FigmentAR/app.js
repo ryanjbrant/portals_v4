@@ -1947,10 +1947,27 @@ export class App extends Component {
   // Dispatch correct event to redux for adding AR Objects, Portals and Effects in the scene 
   // item can be index (for built-ins) or object (for custom)
   // type is 'starter' or 'personal' or undefined (legacy)
-  _onListPressed(indexOrItem, type) {
+  async _onListPressed(indexOrItem, type) {
     if (this.props.listMode == UIConstants.LIST_MODE_MODEL || type === 'starter' || type === 'personal') {
       if (type === 'personal') {
         console.log("Adding personal model:", indexOrItem);
+
+        // For GLB files, try to discover the actual animation name
+        if (indexOrItem.extension?.toLowerCase() === 'glb' && indexOrItem.uri) {
+          try {
+            const { getFirstGLBAnimationName } = require('./helpers/GLBAnimationParser');
+            const animName = await getFirstGLBAnimationName(indexOrItem.uri, 'Main');
+            console.log('[App] Discovered GLB animation name:', animName);
+            // Add animation data to the model before dispatch
+            indexOrItem = {
+              ...indexOrItem,
+              discoveredAnimationName: animName, // Pass discovered name to reducer
+            };
+          } catch (error) {
+            console.warn('[App] Failed to parse GLB animations, using fallback:', error);
+          }
+        }
+
         this.props.dispatchAddCustomModel(indexOrItem);
       } else {
         // 'starter' or legacy list

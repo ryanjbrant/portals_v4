@@ -151,7 +151,13 @@ function newCustomModelItem(modelData) {
     rotation: [0, 0, 0], // Default rotation
     resources: [], // Remote GLB is self-contained
     materials: null, // Let GLB use its own materials/textures
-    animation: { name: "02", delay: 0, loop: true, run: true },
+    // Use discovered animation name from GLB parser, or fallback to 'Main' (C4D default)
+    animation: {
+      name: modelData.discoveredAnimationName || "Main",
+      delay: 0,
+      loop: true,
+      run: true
+    },
   };
 }
 

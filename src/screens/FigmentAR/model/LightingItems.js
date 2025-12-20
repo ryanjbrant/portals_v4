@@ -5,14 +5,14 @@
 import * as LoadingConstants from '../redux/LoadingStateConstants';
 
 // HDRI sources for lighting environment
-// HDRI sources for lighting environment
+// Using 2K resolution from Cloudflare R2 for better reflection quality
 const HDRI_SOURCES = {
-    'studio-09': { uri: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr' },
-    'studio-08': { uri: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr' },
-    'studio-05': { uri: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_05_1k.hdr' },
-    'studio-03': { uri: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_03_1k.hdr' },
-    'studio-02': { uri: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_02_1k.hdr' },
-    'cyclorama': { uri: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/cyclorama_hard_light_1k.hdr' },
+    'studio-09': { uri: 'https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/hdri/studio_small_09_2k.hdr' },
+    'studio-08': { uri: 'https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/hdri/studio_small_08_2k.hdr' },
+    'studio-05': { uri: 'https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/hdri/studio_small_05_2k.hdr' },
+    'studio-03': { uri: 'https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/hdri/studio_small_03_2k.hdr' },
+    'studio-02': { uri: 'https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/hdri/studio_small_02_2k.hdr' },
+    'cyclorama': { uri: 'https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/hdri/cyclorama_hard_light_2k.hdr' },
 };
 
 // List items for the picker
