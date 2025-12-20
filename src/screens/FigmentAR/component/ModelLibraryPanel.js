@@ -246,13 +246,24 @@ class ModelLibraryPanel extends Component {
             const { uri, name, mimeType, size } = asset;
             console.log('[ModelLibrary] File selected:', { name, mimeType, size, uri });
 
-            // Validate extension - GLB works with remote URLs!
+            // Validate extension - GLB works with remote URLs, VRX for converted FBX
             const ext = name.split('.').pop().toLowerCase();
-            const allowed = ['glb', 'gltf', 'obj'];
+            const allowed = ['glb', 'gltf', 'obj', 'vrx'];
+
+            // Special handling for FBX files
+            if (ext === 'fbx') {
+                Alert.alert(
+                    "FBX Requires Conversion",
+                    "FBX files must be converted to VRX format first.\n\nRun this command in your terminal:\n\n./node_modules/@reactvision/react-viro/bin/ViroFBX yourfile.fbx output.vrx\n\nThen upload the resulting .vrx file.",
+                    [{ text: "OK" }]
+                );
+                return;
+            }
+
             if (!allowed.includes(ext)) {
                 Alert.alert(
                     "Unsupported Format",
-                    "Please upload .glb, .gltf, or .obj files.",
+                    "Please upload .glb, .gltf, .obj, or .vrx files.\n\nNote: FBX files must be converted to VRX format first.",
                     [{ text: "OK" }]
                 );
                 return;

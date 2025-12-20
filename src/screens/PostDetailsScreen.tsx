@@ -24,12 +24,23 @@ export const PostDetailsScreen = () => {
     const [isPublishing, setIsPublishing] = useState(false);
 
     const coverImage = route.params?.coverImage;
+    const remixedFrom = route.params?.remixedFrom; // Remix attribution if this is a remix
 
     // Detect artifact in scene
     const hasArtifact = React.useMemo(() => {
         const sceneData = draftPost?.sceneData || route.params?.sceneData;
-        if (!sceneData?.objects) return false;
-        return sceneData.objects.some((obj: any) => obj.artifact && obj.artifact.isArtifact);
+        if (!sceneData?.objects) {
+            console.log('[PostDetails] hasArtifact: No sceneData.objects');
+            return false;
+        }
+        const hasArt = sceneData.objects.some((obj: any) => obj.artifact && obj.artifact.isArtifact);
+        console.log('[PostDetails] hasArtifact:', hasArt, 'Objects:', sceneData.objects.map((o: any) => ({
+            id: o.id,
+            type: o.type,
+            hasArtifact: !!o.artifact,
+            isArtifact: o.artifact?.isArtifact,
+        })));
+        return hasArt;
     }, [draftPost?.sceneData, route.params?.sceneData]);
 
     // Initialize draft on mount
@@ -154,8 +165,12 @@ export const PostDetailsScreen = () => {
                 mediaUri: finalMediaUri || null,
                 coverImage: finalCoverUri || null,
                 isArtifact: hasArtifact, // Save artifact status for feed/gallery filtering
+                remixedFrom: remixedFrom || null, // Save remix attribution if present
                 createdAt: serverTimestamp()
             };
+
+            // Debug log for artifact status
+            console.log('[PostDetails] Saving post with isArtifact:', hasArtifact);
 
             // Save to Firestore
             const docRef = await addDoc(collection(db, 'posts'), newPostData);
@@ -209,6 +224,14 @@ export const PostDetailsScreen = () => {
                     <View style={styles.artifactBanner}>
                         <Ionicons name="diamond" size={20} color={theme.colors.secondary} />
                         <Text style={styles.artifactBannerText}>This scene contains an Artifact</Text>
+                    </View>
+                )}
+                {/* Remix Attribution Banner */}
+                {remixedFrom && (
+                    <View style={styles.remixBanner}>
+                        <Ionicons name="git-branch" size={20} color={theme.colors.primary} />
+                        <Image source={{ uri: remixedFrom.avatar }} style={styles.remixBannerAvatar} />
+                        <Text style={styles.remixBannerText}>Remixed from @{remixedFrom.username}</Text>
                     </View>
                 )}
                 <View style={styles.mediaPreview}>
@@ -490,5 +513,26 @@ const styles = StyleSheet.create({
     channelTextActive: {
         color: theme.colors.black,
         fontWeight: '600',
-    }
+    },
+    remixBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 121, 255, 0.15)',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 16,
+        gap: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.primary,
+    },
+    remixBannerAvatar: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+    },
+    remixBannerText: {
+        color: theme.colors.primary,
+        fontWeight: '600',
+        fontSize: 14,
+    },
 });

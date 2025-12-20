@@ -29,6 +29,8 @@ import { ComposerEditorScreen } from '../screens/Composer/ComposerEditorScreen';
 import { ComposerPublishScreen } from '../screens/Composer/ComposerPublishScreen';
 import { ARViewerScreen } from '../screens/AR/ARViewerScreen';
 import FigmentScreenWrapper from '../screens/FigmentAR/FigmentScreenWrapper';
+import { ARNavigationScreen } from '../screens/ARNavigationScreen';
+import { ArtifactViewerScreen } from '../screens/ArtifactViewerScreen';
 
 // Stub or Reuse Screen
 const UserProfileScreen = ProfileScreen; // Reuse for now, ideally refactor later
@@ -64,6 +66,8 @@ const MainStackScreen = () => (
         <MainStack.Screen name="Chat" component={ChatScreen} />
         <MainStack.Screen name="TagPeople" component={TagPeopleScreen} options={{ presentation: 'modal' }} />
         <MainStack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ presentation: 'fullScreenModal' }} />
+        <MainStack.Screen name="ARNavigation" component={ARNavigationScreen} options={{ headerShown: false, orientation: 'portrait' }} />
+        <MainStack.Screen name="ArtifactViewer" component={ArtifactViewerScreen} options={{ headerShown: false }} />
     </MainStack.Navigator>
 );
 

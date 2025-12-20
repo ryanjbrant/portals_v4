@@ -11,9 +11,13 @@ export interface User {
     friends: number; // For "Friends" count specifically if different from following
     flames: number; // Total likes received
     isPrivate?: boolean;
+    fuelStats?: {
+        totalEarned: number;
+        totalWalkedKm: number; // For "Explorer" badge logic
+        dailyEarned: number;
+        lastDailyReset: string; // ISO date
+    };
 }
-
-
 
 export interface Artifact {
     id: string;
@@ -39,7 +43,11 @@ export interface Post {
         name?: string;
         latitude: number;
         longitude: number;
+        altitude?: number; // Meters above WGS84 ellipsoid for geospatial anchors
+        accuracy?: number; // Horizontal accuracy in meters
     }[];
+    discoveryRadius?: number; // Meters. If set, content is "hidden" until close.
+    fuelReward?: number; // XP for discovering this post
     category: string; // Feed Channel
     music?: string;
     mediaUri?: string; // Video or Image URI
@@ -48,6 +56,12 @@ export interface Post {
     sceneId?: string; // ID if already saved
     linkedArtifact?: Artifact;
     isArtifact?: boolean;
+    remixedFrom?: {
+        postId: string;
+        userId: string;
+        username: string;
+        avatar: string;
+    };
 }
 
 export interface Comment {

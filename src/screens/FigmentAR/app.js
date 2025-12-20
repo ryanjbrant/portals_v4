@@ -38,7 +38,7 @@ import {
 } from './redux/actions';
 import { serializeFigmentScene } from './helpers/FigmentSceneSerializer';
 import { useAppStore } from '../../store';
-import { saveScene as saveSceneToCloud, loadScene as loadSceneFromCloud } from '../../services/scene';
+import { saveScene as saveSceneToCloud, loadSceneById } from '../../services/scene';
 import { CollaboratorModal } from '../../components/CollaboratorModal';
 
 const kObjSelectMode = 1;
@@ -252,6 +252,10 @@ export class App extends Component {
     const draftData = route?.params?.draftData;
     const draftTitle = route?.params?.draftTitle;
 
+    // Check if post data was passed for remix
+    const postData = route?.params?.postData;
+    const isRemix = route?.params?.isRemix;
+
     if (draftData && typeof draftData === 'object') {
       console.log('[App] Loading draft scene:', draftTitle);
       // Validate draftData has expected structure
@@ -272,6 +276,50 @@ export class App extends Component {
         this.props.dispatchSetSceneId(draftId);
         console.log('[App] SceneId set from draft:', draftId);
       }
+    } else if (postData && isRemix && postData.sceneId) {
+      // REMIX: Load scene from a published post
+      console.log('[App] Loading scene for remix from post:', postData.id);
+
+      // Fetch the scene data from storage
+      this._loadRemixScene(postData);
+    }
+  }
+
+  // Load scene for remix mode
+  async _loadRemixScene(postData) {
+    try {
+      // Fetch scene data using the sceneId
+      const sceneData = await loadSceneById(postData.sceneId);
+
+      if (sceneData && sceneData.objects && Array.isArray(sceneData.objects)) {
+        console.log('[App] Remix scene loaded, object count:', sceneData.objects.length);
+        this.props.dispatchLoadScene(sceneData);
+
+        // Set title with "Remix" prefix
+        const originalTitle = sceneData.title || 'Untitled';
+        this.props.dispatchSetSceneTitle(`Remix: ${originalTitle}`);
+
+        // DON'T set the sceneId - we want a NEW scene, not to overwrite the original
+        // The sceneId will be generated on save
+
+        // Store remix attribution in state for use when publishing
+        this.setState({
+          remixedFrom: {
+            postId: postData.id,
+            userId: postData.userId,
+            username: postData.user?.username,
+            avatar: postData.user?.avatar,
+          }
+        });
+
+        console.log('[App] Remix attribution set:', this.state.remixedFrom);
+      } else {
+        console.warn('[App] Invalid or empty scene data for remix');
+        Alert.alert('Error', 'Could not load scene for remix');
+      }
+    } catch (error) {
+      console.error('[App] Failed to load remix scene:', error);
+      Alert.alert('Error', 'Failed to load scene: ' + error.message);
     }
   }
 
@@ -476,6 +524,9 @@ export class App extends Component {
     const isRecordingInProgress = this.state.isActivelyRecording ||
       (this.state.recordingProgress > 0 && !this.state.showConfirmButtons);
 
+    // Check if in view-only mode (from ArtifactViewer) - hide all controls
+    const isViewOnly = this.props.route?.params?.viewOnly === true;
+
     return (
       <View style={localStyles.flex}>
         <StatusBar hidden={true} />
@@ -487,7 +538,7 @@ export class App extends Component {
           viroAppProps={this.state.viroAppProps} />
 
         {/* Header - Close button + Scene Title with dropdown */}
-        {!isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
+        {!isViewOnly && !isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
           <View style={{ position: 'absolute', top: 50, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 }}>
             {/* Close button */}
             <TouchableOpacity
@@ -521,7 +572,7 @@ export class App extends Component {
         )}
 
         {/* Dropdown Menu */}
-        {this.state.isMenuOpen && !isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
+        {!isViewOnly && this.state.isMenuOpen && !isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
           <View style={{ position: 'absolute', top: 100, left: 0, right: 0, alignItems: 'center', zIndex: 100 }}>
             <View style={{ backgroundColor: 'rgba(30,30,30,0.95)', borderRadius: 12, overflow: 'hidden', minWidth: 180 }}>
               <TouchableOpacity
@@ -639,19 +690,19 @@ export class App extends Component {
         )}
 
         {/* 2D UI buttons on top right of the app - hide during recording */}
-        {!isRecordingInProgress && this._renderContextMenu()}
+        {!isViewOnly && !isRecordingInProgress && this._renderContextMenu()}
 
         {/* 2D UI for sharing rendered after user finishes taking a video / screenshot */}
         {this._renderShareScreen()}
 
         {/* 2D UI rendered to enable the user changing background for Portals - hide during recording */}
-        {!isRecordingInProgress && this._renderPhotosSelector()}
+        {!isViewOnly && !isRecordingInProgress && this._renderPhotosSelector()}
 
         {/* Timeline (Top) - hide on share screen */}
-        {this.props.currentScreen !== UIConstants.SHOW_SHARE_SCREEN && this._renderRecord()}
+        {!isViewOnly && this.props.currentScreen !== UIConstants.SHOW_SHARE_SCREEN && this._renderRecord()}
 
         {/* Bottom Controls (Picker + Toolbar + Record Button) - hide on share screen */}
-        {this.props.currentScreen !== UIConstants.SHOW_SHARE_SCREEN && this._renderBottomControls()}
+        {!isViewOnly && this.props.currentScreen !== UIConstants.SHOW_SHARE_SCREEN && this._renderBottomControls()}
       </View>
     );
   }
@@ -1238,6 +1289,7 @@ export class App extends Component {
       videoUri: videoUrl,
       coverImage: coverImage,
       sceneData: scene,
+      remixedFrom: this.state.remixedFrom || null, // Pass remix attribution if present
     });
   }
 

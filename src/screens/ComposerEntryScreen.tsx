@@ -184,6 +184,7 @@ export const ComposerEntryScreen = () => {
     const navigation = useNavigation<any>();
     const drafts = useAppStore(state => state.drafts);
     const fetchDrafts = useAppStore(state => state.fetchDrafts);
+    const currentUser = useAppStore(state => state.currentUser);
 
     useEffect(() => {
         const unsubscribe = navigation.addListener('focus', () => {
@@ -193,13 +194,25 @@ export const ComposerEntryScreen = () => {
     }, [navigation]);
     const [activeTab, setActiveTab] = React.useState<'Drafts' | 'Collabs'>('Drafts');
 
-    // Mock Collabs Data
-    const collabs = [
-        { id: 'c1', title: 'Fashion Week', date: 'w/ @gucci' },
-        { id: 'c2', title: 'Skate Comp', date: '4 members' },
-    ];
+    // Filter drafts into solo drafts and collabs based on collaborators
+    const { myDrafts, collabs } = useMemo(() => {
+        const currentUserId = currentUser?.id;
 
-    const currentData = activeTab === 'Drafts' ? drafts : collabs;
+        // Collabs = drafts that have collaborators (regardless of ownership)
+        const collabDrafts = drafts.filter(d => {
+            const hasCollaborators = (d.collaborators?.length || 0) > 0;
+            return hasCollaborators;
+        });
+
+        // My drafts = drafts I own with no collaborators (solo work)
+        const soloOwned = drafts.filter(d =>
+            d.ownerId === currentUserId && (d.collaborators?.length || 0) === 0
+        );
+
+        return { myDrafts: soloOwned, collabs: collabDrafts };
+    }, [drafts, currentUser?.id]);
+
+    const currentData = activeTab === 'Drafts' ? myDrafts : collabs;
 
     const loadDraft = useAppStore(state => state.loadDraft);
     const [isLoading, setIsLoading] = React.useState(false);

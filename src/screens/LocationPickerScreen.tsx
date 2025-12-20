@@ -94,14 +94,45 @@ export const LocationPickerScreen = () => {
         setRegion(newRegion);
     };
 
-    const handleAddCurrentLocation = () => {
-        const newLoc = {
-            latitude: region.latitude,
-            longitude: region.longitude,
-            name: searchQuery || 'Pinned Location'
-        };
-        setSelectedLocations([...selectedLocations, newLoc]);
-        setSearchQuery(''); // Clear search name after adding
+    const handleAddCurrentLocation = async () => {
+        try {
+            // Get high-accuracy GPS position including altitude
+            const gpsLoc = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.BestForNavigation
+            });
+
+            const newLoc = {
+                latitude: gpsLoc.coords.latitude,
+                longitude: gpsLoc.coords.longitude,
+                altitude: gpsLoc.coords.altitude ?? undefined, // WGS84 altitude
+                accuracy: gpsLoc.coords.accuracy ?? undefined,
+                name: searchQuery || 'GPS Location'
+            };
+
+            console.log('[LocationPicker] Captured geospatial location:', newLoc);
+            setSelectedLocations([...selectedLocations, newLoc]);
+            setSearchQuery('');
+
+            // Update map to the captured position
+            const capturedRegion = {
+                latitude: newLoc.latitude,
+                longitude: newLoc.longitude,
+                latitudeDelta: 0.005,
+                longitudeDelta: 0.005,
+            };
+            setRegion(capturedRegion);
+            mapRef.current?.animateToRegion(capturedRegion, 500);
+        } catch (error) {
+            console.error('[LocationPicker] GPS error, falling back to map region:', error);
+            // Fallback to map region if GPS fails
+            const newLoc = {
+                latitude: region.latitude,
+                longitude: region.longitude,
+                name: searchQuery || 'Pinned Location'
+            };
+            setSelectedLocations([...selectedLocations, newLoc]);
+            setSearchQuery('');
+        }
     };
 
     const handleRemoveLocation = (index: number) => {

@@ -142,7 +142,17 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
                         <Text style={styles.actionText}>{post.shares}</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('ARViewer', { sceneId: post.sceneId || 'demo_scene' })}>
+                    <TouchableOpacity style={styles.actionButton} onPress={() => {
+                        // Navigate to Figment to view/remix the AR scene
+                        if (post.sceneId) {
+                            navigation.navigate('Figment', {
+                                postData: post,
+                                isRemix: true
+                            });
+                        } else {
+                            navigation.navigate('ARViewer', { sceneId: 'demo_scene' });
+                        }
+                    }}>
                         <Ionicons name="eye" size={35} color={theme.colors.white} />
                         <Text style={styles.actionText}>View</Text>
                     </TouchableOpacity>
@@ -157,6 +167,16 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
                     <Text style={styles.dateText}>• {getRelativeTime(post.date)}</Text>
                 </View>
                 <Text style={styles.caption} numberOfLines={3}>{post.caption}</Text>
+                {/* Remix Attribution */}
+                {post.remixedFrom && (
+                    <TouchableOpacity
+                        style={styles.remixRow}
+                        onPress={() => navigation.navigate('PostDetails', { postId: post.remixedFrom?.postId })}
+                    >
+                        <Image source={{ uri: post.remixedFrom.avatar }} style={styles.remixAvatar} />
+                        <Text style={styles.remixText}>Remixed from @{post.remixedFrom.username}</Text>
+                    </TouchableOpacity>
+                )}
                 {post.tags && post.tags.length > 0 && (
                     <View style={styles.tagsContainer}>
                         {post.tags.map((tag, i) => (
@@ -300,6 +320,22 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: 'bold',
         letterSpacing: 0.5,
+    },
+    remixRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+        gap: 6,
+    },
+    remixAvatar: {
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+    },
+    remixText: {
+        color: theme.colors.primary,
+        fontSize: 12,
+        fontWeight: '500',
     },
 
 });

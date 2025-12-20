@@ -72,6 +72,8 @@ interface AppState {
     followUser: (userId: string) => void;
     unfollowUser: (userId: string) => void;
     fetchFollowing: () => Promise<void>;
+    followingUsers: User[];
+    fetchFollowingUsers: () => Promise<void>;
 
     // Drafts
     drafts: Draft[];
@@ -92,6 +94,11 @@ interface AppState {
     // Collaboration
     sendCollaborationInvite: (draftId: string, userId: string, draftTitle?: string) => Promise<void>;
     respondToCollabInvite: (notificationId: string, draftId: string, inviterId: string, draftTitle: string, accepted: boolean) => Promise<void>;
+
+    // Collected Artifacts
+    collectedArtifacts: Post[];
+    collectArtifact: (post: Post) => Promise<void>;
+    fetchCollectedArtifacts: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -187,7 +194,8 @@ export const useAppStore = create<AppState>((set, get) => ({
                     mediaUri: data.mediaUri,
                     coverImage: data.coverImage,
                     sceneId: data.sceneId,
-                    sceneData: data.sceneData
+                    sceneData: data.sceneData,
+                    isArtifact: data.isArtifact || false, // CRITICAL: Include artifact status for routing and UI
                 } as Post);
             });
 
@@ -419,6 +427,52 @@ export const useAppStore = create<AppState>((set, get) => ({
             console.log(`[Store] Fetched ${followingIds.length} following users.`);
         } catch (e) {
             console.error('[Store] Error fetching following list:', e);
+        }
+    },
+    followingUsers: [],
+    fetchFollowingUsers: async () => {
+        const state = get();
+        if (!state.currentUser) return;
+
+        try {
+            // First get following IDs if not loaded
+            if (state.relationships.following.length === 0) {
+                await state.fetchFollowing();
+            }
+
+            const followingIds = get().relationships.following;
+            if (followingIds.length === 0) {
+                set({ followingUsers: [] });
+                return;
+            }
+
+            // Fetch user docs for each following ID
+            const users: User[] = [];
+            for (const userId of followingIds) {
+                try {
+                    const userDoc = await getDoc(doc(db, 'users', userId));
+                    if (userDoc.exists()) {
+                        const data = userDoc.data();
+                        users.push({
+                            id: userDoc.id,
+                            username: data.username || 'Unknown',
+                            displayName: data.displayName || data.username || 'Unknown',
+                            avatar: data.avatar || 'https://i.pravatar.cc/150',
+                            bio: data.bio || '',
+                            followers: data.followers || 0,
+                            following: data.following || 0,
+                            isVerified: data.isVerified || false,
+                        } as User);
+                    }
+                } catch (e) {
+                    console.warn(`[Store] Failed to fetch user ${userId}:`, e);
+                }
+            }
+
+            set({ followingUsers: users });
+            console.log(`[Store] Fetched ${users.length} following user details.`);
+        } catch (e) {
+            console.error('[Store] Error fetching following users:', e);
         }
     },
 
@@ -751,6 +805,61 @@ export const useAppStore = create<AppState>((set, get) => ({
             console.log(`[Store] Collab response sent, invite status updated`);
         } catch (e) {
             console.error("Error responding to collab invite:", e);
+        }
+    },
+
+    // Collected Artifacts
+    collectedArtifacts: [],
+    collectArtifact: async (post) => {
+        const state = get();
+        if (!state.currentUser || !post) return;
+
+        try {
+            // Check if already collected
+            if (state.collectedArtifacts.some(a => a.id === post.id)) {
+                console.log('[Store] Artifact already collected:', post.id);
+                return;
+            }
+
+            // Save to Firestore: users/{userId}/collectedArtifacts/{postId}
+            const artifactRef = doc(db, 'users', state.currentUser.id, 'collectedArtifacts', post.id);
+            await setDoc(artifactRef, {
+                postId: post.id,
+                userId: post.userId,
+                caption: post.caption,
+                coverImage: post.coverImage,
+                sceneId: post.sceneId,
+                isArtifact: post.isArtifact,
+                collectedAt: new Date().toISOString(),
+            });
+
+            // Optimistic update
+            set((state) => ({
+                collectedArtifacts: [...state.collectedArtifacts, post]
+            }));
+
+            console.log('[Store] Artifact collected:', post.id);
+        } catch (e) {
+            console.error('[Store] Error collecting artifact:', e);
+        }
+    },
+    fetchCollectedArtifacts: async () => {
+        const state = get();
+        if (!state.currentUser) return;
+
+        try {
+            const artifactsRef = collection(db, 'users', state.currentUser.id, 'collectedArtifacts');
+            const q = query(artifactsRef, orderBy('collectedAt', 'desc'));
+            const snapshot = await getDocs(q);
+
+            // For each collected artifact, try to get the full post data from feed
+            const collectedIds = snapshot.docs.map(doc => doc.data().postId);
+            const collectedPosts = state.feed.filter(p => collectedIds.includes(p.id));
+
+            set({ collectedArtifacts: collectedPosts });
+            console.log('[Store] Fetched collected artifacts:', collectedPosts.length);
+        } catch (e) {
+            console.error('[Store] Error fetching collected artifacts:', e);
         }
     }
 }));

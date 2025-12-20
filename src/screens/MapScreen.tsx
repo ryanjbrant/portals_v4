@@ -1,253 +1,209 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_DEFAULT, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useAppStore } from '../store';
-import * as Location from 'expo-location';
-import { useState, useEffect, useRef } from 'react';
+import { Post } from '../types';
+import LocationService, { GeoCoordinate } from '../services/LocationService';
+import FuelService from '../services/FuelService';
+import { MapBottomSheet } from '../components/MapBottomSheet';
+import { useNavigation } from '@react-navigation/native';
+import { BlurView } from 'expo-blur';
 
+// Custom Map Style (Dark/Cinematic)
 const DARK_MAP_STYLE = [
-    {
-        "elementType": "geometry",
-        "stylers": [{ "color": "#212121" }]
-    },
-    {
-        "elementType": "labels.icon",
-        "stylers": [{ "visibility": "off" }]
-    },
-    {
-        "elementType": "labels.text.fill",
-        "stylers": [{ "color": "#757575" }]
-    },
-    {
-        "elementType": "labels.text.stroke",
-        "stylers": [{ "color": "#212121" }]
-    },
-    {
-        "featureType": "administrative",
-        "elementType": "geometry",
-        "stylers": [{ "color": "#757575" }]
-    },
-    {
-        "featureType": "administrative.country",
-        "elementType": "labels.text.fill",
-        "stylers": [{ "color": "#9e9e9e" }]
-    },
-    {
-        "featureType": "administrative.land_parcel",
-        "stylers": [{ "visibility": "off" }]
-    },
-    {
-        "featureType": "administrative.locality",
-        "elementType": "labels.text.fill",
-        "stylers": [{ "color": "#bdbdbd" }]
-    },
-    {
-        "featureType": "poi",
-        "elementType": "labels.text.fill",
-        "stylers": [{ "color": "#757575" }]
-    },
-    {
-        "featureType": "poi.park",
-        "elementType": "geometry",
-        "stylers": [{ "color": "#181818" }]
-    },
-    {
-        "featureType": "poi.park",
-        "elementType": "labels.text.fill",
-        "stylers": [{ "color": "#616161" }]
-    },
-    {
-        "featureType": "poi.park",
-        "elementType": "labels.text.stroke",
-        "stylers": [{ "color": "#1b1b1b" }]
-    },
-    {
-        "featureType": "road",
-        "elementType": "geometry.fill",
-        "stylers": [{ "color": "#2c2c2c" }]
-    },
-    {
-        "featureType": "road",
-        "elementType": "labels.text.fill",
-        "stylers": [{ "color": "#8a8a8a" }]
-    },
-    {
-        "featureType": "road.arterial",
-        "elementType": "geometry",
-        "stylers": [{ "color": "#373737" }]
-    },
-    {
-        "featureType": "road.highway",
-        "elementType": "geometry",
-        "stylers": [{ "color": "#3c3c3c" }]
-    },
-    {
-        "featureType": "road.highway.controlled_access",
-        "elementType": "geometry",
-        "stylers": [{ "color": "#4e4e4e" }]
-    },
-    {
-        "featureType": "road.local",
-        "elementType": "labels.text.fill",
-        "stylers": [{ "color": "#616161" }]
-    },
-    {
-        "featureType": "transit",
-        "elementType": "labels.text.fill",
-        "stylers": [{ "color": "#757575" }]
-    },
-    {
-        "featureType": "water",
-        "elementType": "geometry",
-        "stylers": [{ "color": "#000000" }]
-    },
-    {
-        "featureType": "water",
-        "elementType": "labels.text.fill",
-        "stylers": [{ "color": "#3d3d3d" }]
-    }
+    { "elementType": "geometry", "stylers": [{ "color": "#212121" }] },
+    { "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] },
+    { "elementType": "labels.text.fill", "stylers": [{ "color": "#757575" }] },
+    { "elementType": "labels.text.stroke", "stylers": [{ "color": "#212121" }] },
+    { "featureType": "administrative", "elementType": "geometry", "stylers": [{ "color": "#757575" }] },
+    { "featureType": "poi", "elementType": "labels.text.fill", "stylers": [{ "color": "#757575" }] },
+    { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#181818" }] },
+    { "featureType": "road", "elementType": "geometry.fill", "stylers": [{ "color": "#2c2c2c" }] },
+    { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#8a8a8a" }] },
+    { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#000000" }] },
+    { "featureType": "water", "elementType": "labels.text.fill", "stylers": [{ "color": "#3d3d3d" }] }
 ];
 
 export const MapScreen = () => {
+    const navigation = useNavigation<any>();
     const feed = useAppStore(state => state.feed);
+    const currentUser = useAppStore(state => state.currentUser);
     const mapRef = useRef<MapView>(null);
-    const postsWithLocation = feed.filter(p => p.locations && p.locations.length > 0);
 
+    // State
+    const [userLocation, setUserLocation] = useState<GeoCoordinate | null>(null);
+    const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+    const [navTarget, setNavTarget] = useState<Post | null>(null);
+    const [fuelEarnedSession, setFuelEarnedSession] = useState(0);
+    const [isTracking, setIsTracking] = useState(false);
+
+    // Filter posts with location
+    const postsWithLocation = useMemo(() =>
+        feed.filter(p => p.locations && p.locations.length > 0),
+        [feed]);
+
+    // Initialize Services
     useEffect(() => {
-        (async () => {
-            try {
-                let { status } = await Location.requestForegroundPermissionsAsync();
-                if (status !== 'granted') return;
+        const init = async () => {
+            const success = await LocationService.startTracking();
+            setIsTracking(success);
 
-                // Fast load
-                let location = await Location.getLastKnownPositionAsync({});
-                if (location) {
-                    const userRegion = {
-                        latitude: location.coords.latitude,
-                        longitude: location.coords.longitude,
-                        latitudeDelta: 0.05,
-                        longitudeDelta: 0.05,
-                    };
-                    mapRef.current?.animateToRegion(userRegion, 1000);
-                }
-
-                // Precise load
-                let currentLoc = await Location.getCurrentPositionAsync({});
-                if (currentLoc) {
-                    const userRegion = {
-                        latitude: currentLoc.coords.latitude,
-                        longitude: currentLoc.coords.longitude,
-                        latitudeDelta: 0.05,
-                        longitudeDelta: 0.05,
-                    };
-                    mapRef.current?.animateToRegion(userRegion, 1000);
-                }
-            } catch (e) {
-                console.log("Map Location Error", e);
+            // Get initial fix
+            const loc = await LocationService.getCurrentLocation();
+            if (loc) {
+                setUserLocation(loc);
+                mapRef.current?.animateToRegion({
+                    latitude: loc.latitude,
+                    longitude: loc.longitude,
+                    latitudeDelta: 0.015,
+                    longitudeDelta: 0.015
+                });
             }
-        })();
-    }, []);
+        };
 
-    const goToMyLocation = async () => {
-        try {
-            console.log("Requesting permissions...");
-            let { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert("Permission Denied", "Enable location permissions in settings.");
-                return;
-            }
+        init();
+        if (currentUser?.id) FuelService.setUserId(currentUser.id);
 
-            console.log("Getting current position...");
-            // Use Highest accuracy
-            let currentLoc = await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Highest
+        // Listeners
+        const handleLocUpdate = (loc: GeoCoordinate) => {
+            setUserLocation(loc);
+        };
+        LocationService.on('location_update', handleLocUpdate);
+
+        const handleFuelEarned = ({ amount }: { amount: number }) => {
+            setFuelEarnedSession(prev => prev + amount);
+        };
+        FuelService.on('fuel_earned', handleFuelEarned);
+
+        return () => {
+            LocationService.stopTracking();
+            LocationService.off('location_update', handleLocUpdate);
+            FuelService.off('fuel_earned', handleFuelEarned);
+        };
+    }, [currentUser?.id]);
+
+
+    // Handlers
+    const handleNavigate = (post: Post) => {
+        setNavTarget(post);
+        // Zoom to show both points
+        if (userLocation && post.locations?.[0]) {
+            mapRef.current?.fitToCoordinates([
+                { latitude: userLocation.latitude, longitude: userLocation.longitude },
+                { latitude: post.locations[0].latitude, longitude: post.locations[0].longitude }
+            ], {
+                edgePadding: { top: 100, right: 50, bottom: 350, left: 50 },
+                animated: true
             });
-
-            console.log("Got location:", currentLoc);
-            // Alert.alert("Debug", `Loc: ${currentLoc.coords.latitude.toFixed(4)}, ${currentLoc.coords.longitude.toFixed(4)}`);
-
-            const userRegion = {
-                latitude: currentLoc.coords.latitude,
-                longitude: currentLoc.coords.longitude,
-                latitudeDelta: 0.01, // Zoom in closer
-                longitudeDelta: 0.01,
-            };
-
-            if (mapRef.current) {
-                mapRef.current.animateToRegion(userRegion, 1000);
-            } else {
-                Alert.alert("Error", "Map not ready");
-            }
-        } catch (e) {
-            console.log("Map Location Error", e);
-            Alert.alert("Error", `Location failed: ${e}`);
         }
+    };
+
+    const handleEnterAR = () => {
+        // Navigate to the new ARNavigationScreen
+        navigation.navigate('ARNavigation', { target: navTarget || selectedPost });
     };
 
     return (
         <View style={styles.container}>
+            <StatusBar barStyle="light-content" />
+
             <MapView
                 ref={mapRef}
                 style={styles.map}
                 customMapStyle={DARK_MAP_STYLE}
+                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_DEFAULT}
                 showsUserLocation
-                initialRegion={{
-                    latitude: 34.0522, // Default to Los Angeles
-                    longitude: -118.2437,
-                    latitudeDelta: 0.0922,
-                    longitudeDelta: 0.0421,
-                }}
+                showsCompass={false}
+                rotateEnabled={false} // Keep North up for easier map reading, or allow true for navigation
             >
-                {/* Meeting Spot Marker (Keep or Remove? Maybe keep as example event?) */}
-                <Marker
-                    coordinate={{ latitude: 37.78825, longitude: -122.4324 }}
-                    title="Meeting Spot"
-                    pinColor={theme.colors.warning}
-                />
+                {/* POI Markers */}
+                {postsWithLocation.map((post, index) => (
+                    <Marker
+                        key={`${post.id}-${index}`}
+                        coordinate={{
+                            latitude: post.locations![0].latitude,
+                            longitude: post.locations![0].longitude
+                        }}
+                        onPress={() => setSelectedPost(post)}
+                    >
+                        <View style={styles.markerContainer}>
+                            {post.isArtifact ? (
+                                // Diamond marker for artifacts
+                                <View style={[styles.markerDot, styles.artifactMarker, selectedPost?.id === post.id && styles.markerActive]}>
+                                    <Ionicons name="diamond" size={14} color="black" />
+                                </View>
+                            ) : (
+                                <View style={[styles.markerDot, selectedPost?.id === post.id && styles.markerActive]} />
+                            )}
+                            <View style={[styles.markerStem, post.isArtifact && styles.artifactStem]} />
+                        </View>
+                    </Marker>
+                ))}
 
-                {/* Post Markers */}
-                {postsWithLocation.flatMap(post =>
-                    post.locations!.map((loc, index) => (
-                        <Marker
-                            key={`${post.id}-${index}`}
-                            coordinate={{
-                                latitude: loc.latitude,
-                                longitude: loc.longitude
-                            }}
-                            title={post.user.username}
-                            description={post.caption}
-                            pinColor={theme.colors.primary}
-                        />
-                    ))
+                {/* Navigation Line */}
+                {navTarget && userLocation && navTarget.locations?.[0] && (
+                    <Polyline
+                        coordinates={[
+                            { latitude: userLocation.latitude, longitude: userLocation.longitude },
+                            { latitude: navTarget.locations[0].latitude, longitude: navTarget.locations[0].longitude }
+                        ]}
+                        strokeColor={theme.colors.primary}
+                        strokeWidth={4}
+                        lineDashPattern={[10, 5]} // Dashed line for "walking path"
+                    />
                 )}
             </MapView>
 
-            <SafeAreaView style={styles.overlay} pointerEvents="box-none">
-                <View style={styles.header}>
-                    <Text style={styles.title}>Map</Text>
-                    <View style={styles.fuelContainer}>
+            {/* Dynamic Island HUD */}
+            <SafeAreaView style={styles.hudContainer} pointerEvents="box-none">
+                <BlurView intensity={30} tint="dark" style={styles.statusPill}>
+                    <View style={styles.fuelBadge}>
                         <Ionicons name="flame" size={16} color={theme.colors.warning} />
-                        <Text style={styles.fuelText}>135</Text>
+                        <Text style={styles.fuelText}>
+                            {fuelEarnedSession > 0 ? `+${fuelEarnedSession}` : ' Active'}
+                        </Text>
                     </View>
-                    <TouchableOpacity>
-                        <Ionicons name="scan" size={24} color={theme.colors.white} />
+                    <View style={styles.divider} />
+                    <TouchableOpacity style={styles.scanButton}>
+                        <Ionicons name="scan-circle" size={20} color={theme.colors.white} />
+                        <Text style={styles.scanText}>Scan Area</Text>
                     </TouchableOpacity>
-                </View>
-
-                <View style={{ flex: 1 }} pointerEvents="none" />
-
-                <TouchableOpacity style={styles.myLocationButton} onPress={goToMyLocation}>
-                    <Ionicons name="locate" size={24} color={theme.colors.white} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.directionsButton}>
-                    <Text style={styles.directionsText}>Directions</Text>
-                    <Ionicons name="navigate" size={20} color="black" />
-                </TouchableOpacity>
+                </BlurView>
             </SafeAreaView>
+
+            {/* Mode Switcher / AR FAB */}
+            <View style={styles.fabContainer} pointerEvents="box-none">
+                <TouchableOpacity style={styles.arFab} onPress={handleEnterAR}>
+                    <Ionicons name="camera" size={28} color="black" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={styles.locateFab}
+                    onPress={() => {
+                        if (userLocation) {
+                            mapRef.current?.animateToRegion({
+                                latitude: userLocation.latitude,
+                                longitude: userLocation.longitude,
+                                latitudeDelta: 0.005,
+                                longitudeDelta: 0.005
+                            });
+                        }
+                    }}
+                >
+                    <Ionicons name="navigate" size={22} color="white" />
+                </TouchableOpacity>
+            </View>
+
+            {/* Bottom Sheet */}
+            <MapBottomSheet
+                posts={postsWithLocation}
+                selectedPost={selectedPost}
+                onPostSelect={setSelectedPost}
+                onNavigate={handleNavigate}
+                onCloseSelection={() => setSelectedPost(null)}
+            />
         </View>
     );
 };
@@ -260,57 +216,132 @@ const styles = StyleSheet.create({
     map: {
         ...StyleSheet.absoluteFillObject,
     },
-    overlay: {
-        flex: 1,
-        justifyContent: 'space-between',
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+    // Markers
+    markerContainer: {
         alignItems: 'center',
-        padding: theme.spacing.m,
+        justifyContent: 'center',
+        height: 40,
+        width: 40,
     },
-    title: {
-        ...theme.typography.h2,
-        color: theme.colors.white,
+    markerDot: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 3,
+        borderColor: theme.colors.primary,
+        shadowColor: theme.colors.primary,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 6,
     },
-    fuelContainer: {
+    markerActive: {
+        backgroundColor: theme.colors.warning,
+        borderColor: theme.colors.warning,
+        transform: [{ scale: 1.2 }],
+    },
+    markerStem: {
+        width: 2,
+        height: 10,
+        backgroundColor: theme.colors.primary,
+        marginTop: -2,
+    },
+    artifactMarker: {
+        backgroundColor: theme.colors.secondary,
+        borderColor: theme.colors.secondary,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    artifactStem: {
+        backgroundColor: theme.colors.secondary,
+    },
+    // HUD
+    hudContainer: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        paddingTop: Platform.OS === 'android' ? 10 : 0,
+    },
+    statusPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRadius: 30,
+        paddingHorizontal: 6,
+        paddingVertical: 6,
+        gap: 8,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        marginTop: 8,
+    },
+    fuelBadge: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: 'rgba(0,0,0,0.6)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
         borderRadius: 20,
-        gap: 6,
+        gap: 4,
     },
     fuelText: {
         color: theme.colors.white,
         fontWeight: 'bold',
+        fontSize: 12,
     },
-    myLocationButton: {
-        alignSelf: 'flex-end',
-        marginRight: 16,
-        marginBottom: 16,
-        backgroundColor: 'rgba(50,50,50,0.8)',
-        padding: 12,
-        borderRadius: 30,
-        elevation: 5,
+    divider: {
+        width: 1,
+        height: 16,
+        backgroundColor: 'rgba(255,255,255,0.2)',
     },
-    directionsButton: {
+    scanButton: {
         flexDirection: 'row',
-        alignSelf: 'center',
-        backgroundColor: theme.colors.primary,
-        paddingVertical: 12,
-        paddingHorizontal: 32,
-        borderRadius: 30,
-        marginBottom: 40, // Increased to account for tab bar if needed
         alignItems: 'center',
-        gap: 8,
-        elevation: 5,
+        gap: 6,
+        paddingRight: 8,
+        paddingLeft: 4,
     },
-    directionsText: {
-        color: 'black',
-        fontWeight: 'bold',
-        fontSize: 16,
-    }
+    scanText: {
+        color: theme.colors.white,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    // FABs
+    fabContainer: {
+        position: 'absolute',
+        right: 16,
+        bottom: Platform.OS === 'ios' ? 220 : 200, // Above bottom sheet collapsed height
+        alignItems: 'center',
+        gap: 16,
+    },
+    arFab: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: theme.colors.warning, // Pokemon Go style active color
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+        elevation: 6,
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.2)',
+    },
+    locateFab: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(30,30,30,0.9)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
 });

@@ -129,3 +129,38 @@ No manual intervention needed for CI/CD builds.
 ---
 
 *Last updated: December 19, 2024*
+
+---
+
+## 🌍 Cross-Platform & Geospatial Configuration
+
+### Expo Plugin
+ViroReact's Expo plugin is configured in `app.json`:
+```json
+["@reactvision/react-viro", {
+  "android": { "xRMode": ["AR"] }
+}]
+```
+
+### Geospatial Features (Future)
+To enable Cloud Anchors or Geospatial API, add your Google Cloud API key:
+```json
+["@reactvision/react-viro", {
+  "googleCloudApiKey": "YOUR_ARCORE_API_KEY",
+  "geospatialAnchorProvider": "arcore",
+  "cloudAnchorProvider": "arcore",
+  "android": { "xRMode": ["AR"] }
+}]
+```
+
+Get an API key from [Google Cloud Console](https://console.cloud.google.com/apis/credentials) and enable the ARCore API.
+
+### Android Build
+For Android, run `npx expo prebuild` then build through Android Studio or:
+```bash
+npx expo run:android --device
+```
+
+### iOS Bundle Identifier
+Set in `app.json`: `com.portals.app`
+Update this if deploying to App Store.

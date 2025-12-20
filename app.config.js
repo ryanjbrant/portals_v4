@@ -52,6 +52,7 @@ export default {
                 {
                     "googleCloudApiKey": process.env.EXPO_PUBLIC_GOOGLE_CLOUD_API_KEY,
                     "cloudAnchorProvider": "arcore",
+                    "geospatialAnchorProvider": "arcore",
                     "android": {
                         "xRMode": ["AR"]
                     }

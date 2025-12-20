@@ -207,6 +207,8 @@ var ModelItemRender = createReactClass({
       if (this._isMounted) {
         console.log('[ModelItemRender] Forcing re-render for UUID:', this.props.modelIDProps.uuid);
         this.forceUpdate();
+        // Start any animations that were loaded with the scene
+        this._updateAnimationState();
       }
     }, 100);
   },

@@ -7,7 +7,6 @@ import { useAppStore } from '../store';
 import { FeedService } from '../services/feed';
 import { NotificationService } from '../services/notifications';
 import { Comment, User } from '../types';
-import { USERS } from '../mock';
 import { ReportModal } from './ReportModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -190,6 +189,17 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
     const flatListRef = useRef<FlatList>(null);
     const inputRef = useRef<TextInput>(null);
 
+    // Get real followers from store
+    const followingUsers = useAppStore(state => state.followingUsers);
+    const fetchFollowingUsers = useAppStore(state => state.fetchFollowingUsers);
+
+    // Fetch following users when sheet opens and list is empty
+    useEffect(() => {
+        if (visible && followingUsers.length === 0) {
+            fetchFollowingUsers();
+        }
+    }, [visible]);
+
     // Custom animation: sheet slides in/out (no opacity change)
     useEffect(() => {
         if (visible) {
@@ -303,20 +313,20 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
         try {
             // 1. Logic to find tagged users and notify them
             const taggedUsernames = text.match(/@(\w+)/g)?.map(t => t.substring(1)) || [];
-            if (taggedUsernames.length > 0) {
-                USERS.forEach(user => {
-                    if (taggedUsernames.includes(user.username) && user.id !== currentUser.id) {
-                        console.log(`[Notification] Sending tag notification to ${user.username}`);
-                        addNotification({
-                            id: Date.now().toString() + Math.random(),
-                            type: 'comment',
-                            user: currentUser,
-                            message: `tagged you in a comment: "${text}"`,
-                            timestamp: 'Just now',
-                            read: false
-                        });
+            if (taggedUsernames.length > 0 && postId) {
+                // Look up user IDs from followingUsers
+                for (const username of taggedUsernames) {
+                    const taggedUser = followingUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
+                    if (taggedUser && taggedUser.id !== currentUser.id) {
+                        console.log(`[Notification] Sending mention notification to ${taggedUser.username}`);
+                        await NotificationService.sendMentionNotification(
+                            currentUser,
+                            taggedUser.id,
+                            postId,
+                            text
+                        );
                     }
-                });
+                }
             }
 
             // 2. Add Comment or Reply
@@ -450,10 +460,15 @@ export const CommentsSheet = ({ visible, postId, onClose }: CommentsSheetProps) 
                                 <View style={styles.userListContainer}>
                                     <Text style={styles.userListHeader}>Following</Text>
                                     <FlatList
-                                        data={USERS.filter(u => u.id !== currentUser?.id)}
+                                        data={followingUsers.filter(u => u.id !== currentUser?.id)}
                                         renderItem={renderUserItem}
                                         keyExtractor={item => item.id}
                                         style={{ maxHeight: 150 }}
+                                        ListEmptyComponent={
+                                            <Text style={{ color: theme.colors.textDim, padding: 16, textAlign: 'center' }}>
+                                                Follow users to tag them in comments
+                                            </Text>
+                                        }
                                     />
                                 </View>
                             )}

@@ -111,6 +111,43 @@ export const NotificationService = {
     },
 
     /**
+     * Send a mention notification when user is tagged in a comment
+     */
+    async sendMentionNotification(
+        mentioner: User,
+        mentionedUserId: string,
+        postId: string,
+        commentText: string
+    ): Promise<void> {
+        if (!mentioner?.id || !mentionedUserId) return;
+        if (mentioner.id === mentionedUserId) return; // Don't notify yourself
+
+        const notificationRef = doc(collection(db, 'users', mentionedUserId, 'notifications'));
+
+        const previewText = commentText.length > 50 ? commentText.substring(0, 50) + '...' : commentText;
+
+        await setDoc(notificationRef, {
+            id: notificationRef.id,
+            type: 'mention',
+            fromUserId: mentioner.id,
+            fromUser: {
+                id: mentioner.id,
+                username: mentioner.username,
+                avatar: mentioner.avatar,
+                isVerified: mentioner.isVerified || false,
+            },
+            message: `mentioned you in a comment: "${previewText}"`,
+            timestamp: Date.now(),
+            read: false,
+            data: {
+                postId,
+            },
+        });
+
+        console.log('[NotificationService] Mention notification sent to', mentionedUserId);
+    },
+
+    /**
      * Send a message notification to the recipient
      */
     async sendMessageNotification(sender: User, recipientId: string, messageText: string): Promise<void> {

@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, Image, TouchableOpacity, ScrollView, StatusBar, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
-import { POSTS, ARTIFACTS } from '../mock';
 import { Post } from '../types';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '../store';
@@ -15,50 +14,80 @@ export const ShopScreen = () => {
     const [search, setSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState('All');
 
-    // Filter posts that have artifacts
-    const shopPosts = POSTS.filter(p => p.linkedArtifact);
-    const featuredPosts = shopPosts.slice(0, 3); // Top 3 as featured
+    // Get collected artifacts from store
+    const collectedArtifacts = useAppStore(state => state.collectedArtifacts);
+    const fetchCollectedArtifacts = useAppStore(state => state.fetchCollectedArtifacts);
 
-    const categories = ['All', 'Digital', 'Unlocks', 'Fashion', 'Skins', 'Keys'];
+    // Fetch collected artifacts on mount
+    useEffect(() => {
+        fetchCollectedArtifacts();
+    }, []);
 
-    const renderFeaturedItem = ({ item }: { item: Post }) => (
-        <TouchableOpacity style={styles.featuredItem} onPress={() => { }}>
-            <Image source={{ uri: item.linkedArtifact?.image }} style={styles.featuredImage} />
-            <View style={styles.featuredOverlay}>
-                <Text style={styles.featuredTitle}>{item.linkedArtifact?.name}</Text>
-                <Text style={styles.featuredPrice}>{item.linkedArtifact?.price} 💎</Text>
+    // Filter by search term
+    const filteredArtifacts = collectedArtifacts.filter(post => {
+        if (!search) return true;
+        const searchLower = search.toLowerCase();
+        return (
+            post.caption?.toLowerCase().includes(searchLower) ||
+            post.user?.username?.toLowerCase().includes(searchLower)
+        );
+    });
+
+    const categories = ['All', 'Collected', 'Redeemable', 'Digital', 'Unlocks'];
+
+    const handleArtifactPress = (artifact: Post) => {
+        navigation.navigate('ArtifactViewer', { post: artifact });
+    };
+
+    const renderGridItem = ({ item }: { item: Post }) => (
+        <TouchableOpacity style={styles.gridItem} onPress={() => handleArtifactPress(item)}>
+            <Image source={{ uri: item.coverImage || item.mediaUri }} style={styles.gridImage} />
+            <View style={styles.gridOverlay}>
+                <View style={styles.collectedBadge}>
+                    <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
+                </View>
+            </View>
+            <View style={styles.gridInfo}>
+                <Text style={styles.gridTitle} numberOfLines={1}>{item.caption || 'Untitled'}</Text>
+                <View style={styles.artifactBadge}>
+                    <Ionicons name="diamond" size={10} color={theme.colors.secondary} />
+                    <Text style={styles.artifactBadgeText}>Artifact</Text>
+                </View>
+            </View>
+            {/* Mini User Avatar */}
+            <View style={styles.gridUser}>
+                <Image source={{ uri: item.user?.avatar || 'https://via.placeholder.com/16' }} style={styles.gridAvatar} />
+                <Text style={styles.gridUsername} numberOfLines={1}>@{item.user?.username || 'creator'}</Text>
             </View>
         </TouchableOpacity>
     );
 
-    const renderGridItem = ({ item }: { item: Post }) => (
-        <TouchableOpacity style={styles.gridItem} onPress={() => { }}>
-            <Image source={{ uri: item.linkedArtifact?.image }} style={styles.gridImage} />
-            <View style={styles.gridOverlay}>
-                <View style={styles.videoBadge}>
-                    <Ionicons name="play" size={10} color="white" />
-                </View>
-            </View>
-            <View style={styles.gridInfo}>
-                <Text style={styles.gridTitle} numberOfLines={1}>{item.linkedArtifact?.name}</Text>
-                <Text style={styles.gridPrice}>{item.linkedArtifact?.price} 💎</Text>
-            </View>
-            {/* Mini User Avatar */}
-            <View style={styles.gridUser}>
-                <Image source={{ uri: item.user.avatar }} style={styles.gridAvatar} />
-                <Text style={styles.gridUsername} numberOfLines={1}>@{item.user.username}</Text>
-            </View>
-        </TouchableOpacity>
+    const renderEmptyState = () => (
+        <View style={styles.emptyState}>
+            <Ionicons name="diamond-outline" size={64} color={theme.colors.textDim} />
+            <Text style={styles.emptyTitle}>No Artifacts Yet</Text>
+            <Text style={styles.emptySubtitle}>
+                Find and collect artifacts from the map!{'\n'}
+                They'll appear here in your collection.
+            </Text>
+            <TouchableOpacity
+                style={styles.exploreButton}
+                onPress={() => navigation.navigate('Map')}
+            >
+                <Ionicons name="map" size={20} color="black" />
+                <Text style={styles.exploreButtonText}>Explore Map</Text>
+            </TouchableOpacity>
+        </View>
     );
 
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>Artifacts</Text>
+                <Text style={styles.title}>My Artifacts</Text>
                 <View style={styles.headerActions}>
-                    <TouchableOpacity>
-                        <Ionicons name="cart-outline" size={24} color={theme.colors.text} />
-                    </TouchableOpacity>
+                    <View style={styles.countBadge}>
+                        <Text style={styles.countText}>{collectedArtifacts.length}</Text>
+                    </View>
                 </View>
             </View>
 
@@ -66,52 +95,44 @@ export const ShopScreen = () => {
                 <Ionicons name="search" size={20} color={theme.colors.textSecondary} style={styles.searchIcon} />
                 <TextInput
                     style={styles.searchInput}
-                    placeholder="Search artifacts..."
+                    placeholder="Search your artifacts..."
                     placeholderTextColor={theme.colors.textDim}
                     value={search}
                     onChangeText={setSearch}
                 />
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-                {/* Categories */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesList} contentContainerStyle={{ paddingHorizontal: 16 }}>
-                    {categories.map(cat => (
-                        <TouchableOpacity
-                            key={cat}
-                            style={[styles.categoryChip, activeCategory === cat && styles.activeCategory]}
-                            onPress={() => setActiveCategory(cat)}
-                        >
-                            <Text style={[styles.categoryText, activeCategory === cat && styles.activeCategoryText]}>
-                                {cat}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
+            {collectedArtifacts.length === 0 ? (
+                renderEmptyState()
+            ) : (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                    {/* Categories */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesList} contentContainerStyle={{ paddingHorizontal: 16 }}>
+                        {categories.map(cat => (
+                            <TouchableOpacity
+                                key={cat}
+                                style={[styles.categoryChip, activeCategory === cat && styles.activeCategory]}
+                                onPress={() => setActiveCategory(cat)}
+                            >
+                                <Text style={[styles.categoryText, activeCategory === cat && styles.activeCategoryText]}>
+                                    {cat}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+
+                    {/* Collection Grid */}
+                    <Text style={styles.sectionTitle}>Your Collection</Text>
+                    <View style={styles.gridContainer}>
+                        {filteredArtifacts.map(post => (
+                            <View key={post.id} style={{ marginBottom: 16 }}>
+                                {renderGridItem({ item: post })}
+                            </View>
+                        ))}
+                    </View>
+                    <View style={{ height: 100 }} />
                 </ScrollView>
-
-                {/* Featured Drops */}
-                <Text style={styles.sectionTitle}>Featured Drops</Text>
-                <FlatList
-                    data={featuredPosts}
-                    renderItem={renderFeaturedItem}
-                    keyExtractor={item => 'feat-' + item.id}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ paddingHorizontal: 16 }}
-                    style={styles.featuredList}
-                />
-
-                {/* Grid */}
-                <Text style={styles.sectionTitle}>Just For You</Text>
-                <View style={styles.gridContainer}>
-                    {shopPosts.map(post => (
-                        <View key={post.id} style={{ marginBottom: 16 }}>
-                            {renderGridItem({ item: post })}
-                        </View>
-                    ))}
-                </View>
-                <View style={{ height: 100 }} />
-            </ScrollView>
+            )}
         </SafeAreaView>
     );
 };
@@ -137,6 +158,17 @@ const styles = StyleSheet.create({
     headerActions: {
         flexDirection: 'row',
         gap: 16,
+    },
+    countBadge: {
+        backgroundColor: theme.colors.secondary,
+        borderRadius: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+    },
+    countText: {
+        color: 'black',
+        fontWeight: 'bold',
+        fontSize: 14,
     },
     searchContainer: {
         flexDirection: 'row',
@@ -186,39 +218,40 @@ const styles = StyleSheet.create({
         marginLeft: 16,
         marginBottom: 12,
     },
-    featuredList: {
+    // Empty State
+    emptyState: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 40,
+    },
+    emptyTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: theme.colors.text,
+        marginTop: 16,
+        marginBottom: 8,
+    },
+    emptySubtitle: {
+        fontSize: 14,
+        color: theme.colors.textDim,
+        textAlign: 'center',
+        lineHeight: 20,
         marginBottom: 24,
     },
-    featuredItem: {
-        width: 280,
-        height: 160,
-        borderRadius: 12,
-        marginRight: 16,
-        overflow: 'hidden',
-        backgroundColor: '#333',
+    exploreButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: theme.colors.primary,
+        paddingHorizontal: 24,
+        paddingVertical: 14,
+        borderRadius: 25,
     },
-    featuredImage: {
-        width: '100%',
-        height: '100%',
-        opacity: 0.8,
-    },
-    featuredOverlay: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        padding: 12,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-    },
-    featuredTitle: {
-        color: 'white',
+    exploreButtonText: {
         fontSize: 16,
-        fontWeight: '700',
-    },
-    featuredPrice: {
-        color: theme.colors.primary,
-        fontWeight: '700',
-        marginTop: 4,
+        fontWeight: 'bold',
+        color: 'black',
     },
     // Grid
     gridContainer: {
@@ -237,7 +270,7 @@ const styles = StyleSheet.create({
     },
     gridImage: {
         width: '100%',
-        height: COLUMN_WIDTH, // Square aspect for artifact? Or 4:5?
+        height: COLUMN_WIDTH,
         backgroundColor: '#333',
     },
     gridOverlay: {
@@ -245,8 +278,8 @@ const styles = StyleSheet.create({
         top: 8,
         right: 8,
     },
-    videoBadge: {
-        backgroundColor: 'rgba(0,0,0,0.5)',
+    collectedBadge: {
+        backgroundColor: 'rgba(0,0,0,0.6)',
         padding: 4,
         borderRadius: 4,
     },
@@ -259,10 +292,15 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: 4,
     },
-    gridPrice: {
-        color: theme.colors.primary,
-        fontSize: 12,
-        fontWeight: '700',
+    artifactBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    artifactBadgeText: {
+        color: theme.colors.secondary,
+        fontSize: 11,
+        fontWeight: '600',
     },
     gridUser: {
         flexDirection: 'row',
@@ -281,3 +319,4 @@ const styles = StyleSheet.create({
         fontSize: 10,
     },
 });
+

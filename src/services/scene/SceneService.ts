@@ -138,6 +138,52 @@ export async function loadScene(sceneId: string): Promise<LoadedScene | null> {
 }
 
 /**
+ * Load a scene by ID using the R2 storage format (used by sceneSaver.ts)
+ * This is the format used when publishing posts - scene doc has storageKey pointing to R2
+ */
+export async function loadSceneById(sceneId: string): Promise<any | null> {
+    console.log('[SceneService] Loading scene by ID:', sceneId);
+
+    try {
+        // 1. Fetch scene document from Firestore
+        const sceneRef = doc(db, 'scenes', sceneId);
+        const sceneSnap = await getDoc(sceneRef);
+
+        if (!sceneSnap.exists()) {
+            console.log('[SceneService] Scene not found in Firestore:', sceneId);
+            return null;
+        }
+
+        const sceneData = sceneSnap.data();
+        const storageKey = sceneData.storageKey;
+
+        if (!storageKey) {
+            console.log('[SceneService] Scene has no storageKey:', sceneId);
+            return null;
+        }
+
+        // 2. Fetch scene JSON from R2
+        const r2Url = `https://pub-e804e6eafc2a40ff80713d15ef76076e.r2.dev/${storageKey}`;
+        console.log('[SceneService] Fetching scene from R2:', r2Url);
+
+        const response = await fetch(r2Url);
+        if (!response.ok) {
+            console.error('[SceneService] Failed to fetch from R2:', response.status);
+            return null;
+        }
+
+        const sceneJson = await response.json();
+        console.log('[SceneService] Scene loaded from R2, objects:', sceneJson.objects?.length || 0);
+
+        return sceneJson;
+
+    } catch (error) {
+        console.error('[SceneService] loadSceneById failed:', error);
+        throw error;
+    }
+}
+
+/**
  * Publish a scene to the feed
  */
 export async function publishScene(
