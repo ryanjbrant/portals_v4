@@ -612,6 +612,21 @@ var ModelItemRender = createReactClass({
             } else {
               modelSource = modelItem.obj;
             }
+
+            // Animation config:
+            // - For bundled models with animation: use modelItem.animation
+            // - For custom GLB files: use default animation (ViroReact auto-discovers embedded anims)
+            // - For models without animation: undefined
+            let animationConfig = undefined;
+            if (modelItem.animation) {
+              // Bundled model with predefined animation
+              animationConfig = { ...modelItem.animation, run: this.state.runAnimation };
+            } else if (isCustom && modelItem.type === 'GLB') {
+              // Custom GLB - enable embedded animations by default
+              // ViroReact will auto-discover animation names from the GLB
+              animationConfig = { name: '', delay: 0, loop: true, run: this.state.runAnimation };
+            }
+
             return (
               <Viro3DObject
                 source={modelSource}
@@ -619,6 +634,7 @@ var ModelItemRender = createReactClass({
                 resources={modelItem.resources || []}
                 materials={isCustom ? undefined : (modelItem.type === 'GLB' ? [this.state.materialName] : modelItem.materials)}
                 scale={this.state.scale}
+                animation={animationConfig}
                 onClickState={this._onClickState(this.props.modelIDProps.uuid)}
                 onError={this._onError(this.props.modelIDProps.uuid)}
                 onLoadStart={this._onObjectLoadStart(this.props.modelIDProps.uuid)}
