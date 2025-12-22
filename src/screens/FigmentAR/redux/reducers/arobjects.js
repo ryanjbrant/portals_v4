@@ -34,15 +34,22 @@ const initialState = {
   effectItems: EffectData.getInitEffectArray(),
   postProcessEffects: EffectsConstants.EFFECT_NONE,
   objectAnimations: {}, // Added for JS-driven animations (keyed by UUID)
+  objectEmitters: {}, // Added for particle emitters (keyed by UUID)
 }
 
 // Creates a new model item with the given index from the data model in ModelItems.js
 function newModelItem(indexToCreate) {
+  // Get the model data to extract the name
+  const modelArray = ModelData.getModelArray();
+  const modelData = modelArray[indexToCreate] || {};
+  const modelName = modelData.name || 'Object';
+
   return {
     uuid: uuidv4(),
     selected: false,
     loading: LoadingConstants.NONE,
     index: indexToCreate,
+    name: modelName, // Use actual model name (Sphere, Cube, Emoji, etc.)
     // CRITICAL: Include defaults for serialization
     position: [0, 0, -1],
     rotation: [0, 0, 0],
@@ -497,6 +504,7 @@ function arobjects(state = initialState, action) {
         mediaItems: loadedMedia,
         audioItems: loadedAudio,
         objectAnimations: action.sceneData?.objectAnimations || {}, // Restore animation states
+        objectEmitters: action.sceneData?.objectEmitters || {}, // Restore emitter states
         postProcessEffects: action.sceneData?.postProcessEffects || EffectsConstants.EFFECT_NONE,
       }
     case 'CHANGE_MODEL_LOAD_STATE':
@@ -621,6 +629,152 @@ function arobjects(state = initialState, action) {
           [action.uuid]: {
             ...(state.objectAnimations?.[action.uuid] || {}),
             [action.animationType]: action.animationData,
+          },
+        },
+      };
+
+    case 'UPDATE_PATH_ANIMATION':
+      console.log('[arobjects.js REDUCER] UPDATE_PATH_ANIMATION:', {
+        uuid: action.uuid,
+        pathData: action.pathData,
+      });
+      return {
+        ...state,
+        objectAnimations: {
+          ...state.objectAnimations,
+          [action.uuid]: {
+            ...(state.objectAnimations?.[action.uuid] || {}),
+            path: action.pathData,
+          },
+        },
+      };
+
+    case 'UPDATE_VERTICAL_ANIMATION':
+      console.log('[arobjects.js REDUCER] UPDATE_VERTICAL_ANIMATION:', {
+        uuid: action.uuid,
+        verticalData: action.verticalData,
+      });
+      return {
+        ...state,
+        objectAnimations: {
+          ...state.objectAnimations,
+          [action.uuid]: {
+            ...(state.objectAnimations?.[action.uuid] || {}),
+            vertical: action.verticalData,
+          },
+        },
+      };
+
+    case 'UPDATE_EMITTER':
+      console.log('[arobjects.js REDUCER] UPDATE_EMITTER:', {
+        uuid: action.uuid,
+        emitterData: action.emitterData,
+      });
+      return {
+        ...state,
+        objectEmitters: {
+          ...state.objectEmitters,
+          [action.uuid]: action.emitterData,
+        },
+      };
+
+    case 'SET_OBJECT_PARENT':
+      console.log('[arobjects.js REDUCER] SET_OBJECT_PARENT:', {
+        uuid: action.uuid,
+        parentId: action.parentId,
+      });
+      // Update the modelItems entry with new parentId
+      const childItem = state.modelItems[action.uuid];
+      if (!childItem) {
+        return state;
+      }
+
+      const newParentId = action.parentId;
+      const oldParentId = childItem.parentId;
+      let newPosition = childItem.position || [0, 0, 0];
+      let newScale = childItem.scale || [1, 1, 1];
+
+      if (newParentId && state.modelItems[newParentId]) {
+        // PARENTING: Convert child's world position to relative position
+        const parentItem = state.modelItems[newParentId];
+        const parentPos = parentItem.position || [0, 0, 0];
+        const childPos = childItem.position || [0, 0, 0];
+        const parentScale = parentItem.scale || [1, 1, 1];
+        const childScale = childItem.scale || [1, 1, 1];
+
+        // Calculate world-space offset
+        const worldOffset = [
+          childPos[0] - parentPos[0],
+          childPos[1] - parentPos[1],
+          childPos[2] - parentPos[2],
+        ];
+
+        // ViroNode applies parent scale to child positions, so we need to
+        // DIVIDE the offset by parent scale to get the correct relative position
+        newPosition = [
+          worldOffset[0] / parentScale[0],
+          worldOffset[1] / parentScale[1],
+          worldOffset[2] / parentScale[2],
+        ];
+
+        // Also compensate scale: divide child scale by parent scale
+        newScale = [
+          childScale[0] / parentScale[0],
+          childScale[1] / parentScale[1],
+          childScale[2] / parentScale[2],
+        ];
+
+        console.log('[arobjects.js REDUCER] Converting to relative:', {
+          childWorld: childPos,
+          parentWorld: parentPos,
+          worldOffset: worldOffset,
+          parentScale: parentScale,
+          relativePos: newPosition,
+          childScale: childScale,
+          compensatedScale: newScale,
+        });
+      } else if (!newParentId && oldParentId && state.modelItems[oldParentId]) {
+        // UNPARENTING: Convert child's relative position back to world position
+        const oldParentItem = state.modelItems[oldParentId];
+        const parentPos = oldParentItem.position || [0, 0, 0];
+        const parentScale = oldParentItem.scale || [1, 1, 1];
+        const relativePos = childItem.position || [0, 0, 0];
+        const relativeScale = childItem.scale || [1, 1, 1];
+
+        // ViroNode applies parent scale to child positions, so we need to
+        // MULTIPLY relative position by parent scale, then add parent position
+        newPosition = [
+          (relativePos[0] * parentScale[0]) + parentPos[0],
+          (relativePos[1] * parentScale[1]) + parentPos[1],
+          (relativePos[2] * parentScale[2]) + parentPos[2],
+        ];
+
+        // Also restore scale: multiply child scale by parent scale
+        newScale = [
+          relativeScale[0] * parentScale[0],
+          relativeScale[1] * parentScale[1],
+          relativeScale[2] * parentScale[2],
+        ];
+
+        console.log('[arobjects.js REDUCER] Converting to world:', {
+          relativePos: relativePos,
+          parentWorld: parentPos,
+          parentScale: parentScale,
+          childWorld: newPosition,
+          relativeScale: relativeScale,
+          restoredScale: newScale,
+        });
+      }
+
+      return {
+        ...state,
+        modelItems: {
+          ...state.modelItems,
+          [action.uuid]: {
+            ...state.modelItems[action.uuid],
+            parentId: action.parentId,
+            position: newPosition,
+            scale: newScale,
           },
         },
       };

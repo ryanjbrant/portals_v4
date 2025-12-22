@@ -28,6 +28,7 @@ import { collection, addDoc, query, where, getDocs, orderBy, serverTimestamp, on
 
 import * as ModelData from '../model/ModelItems';
 import { theme } from '../../../theme/theme';
+import SceneLayersTab from './SceneLayersTab';
 
 const { height, width } = Dimensions.get('window');
 const PANEL_HEIGHT = height * 0.6; // Slightly taller than background panel
@@ -849,6 +850,19 @@ class ModelLibraryPanel extends Component {
                             Audio
                         </Text>
                     </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.tab, activeTab === 'layers' && styles.tabActive]}
+                        onPress={() => this.setState({ activeTab: 'layers' })}
+                    >
+                        <Ionicons
+                            name="layers"
+                            size={16}
+                            color={activeTab === 'layers' ? 'black' : 'rgba(255,255,255,0.5)'}
+                        />
+                        <Text style={[styles.tabText, activeTab === 'layers' && styles.tabTextActive]}>
+                            Layers
+                        </Text>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Search Bar - Temporarily disabled due to keyboard/AR incompatibility */}
@@ -880,6 +894,13 @@ class ModelLibraryPanel extends Component {
                     {activeTab === 'video' && this.renderMediaGrid('video')}
                     {activeTab === 'images' && this.renderMediaGrid('images')}
                     {activeTab === 'audio' && this.renderMediaGrid('audio')}
+                    {activeTab === 'layers' && (
+                        <SceneLayersTab
+                            modelItems={this.props.modelItems}
+                            onSelectObject={this.props.onSelectObject}
+                            onSetParent={this.props.onSetParent}
+                        />
+                    )}
                 </ScrollView>
             </Animated.View>
         );

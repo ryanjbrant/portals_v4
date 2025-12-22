@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native'; // Added ActivityIndicator
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 import { AuthService } from '../services/auth';
+import { AnimatedBackground } from '../components/AnimatedBackground';
+import { BlurView } from 'expo-blur';
 
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 
 WebBrowser.maybeCompleteAuthSession();
+
+// Static logo
+const portalsLogo = require('../../assets/logo/portals-logo.png');
 
 export const LoginScreen = () => {
     const navigation = useNavigation<any>();
@@ -67,10 +71,7 @@ export const LoginScreen = () => {
 
     return (
         <View style={styles.container}>
-            <LinearGradient
-                colors={['#000000', '#1a1a2e']}
-                style={StyleSheet.absoluteFillObject}
-            />
+            <AnimatedBackground />
 
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -78,56 +79,59 @@ export const LoginScreen = () => {
             >
                 <View style={styles.content}>
                     <View style={styles.header}>
-                        <View style={styles.logoContainer}>
-                            <Ionicons name="planet" size={60} color={theme.colors.secondary} />
-                        </View>
-                        <Text style={styles.title}>Portals</Text>
-                        <Text style={styles.subtitle}>Enter the gateway</Text>
+                        <Image
+                            source={portalsLogo}
+                            style={styles.logoImage}
+                            resizeMode="contain"
+                        />
                     </View>
 
                     <View style={styles.form}>
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="mail-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Email"
-                                placeholderTextColor={theme.colors.textDim}
-                                value={email}
-                                onChangeText={setEmail}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                            />
-                        </View>
-
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Password"
-                                placeholderTextColor={theme.colors.textDim}
-                                value={password}
-                                onChangeText={setPassword}
-                                secureTextEntry={!showPassword}
-                            />
-                            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                                <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={theme.colors.textDim} />
+                        {/* Unified form group with glass effect */}
+                        <BlurView intensity={40} tint="dark" style={styles.formGroup}>
+                            <View style={styles.inputRow}>
+                                <Ionicons name="mail-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Email"
+                                    placeholderTextColor={theme.colors.textDim}
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    keyboardType="email-address"
+                                    autoCapitalize="none"
+                                />
+                            </View>
+                            <View style={styles.inputDivider} />
+                            <View style={styles.inputRow}>
+                                <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Password"
+                                    placeholderTextColor={theme.colors.textDim}
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    secureTextEntry={!showPassword}
+                                />
+                                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={theme.colors.textDim} />
+                                </TouchableOpacity>
+                            </View>
+                            <View style={styles.inputDivider} />
+                            <TouchableOpacity
+                                style={[styles.formButton, loading && styles.disabledButton]}
+                                onPress={handleLogin}
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <ActivityIndicator color="black" />
+                                ) : (
+                                    <Text style={styles.formButtonText}>Log In</Text>
+                                )}
                             </TouchableOpacity>
-                        </View>
+                        </BlurView>
 
                         <TouchableOpacity style={styles.forgotPassword}>
                             <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.loginButton, loading && styles.disabledButton]}
-                            onPress={handleLogin}
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color="white" />
-                            ) : (
-                                <Text style={styles.loginButtonText}>Log In</Text>
-                            )}
                         </TouchableOpacity>
 
                         <View style={styles.divider}>
@@ -157,8 +161,8 @@ export const LoginScreen = () => {
                         </TouchableOpacity>
                     </View>
                 </View>
-            </KeyboardAvoidingView>
-        </View>
+            </KeyboardAvoidingView >
+        </View >
     );
 };
 
@@ -179,71 +183,62 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 48,
     },
-    logoContainer: {
-        marginBottom: 16,
-        shadowColor: theme.colors.secondary,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.5,
-        shadowRadius: 20,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: theme.colors.white,
-        marginBottom: 8,
-    },
-    subtitle: {
-        fontSize: 16,
-        color: theme.colors.textDim,
+    logoImage: {
+        width: 200,
+        height: 200,
     },
     form: {
         width: '100%',
     },
-    inputContainer: {
+    formGroup: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+        overflow: 'hidden',
+    },
+    inputRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: theme.colors.surface,
-        borderRadius: theme.borderRadius.m,
         paddingHorizontal: 16,
-        height: 56,
-        marginBottom: 16,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
+        height: 54,
+    },
+    inputDivider: {
+        height: 1,
+        backgroundColor: theme.colors.border,
+        marginLeft: 48,
     },
     inputIcon: {
         marginRight: 12,
+        width: 20,
     },
     input: {
         flex: 1,
         color: theme.colors.text,
-        fontSize: 16,
+        fontSize: 17,
+    },
+    formButton: {
+        backgroundColor: theme.colors.primary,
+        height: 54,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    formButtonText: {
+        color: 'black',
+        fontSize: 17,
+        fontWeight: '600',
     },
     forgotPassword: {
-        alignSelf: 'flex-end',
+        alignSelf: 'center',
+        marginTop: 16,
         marginBottom: 24,
     },
     forgotPasswordText: {
-        color: theme.colors.secondary,
+        color: theme.colors.primary,
         fontSize: 14,
-    },
-    loginButton: {
-        backgroundColor: theme.colors.primary,
-        height: 56,
-        borderRadius: theme.borderRadius.m,
-        justifyContent: 'center',
-        alignItems: 'center',
-        shadowColor: theme.colors.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
     },
     disabledButton: {
         opacity: 0.7,
-    },
-    loginButtonText: {
-        color: 'black',
-        fontSize: 18,
-        fontWeight: 'bold',
     },
     divider: {
         flexDirection: 'row',
@@ -284,7 +279,7 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
     registerText: {
-        color: theme.colors.secondary,
+        color: theme.colors.primary,
         fontSize: 14,
         fontWeight: 'bold',
     }

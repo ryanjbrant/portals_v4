@@ -6,6 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
 import { AuthService } from '../services/auth';
 import { useAppStore } from '../store';
+import { AnimatedBackground } from '../components/AnimatedBackground';
+import { BlurView } from 'expo-blur';
 
 export const RegisterScreen = () => {
     const navigation = useNavigation<any>();
@@ -65,6 +67,7 @@ export const RegisterScreen = () => {
 
     return (
         <View style={styles.container}>
+            <AnimatedBackground />
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={styles.keyboardView}
@@ -74,8 +77,10 @@ export const RegisterScreen = () => {
                         <Ionicons name="arrow-back" size={24} color={theme.colors.white} />
                     </TouchableOpacity>
 
-                    <Text style={styles.title}>Create Account</Text>
-                    <Text style={styles.subtitle}>Join the Portals community</Text>
+                    <View style={styles.headerContainer}>
+                        <Text style={styles.title}>Create Account</Text>
+                        <Text style={styles.subtitle}>Join the Portals community</Text>
+                    </View>
 
                     <TouchableOpacity style={styles.avatarContainer} onPress={pickImage}>
                         {avatar ? (
@@ -89,62 +94,65 @@ export const RegisterScreen = () => {
                     </TouchableOpacity>
 
                     <View style={styles.form}>
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="person-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Username"
-                                placeholderTextColor={theme.colors.textDim}
-                                value={username}
-                                onChangeText={setUsername}
-                                autoCapitalize="none"
-                            />
-                        </View>
-
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="mail-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Email"
-                                placeholderTextColor={theme.colors.textDim}
-                                value={email}
-                                onChangeText={setEmail}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                            />
-                        </View>
-
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Password"
-                                placeholderTextColor={theme.colors.textDim}
-                                value={password}
-                                onChangeText={setPassword}
-                                secureTextEntry
-                            />
-                        </View>
-
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Confirm Password"
-                                placeholderTextColor={theme.colors.textDim}
-                                value={confirmPassword}
-                                onChangeText={setConfirmPassword}
-                                secureTextEntry
-                            />
-                        </View>
-
-                        <TouchableOpacity
-                            style={[styles.registerButton, loading && styles.disabledButton]}
-                            onPress={handleRegister}
-                            disabled={loading}
-                        >
-                            <Text style={styles.registerButtonText}>{loading ? 'Creating...' : 'Sign Up'}</Text>
-                        </TouchableOpacity>
+                        {/* Unified form group with glass effect */}
+                        <BlurView intensity={40} tint="dark" style={styles.formGroup}>
+                            <View style={styles.inputRow}>
+                                <Ionicons name="person-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Username"
+                                    placeholderTextColor={theme.colors.textDim}
+                                    value={username}
+                                    onChangeText={setUsername}
+                                    autoCapitalize="none"
+                                />
+                            </View>
+                            <View style={styles.inputDivider} />
+                            <View style={styles.inputRow}>
+                                <Ionicons name="mail-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Email"
+                                    placeholderTextColor={theme.colors.textDim}
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    keyboardType="email-address"
+                                    autoCapitalize="none"
+                                />
+                            </View>
+                            <View style={styles.inputDivider} />
+                            <View style={styles.inputRow}>
+                                <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Password"
+                                    placeholderTextColor={theme.colors.textDim}
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    secureTextEntry
+                                />
+                            </View>
+                            <View style={styles.inputDivider} />
+                            <View style={styles.inputRow}>
+                                <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textDim} style={styles.inputIcon} />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Confirm Password"
+                                    placeholderTextColor={theme.colors.textDim}
+                                    value={confirmPassword}
+                                    onChangeText={setConfirmPassword}
+                                    secureTextEntry
+                                />
+                            </View>
+                            <View style={styles.inputDivider} />
+                            <TouchableOpacity
+                                style={[styles.formButton, loading && styles.disabledButton]}
+                                onPress={handleRegister}
+                                disabled={loading}
+                            >
+                                <Text style={styles.formButtonText}>{loading ? 'Creating...' : 'Sign Up'}</Text>
+                            </TouchableOpacity>
+                        </BlurView>
 
                         <View style={styles.divider}>
                             <View style={styles.line} />
@@ -177,17 +185,23 @@ const styles = StyleSheet.create({
         paddingTop: 60,
     },
     backButton: {
-        marginBottom: 20,
+        marginBottom: 24,
+    },
+    headerContainer: {
+        alignItems: 'center',
+        marginBottom: 24,
     },
     title: {
-        ...theme.typography.h1,
+        fontSize: 28,
+        fontWeight: '600',
         color: theme.colors.white,
         marginBottom: 8,
+        textAlign: 'center',
     },
     subtitle: {
         color: theme.colors.textDim,
-        fontSize: 16,
-        marginBottom: 32,
+        fontSize: 15,
+        textAlign: 'center',
     },
     avatarContainer: {
         alignSelf: 'center',
@@ -215,41 +229,48 @@ const styles = StyleSheet.create({
         marginTop: 4,
     },
     form: {
-        gap: 16,
+        marginTop: 8,
     },
-    inputContainer: {
+    formGroup: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+        overflow: 'hidden',
+    },
+    inputRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: theme.colors.surface,
-        borderRadius: theme.borderRadius.m,
         paddingHorizontal: 16,
-        height: 56,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
+        height: 54,
+    },
+    inputDivider: {
+        height: 1,
+        backgroundColor: theme.colors.border,
+        marginLeft: 48,
     },
     inputIcon: {
         marginRight: 12,
+        width: 20,
     },
     input: {
         flex: 1,
         color: theme.colors.text,
-        fontSize: 16,
+        fontSize: 17,
     },
-    registerButton: {
+    formButton: {
         backgroundColor: theme.colors.primary,
-        height: 56,
-        borderRadius: theme.borderRadius.m,
+        height: 54,
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: 16,
+    },
+    formButtonText: {
+        color: 'black',
+        fontSize: 17,
+        fontWeight: '600',
     },
     disabledButton: {
         opacity: 0.7,
-    },
-    registerButtonText: {
-        color: theme.colors.white,
-        fontSize: 18,
-        fontWeight: 'bold',
     },
     divider: {
         flexDirection: 'row',

@@ -35,11 +35,17 @@ import {
   loadScene,
   updateModelArtifact,
   updateObjectAnimation,
+  updatePathAnimation,
+  updateVerticalAnimation,
+  updateEmitter,
+  setObjectParent,
 } from './redux/actions';
 import { serializeFigmentScene } from './helpers/FigmentSceneSerializer';
 import { useAppStore } from '../../store';
 import { saveScene as saveSceneToCloud, loadSceneById } from '../../services/scene';
 import { CollaboratorModal } from '../../components/CollaboratorModal';
+import { AIEnhancePanel } from '../../components/AIEnhancePanel';
+import { generateAIVideo, waitForGeneration, uploadVideoForAI, uploadAssetForAI } from '../../services/aiVideoService';
 
 const kObjSelectMode = 1;
 const kPortalSelectMode = 2;
@@ -140,6 +146,7 @@ export class App extends Component {
     this._handleSaveDraft = this._handleSaveDraft.bind(this);
     this._handleNewScene = this._handleNewScene.bind(this);
     this._onListPressed = this._onListPressed.bind(this);
+    this._handleAIGenerate = this._handleAIGenerate.bind(this);
 
     this.state = {
       currentModeSelected: kObjSelectMode,
@@ -180,11 +187,22 @@ export class App extends Component {
       objectAnimations: {}, // { [uuid]: { bounce: { active, intensity }, rotate: { active, intensity, axis }... } }
       isVideoBuffering: false, // Track 360 video buffering state for UI overlay
       showCollaboratorModal: false, // Collaborator invite modal visibility
+      // AI Enhancement state
+      showAIPanel: false, // AI enhancement panel visibility
+      aiPrompt: '', // Current AI prompt
+      aiAssets: [], // Up to 4 reference images
+      isAIGenerating: false, // Loading state during AI generation
+      generatedVideoUrl: null, // URL of AI-generated video
+      isAIGenerated: false, // Track if current video is AI-generated
+      aiGenerationId: null, // Track current generation task ID
     };
 
     this._onBackgroundTap = this._onBackgroundTap.bind(this);
     this._onUpdateObjectAnimation = this._onUpdateObjectAnimation.bind(this);
     this._onUpdateObjectArtifact = this._onUpdateObjectArtifact.bind(this);
+    this._onUpdatePathAnimation = this._onUpdatePathAnimation.bind(this);
+    this._onUpdateVerticalAnimation = this._onUpdateVerticalAnimation.bind(this);
+    this._onUpdateEmitter = this._onUpdateEmitter.bind(this);
     this._onTransformUpdate = this._onTransformUpdate.bind(this);
     this._onMediaTransformUpdate = this._onMediaTransformUpdate.bind(this);
     this._onPortalTransformUpdate = this._onPortalTransformUpdate.bind(this);
@@ -379,6 +397,33 @@ export class App extends Component {
     // Dispatch to Redux
     this.props.dispatchUpdateModelArtifact(uuid, data);
     console.log('[App] updateModelArtifact dispatched');
+  }
+
+  // Handle path animation update for selected object
+  _onUpdatePathAnimation(pathData) {
+    const uuid = this.props.currentItemSelectionIndex;
+    if (uuid === -1) return;
+
+    console.log('[App] Path animation update:', pathData, 'for UUID:', uuid);
+    this.props.dispatchUpdatePathAnimation(uuid, pathData);
+  }
+
+  // Handle vertical animation update for selected object
+  _onUpdateVerticalAnimation(verticalData) {
+    const uuid = this.props.currentItemSelectionIndex;
+    if (uuid === -1) return;
+
+    console.log('[App] Vertical animation update:', verticalData, 'for UUID:', uuid);
+    this.props.dispatchUpdateVerticalAnimation(uuid, verticalData);
+  }
+
+  // Handle emitter update for selected object
+  _onUpdateEmitter(emitterData) {
+    const uuid = this.props.currentItemSelectionIndex;
+    if (uuid === -1) return;
+
+    console.log('[App] Emitter update:', emitterData, 'for UUID:', uuid);
+    this.props.dispatchUpdateEmitter(uuid, emitterData);
   }
 
   // Handle rename scene
@@ -640,6 +685,13 @@ export class App extends Component {
           onUpdateAnimation={(type, params, active) => this._onUpdateObjectAnimation(type, params, active)}
           onUpdateArtifact={(data) => this._onUpdateObjectArtifact(data)}
           selectedItemName={this.props.currentItemSelectionIndex !== -1 && this.props.modelItems[this.props.currentItemSelectionIndex] ? (this.props.modelItems[this.props.currentItemSelectionIndex].name || 'Object') : undefined}
+          currentPosition={this.props.currentItemSelectionIndex !== -1 && this.props.modelItems[this.props.currentItemSelectionIndex] ? this.props.modelItems[this.props.currentItemSelectionIndex].position : [0, 0, -2]}
+          currentPathAnimation={this.props.currentItemSelectionIndex !== -1 ? (this.props.objectAnimations[this.props.currentItemSelectionIndex]?.path || null) : null}
+          onUpdatePathAnimation={(data) => this._onUpdatePathAnimation(data)}
+          currentVerticalAnimation={this.props.currentItemSelectionIndex !== -1 ? (this.props.objectAnimations[this.props.currentItemSelectionIndex]?.vertical || null) : null}
+          onUpdateVerticalAnimation={(data) => this._onUpdateVerticalAnimation(data)}
+          currentEmitter={this.props.currentItemSelectionIndex !== -1 ? (this.props.objectEmitters?.[this.props.currentItemSelectionIndex] || null) : null}
+          onUpdateEmitter={(data) => this._onUpdateEmitter(data)}
         />
 
         {/* Portal Background Panel */}
@@ -681,6 +733,16 @@ export class App extends Component {
               const source = { uri: item.url };
               this.props.dispatchAddAudio(source, 'spatial');
             }
+          }}
+          modelItems={this.props.modelItems}
+          onSelectObject={(uuid) => {
+            console.log('[App] onSelectObject from Layers:', uuid);
+            this.props.dispatchChangeItemClickState(uuid, 'models');
+            this.setState({ showModelLibraryPanel: false, showContextualMenu: true });
+          }}
+          onSetParent={(uuid, parentId) => {
+            console.log('[App] onSetParent:', uuid, '->', parentId);
+            this.props.dispatchSetObjectParent(uuid, parentId);
           }}
         />
 
@@ -952,6 +1014,7 @@ export class App extends Component {
             <Video ref={(ref) => { this.player = ref }}
               source={{ uri: this.state.videoUrl }} paused={!this.state.playPreview}
               repeat={false} style={localStyles.backgroundVideo}
+              resizeMode="cover"
               onLoad={(data) => { this.setState({ videoDuration: data.duration }); }}
               onEnd={() => { this.setState({ playPreview: false }) }} />
           )}
@@ -988,6 +1051,15 @@ export class App extends Component {
 
           {/* Premium Bottom Bar with Scrubber */}
           {this._renderVideoScrubber()}
+
+          {/* AI Enhancement Panel */}
+          <AIEnhancePanel
+            visible={this.state.showAIPanel}
+            onClose={() => this.setState({ showAIPanel: false })}
+            onGenerate={this._handleAIGenerate}
+            isGenerating={this.state.isAIGenerating}
+            hasExistingGeneration={this.state.isAIGenerated}
+          />
         </View>
       )
     }
@@ -1092,7 +1164,7 @@ export class App extends Component {
           )}
         </View>
 
-        {/* Action Buttons Row */}
+        {/* Action Buttons Row - New Layout */}
         <View style={{
           flexDirection: 'row',
           justifyContent: 'space-between',
@@ -1101,53 +1173,61 @@ export class App extends Component {
           marginTop: 16,
           marginBottom: 8,
         }}>
-          {/* Left: Save & Share */}
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {/* Left: Enhance with AI / Generate / Edit Generation */}
+          <TouchableOpacity
+            onPress={() => this.setState({ showAIPanel: true })}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: this.state.isAIGenerated ? 'rgba(147,112,219,0.3)' : 'rgb(247, 255, 168)',
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderRadius: 12,
+            }}
+          >
+            <Ionicons
+              name="sparkles"
+              size={18}
+              color={this.state.isAIGenerated ? '#9370DB' : 'black'}
+            />
+            <Text style={{
+              color: this.state.isAIGenerated ? '#9370DB' : 'black',
+              fontSize: 14,
+              fontWeight: '600',
+              marginLeft: 6,
+            }}>
+              {this.state.isAIGenerated ? 'Edit Generation' : 'Enhance with AI'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Center: Save & Share - Icons Only */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
             <TouchableOpacity
               onPress={() => this._saveToCameraRoll()}
               style={{
-                flexDirection: 'row',
+                width: 44,
+                height: 44,
                 alignItems: 'center',
-                backgroundColor: this.state.haveSavedMedia ? 'rgba(52,199,89,0.3)' : 'rgba(255,255,255,0.15)',
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderRadius: 12,
-                marginRight: 10,
+                justifyContent: 'center',
               }}
             >
               <Ionicons
                 name={this.state.haveSavedMedia ? 'checkmark-circle' : 'download-outline'}
-                size={20}
+                size={24}
                 color={this.state.haveSavedMedia ? '#34C759' : 'white'}
               />
-              <Text style={{
-                color: this.state.haveSavedMedia ? '#34C759' : 'white',
-                fontSize: 15,
-                fontWeight: '600',
-                marginLeft: 6,
-              }}>
-                {this.state.haveSavedMedia ? 'Saved' : 'Save'}
-              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => this._openShareActionSheet()}
               style={{
-                flexDirection: 'row',
+                width: 44,
+                height: 44,
                 alignItems: 'center',
-                backgroundColor: 'rgba(255,255,255,0.15)',
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderRadius: 12,
+                justifyContent: 'center',
               }}
             >
-              <Ionicons name="share-outline" size={20} color="white" />
-              <Text style={{
-                color: 'white',
-                fontSize: 15,
-                fontWeight: '600',
-                marginLeft: 6,
-              }}>Share</Text>
+              <Ionicons name="share-outline" size={24} color="white" />
             </TouchableOpacity>
           </View>
 
@@ -1158,20 +1238,42 @@ export class App extends Component {
               flexDirection: 'row',
               alignItems: 'center',
               backgroundColor: '#FF3050',
-              paddingHorizontal: 20,
+              paddingHorizontal: 16,
               paddingVertical: 12,
               borderRadius: 12,
             }}
           >
-            <Ionicons name="arrow-forward" size={20} color="white" />
+            <Ionicons name="arrow-forward" size={18} color="white" />
             <Text style={{
               color: 'white',
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: '600',
               marginLeft: 6,
             }}>Publish</Text>
           </TouchableOpacity>
         </View>
+
+        {/* AI Generating Indicator - Top Right */}
+        {this.state.isAIGenerating && (
+          <View style={{
+            position: 'absolute',
+            top: -60,
+            right: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 20,
+            gap: 10,
+          }}>
+            <ActivityIndicator size="small" color="rgb(247, 255, 168)" />
+            <View>
+              <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>Generating with AI...</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 }}>~2 min estimated</Text>
+            </View>
+          </View>
+        )}
       </View>
     );
   }
@@ -1290,7 +1392,95 @@ export class App extends Component {
       coverImage: coverImage,
       sceneData: scene,
       remixedFrom: this.state.remixedFrom || null, // Pass remix attribution if present
+      isAIGenerated: this.state.isAIGenerated, // Flag for AI-generated content
     });
+  }
+
+  // Handle AI generation - uploads video, calls API, updates preview with result
+  async _handleAIGenerate(prompt, assets) {
+    const { videoUrl } = this.state;
+
+    if (!videoUrl) {
+      Alert.alert('Error', 'No video to enhance');
+      return;
+    }
+
+    if (!prompt || prompt.trim().length === 0) {
+      Alert.alert('Error', 'Please enter a prompt');
+      return;
+    }
+
+    // Check video duration (Decart API max is 5 seconds)
+    const { videoDuration } = this.state;
+    if (videoDuration && videoDuration > 5) {
+      Alert.alert(
+        'Video Too Long',
+        `AI enhancement supports videos up to 5 seconds. Your video is ${Math.round(videoDuration)} seconds. Please record a shorter clip.`
+      );
+      return;
+    }
+
+    console.log('[App] Starting AI generation with prompt:', prompt);
+    console.log('[App] Assets count:', assets.length);
+    console.log('[App] Video duration:', videoDuration, 'seconds');
+
+    // Close panel and show loading
+    this.setState({
+      showAIPanel: false,
+      isAIGenerating: true,
+      aiPrompt: prompt,
+      aiAssets: [], // Decart doesn't use assets
+    });
+
+    try {
+      // Decart API accepts local video directly via multipart upload
+      // No need to pre-upload to R2
+      console.log('[App] Using local video for Decart:', videoUrl);
+
+      // Start AI generation with Decart
+      console.log('[App] Starting Decart AI generation...');
+      const result = await generateAIVideo({
+        videoUrl: videoUrl, // Local file URI
+        prompt: prompt,
+      });
+
+      console.log('[App] Generation started, task ID:', result.id);
+      this.setState({ aiGenerationId: result.id });
+
+      // Step 4: Poll for completion
+      const finalResult = await waitForGeneration(result.id, (status) => {
+        console.log('[App] Generation status:', status);
+      });
+
+      console.log('[App] Generation complete:', finalResult);
+
+      if (finalResult.output?.video_url) {
+        // Step 5: Update video preview with generated video
+        this.setState({
+          videoUrl: finalResult.output.video_url,
+          generatedVideoUrl: finalResult.output.video_url,
+          isAIGenerated: true,
+          isAIGenerating: false,
+          haveSavedMedia: false, // Reset save state
+          // Don't reset frame extraction for remote URLs - keep existing thumbnails
+        });
+
+        // Skip frame extraction for remote CDN URLs - keep existing thumbnails from original
+        // Frame extraction only works with local files
+        console.log('[App] AI video from CDN - keeping existing thumbnails');
+
+        Alert.alert('Success!', 'Your AI-enhanced video is ready');
+      } else {
+        throw new Error('No video URL in generation result');
+      }
+
+    } catch (error) {
+      console.error('[App] AI generation failed:', error);
+      this.setState({
+        isAIGenerating: false,
+      });
+      Alert.alert('Generation Failed', error.message || 'Failed to generate AI video. Please try again.');
+    }
   }
 
   // Extract frames from video for scrubber timeline
@@ -2216,6 +2406,7 @@ function selectProps(store) {
     effectItems: store.arobjects.effectItems,
     postProcessEffects: store.arobjects.postProcessEffects,
     objectAnimations: store.arobjects.objectAnimations, // Animation states from Redux
+    objectEmitters: store.arobjects.objectEmitters, // Emitter states from Redux
     currentScreen: store.ui.currentScreen,
     listMode: store.ui.listMode,
     listTitle: store.ui.listTitle,
@@ -2296,6 +2487,10 @@ const mapDispatchToProps = (dispatch) => {
     }),
     dispatchUpdateModelArtifact: (uuid, data) => dispatch(updateModelArtifact(uuid, data)),
     dispatchUpdateObjectAnimation: (uuid, animationType, animationData) => dispatch(updateObjectAnimation(uuid, animationType, animationData)),
+    dispatchUpdatePathAnimation: (uuid, pathData) => dispatch(updatePathAnimation(uuid, pathData)),
+    dispatchUpdateVerticalAnimation: (uuid, verticalData) => dispatch(updateVerticalAnimation(uuid, verticalData)),
+    dispatchUpdateEmitter: (uuid, emitterData) => dispatch(updateEmitter(uuid, emitterData)),
+    dispatchSetObjectParent: (uuid, parentId) => dispatch(setObjectParent(uuid, parentId)),
   }
 }
 

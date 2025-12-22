@@ -16,6 +16,8 @@ public class ArViewRecorderModule: Module {
   private var outputURL: URL?
   private var targetView: UIView?
   private var currentViewTag: Int?
+  private var outputWidth: Int = 0  // Target output width for scaled recording
+  private var outputHeight: Int = 0  // Target output height for scaled recording
 
   public func definition() -> ModuleDefinition {
     Name("ArViewRecorder")
@@ -79,12 +81,27 @@ public class ArViewRecorderModule: Module {
         do {
           let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
 
-          let width = Int(rootView.bounds.width * rootView.contentScaleFactor)
-          let height = Int(rootView.bounds.height * rootView.contentScaleFactor)
+          let rawWidth = Int(rootView.bounds.width * rootView.contentScaleFactor)
+          let rawHeight = Int(rootView.bounds.height * rootView.contentScaleFactor)
+          
+          // Use original aspect ratio - Decart accepts any ratio
+          var finalWidth = rawWidth
+          var finalHeight = rawHeight
+          
+          // Ensure max dimension of 2160px for reasonable file size
+          let maxDimension = 2160
+          let maxSide = max(finalWidth, finalHeight)
+          if maxSide > maxDimension {
+            let downScale = Double(maxDimension) / Double(maxSide)
+            finalWidth = Int(Double(finalWidth) * downScale)
+            finalHeight = Int(Double(finalHeight) * downScale)
+          }
 
-          // Ensure even dimensions
-          let evenWidth = width % 2 == 0 ? width : width - 1
-          let evenHeight = height % 2 == 0 ? height : height - 1
+          // Ensure even dimensions (required for H.264)
+          let evenWidth = finalWidth % 2 == 0 ? finalWidth : finalWidth - 1
+          let evenHeight = finalHeight % 2 == 0 ? finalHeight : finalHeight - 1
+          
+          NSLog("[ArViewRecorder] Raw: %dx%d, Output: %dx%d", rawWidth, rawHeight, evenWidth, evenHeight)
 
           let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
@@ -115,6 +132,8 @@ public class ArViewRecorderModule: Module {
           self.assetWriter = writer
           self.videoInput = input
           self.pixelBufferAdaptor = adaptor
+          self.outputWidth = evenWidth  // Store target dimensions
+          self.outputHeight = evenHeight
 
           // Start writing
           writer.startWriting()
@@ -369,21 +388,27 @@ public class ArViewRecorderModule: Module {
     let elapsed = CACurrentMediaTime() - startTime - pausedTime
     let presentationTime = CMTime(seconds: elapsed, preferredTimescale: 600)
 
-    // Capture the view as an image
-    let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
+    // Capture at full native pixel resolution (points * scale factor)
+    let targetSize = CGSize(width: outputWidth, height: outputHeight)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1.0  // Use exact pixel dimensions, no additional scaling
+    
+    let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
     let image = renderer.image { ctx in
+      // Scale the context to match pixel size vs point size
+      let scaleX = CGFloat(outputWidth) / view.bounds.width
+      let scaleY = CGFloat(outputHeight) / view.bounds.height
+      ctx.cgContext.scaleBy(x: scaleX, y: scaleY)
       view.drawHierarchy(in: view.bounds, afterScreenUpdates: false)
     }
 
-    // Convert to pixel buffer
-    guard let pixelBuffer = pixelBufferFromImage(image) else { return }
+    // Convert to pixel buffer at output dimensions
+    guard let pixelBuffer = pixelBufferFromImage(image, width: outputWidth, height: outputHeight) else { return }
 
     adaptor.append(pixelBuffer, withPresentationTime: presentationTime)
   }
 
-  private func pixelBufferFromImage(_ image: UIImage) -> CVPixelBuffer? {
-    let width = Int(image.size.width * image.scale)
-    let height = Int(image.size.height * image.scale)
+  private func pixelBufferFromImage(_ image: UIImage, width: Int, height: Int) -> CVPixelBuffer? {
 
     var pixelBuffer: CVPixelBuffer?
     let attributes: [String: Any] = [

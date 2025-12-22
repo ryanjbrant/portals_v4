@@ -25,6 +25,7 @@ export const PostDetailsScreen = () => {
 
     const coverImage = route.params?.coverImage;
     const remixedFrom = route.params?.remixedFrom; // Remix attribution if this is a remix
+    const isAIGenerated = route.params?.isAIGenerated || false; // AI-generated video flag
 
     // Detect artifact in scene
     const hasArtifact = React.useMemo(() => {
@@ -106,13 +107,16 @@ export const PostDetailsScreen = () => {
         try {
             let sceneId = draftPost.sceneId;
 
-            // Determine if we need to save the scene (real save to R2)
-            if (draftPost.sceneData) {
+            // Skip scene saving for AI-generated videos (no AR scene data)
+            if (!isAIGenerated && draftPost.sceneData) {
                 // Use the scalable saver - mark as published so it doesn't appear in drafts
                 const publishedSceneData = { ...draftPost.sceneData, status: 'published' };
                 const { saveSceneToStorage } = require('../services/sceneSaver');
                 const { sceneId: savedSceneId } = await saveSceneToStorage(publishedSceneData, coverImage, currentUser.id);
                 sceneId = savedSceneId;
+            } else if (isAIGenerated) {
+                console.log('[PostDetails] Skipping scene save for AI-generated video');
+                sceneId = undefined; // No scene for AI videos
             }
 
             // Upload Media
@@ -165,6 +169,7 @@ export const PostDetailsScreen = () => {
                 mediaUri: finalMediaUri || null,
                 coverImage: finalCoverUri || null,
                 isArtifact: hasArtifact, // Save artifact status for feed/gallery filtering
+                isAIGenerated: isAIGenerated, // Flag for AI-generated content
                 remixedFrom: remixedFrom || null, // Save remix attribution if present
                 createdAt: serverTimestamp()
             };
@@ -232,6 +237,13 @@ export const PostDetailsScreen = () => {
                         <Ionicons name="git-branch" size={20} color={theme.colors.primary} />
                         <Image source={{ uri: remixedFrom.avatar }} style={styles.remixBannerAvatar} />
                         <Text style={styles.remixBannerText}>Remixed from @{remixedFrom.username}</Text>
+                    </View>
+                )}
+                {/* AI Generation Banner */}
+                {isAIGenerated && (
+                    <View style={styles.aiBanner}>
+                        <Ionicons name="sparkles" size={20} color="rgb(247, 255, 168)" />
+                        <Text style={styles.aiBannerText}>AI-Enhanced Video</Text>
                     </View>
                 )}
                 <View style={styles.mediaPreview}>
@@ -532,6 +544,23 @@ const styles = StyleSheet.create({
     },
     remixBannerText: {
         color: theme.colors.primary,
+        fontWeight: '600',
+        fontSize: 14,
+    },
+    aiBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(147, 112, 219, 0.15)',
+        padding: 12,
+        borderRadius: 8,
+        marginHorizontal: theme.spacing.m,
+        marginBottom: theme.spacing.m,
+        gap: 8,
+        borderWidth: 1,
+        borderColor: 'rgb(247, 255, 168)',
+    },
+    aiBannerText: {
+        color: 'rgb(247, 255, 168)',
         fontWeight: '600',
         fontSize: 14,
     },

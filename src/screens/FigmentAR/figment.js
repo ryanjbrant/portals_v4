@@ -148,6 +148,9 @@ export class figment extends Component {
   componentDidMount() {
     console.log('[Figment] componentDidMount - Initializing materials');
 
+    // Initialize ViroMaterials lazily (deferred from module load)
+    initMaterials();
+
     // Check and Enable Scene Semantics
     if (this.props.arSceneNavigator && this.props.arSceneNavigator.isSemanticModeSupported) {
       this.props.arSceneNavigator.isSemanticModeSupported().then((result) => {
@@ -227,38 +230,70 @@ export class figment extends Component {
   //           Viro3DObject's "shadowCastingBitMask" and "lightReceivingBitMask" and Shadow plane (ViroQuad)'s "lightReceivingBitMask"
   _renderModels(modelItems, startingBitMask) {
     var renderedObjects = [];
-    if (modelItems) {
-      var root = this;
-      let objBitMask = startingBitMask;
-      Object.keys(modelItems).forEach(function (currentKey) {
-        // Keep rendering items to prevent unmount crash - hidden items will set visible=false
-        if (modelItems[currentKey] != null && modelItems[currentKey] != undefined) {
-          // Get animations for this model from Redux props (NOT viroAppProps - those don't trigger re-render)
-          const uuid = modelItems[currentKey].uuid;
-          const objectAnimations = root.props.objectAnimations || {};
-          const modelAnimations = objectAnimations[uuid] || {};
+    if (!modelItems) return renderedObjects;
 
-          // DEBUG: Log the objectAnimations from Redux props (only if non-empty)
-          if (Object.keys(modelAnimations).length > 0) {
-            console.log('[Figment] _renderModels - Redux objectAnimations for UUID:', uuid,
-              'modelAnimations:', JSON.stringify(modelAnimations));
-          }
+    var root = this;
+    let objBitMask = startingBitMask;
+    const objectAnimations = root.props.objectAnimations || {};
+    const objectEmitters = root.props.objectEmitters || {};
 
-          renderedObjects.push(
-            <ModelItemRender key={modelItems[currentKey].uuid}
-              modelIDProps={modelItems[currentKey]}
-              hitTestMethod={root._performARHitTest}
-              onLoadCallback={root._onLoadCallback}
-              onClickStateCallback={root._onModelsClickStateCallback}
-              onTransformUpdate={root.props.arSceneNavigator?.viroAppProps?.onTransformUpdate}
-              bitMask={Math.pow(2, objBitMask)}
-              isHidden={modelItems[currentKey].hidden === true}
-              objectAnimations={modelAnimations} />
-          );
+    // Build hierarchy: separate top-level items from children
+    const topLevelItems = [];
+    const childrenByParent = {};
+
+    Object.keys(modelItems).forEach(key => {
+      const item = modelItems[key];
+      if (!item) return;
+
+      if (item.parentId && modelItems[item.parentId]) {
+        // Has valid parent - group as child
+        if (!childrenByParent[item.parentId]) {
+          childrenByParent[item.parentId] = [];
         }
+        childrenByParent[item.parentId].push(item);
+      } else {
+        // Top-level item (no parent or parent not found)
+        topLevelItems.push(item);
+      }
+    });
+
+    // Recursive function to render an item with its children
+    const renderItemWithChildren = (item, bitMask) => {
+      const uuid = item.uuid;
+      const modelAnimations = objectAnimations[uuid] || {};
+      const modelEmitter = objectEmitters[uuid] || {};
+      const children = childrenByParent[uuid] || [];
+
+      // Render this item's children recursively
+      const renderedChildren = children.map((child, idx) => {
         objBitMask++;
+        return renderItemWithChildren(child, objBitMask);
       });
-    }
+
+      // Render this item with children nested inside
+      return (
+        <ModelItemRender
+          key={uuid}
+          modelIDProps={item}
+          hitTestMethod={root._performARHitTest}
+          onLoadCallback={root._onLoadCallback}
+          onClickStateCallback={root._onModelsClickStateCallback}
+          onTransformUpdate={root.props.arSceneNavigator?.viroAppProps?.onTransformUpdate}
+          bitMask={Math.pow(2, bitMask)}
+          isHidden={item.hidden === true}
+          objectAnimations={modelAnimations}
+          parentAnimations={{}} // No longer needed - using true hierarchy
+          emitterData={modelEmitter}
+          childrenToRender={renderedChildren}
+        />
+      );
+    };
+
+    // Render only top-level items (children are nested inside)
+    topLevelItems.forEach(item => {
+      renderedObjects.push(renderItemWithChildren(item, objBitMask));
+      objBitMask++;
+    });
 
     // Render Media Items
     let mediaKeys = Object.keys(this.props.mediaItems);
@@ -384,29 +419,34 @@ export class figment extends Component {
   }
 }
 
-// -- REDUX STORE
-function initMaterials() {
-  console.log('[Figment] initMaterials called');
-  ViroMaterials.createMaterials({
-    shadowCatcher: {
-      writesToDepthBuffer: false,
-      readsFromDepthBuffer: false,
-      diffuseColor: "#ff9999"
+// -- MATERIALS (lazy initialization to avoid module-load crashes)
+let materialsInitialized = false;
+export function initMaterials() {
+  if (materialsInitialized) return;
+  materialsInitialized = true;
 
-    },
-    ground: {
-      lightingModel: "Lambert",
-      cullMode: "None",
-      shininess: 2.0,
-      diffuseColor: "#ff999900"
-    },
-    theatre: {
-      diffuseTexture: require('./res/360_dark_theatre.jpg'),
-    },
-    // pbr is now in ModelItemRender.js
-  });
+  console.log('[Figment] initMaterials called');
+  try {
+    ViroMaterials.createMaterials({
+      shadowCatcher: {
+        writesToDepthBuffer: false,
+        readsFromDepthBuffer: false,
+        diffuseColor: "#ff9999"
+      },
+      ground: {
+        lightingModel: "Lambert",
+        cullMode: "None",
+        shininess: 2.0,
+        diffuseColor: "#ff999900"
+      },
+      // theatre material removed - was causing asset loading crash
+      // pbr is now in ModelItemRender.js
+    });
+  } catch (e) {
+    console.warn('[Figment] Failed to init materials:', e);
+  }
 }
-initMaterials();
+// Don't call at module load - will be called when ARScene mounts
 
 // -- REDUX STORE
 function selectProps(store) {
@@ -418,6 +458,7 @@ function selectProps(store) {
     effectItems: store.arobjects.effectItems,
     postProcessEffects: store.arobjects.postProcessEffects,
     objectAnimations: store.arobjects.objectAnimations, // Added for JS-driven animations
+    objectEmitters: store.arobjects.objectEmitters, // Added for particle emitters
     selectedHdri: store.ui.selectedHdri,
   };
 }

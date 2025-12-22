@@ -28,6 +28,7 @@ import {
   ViroQuad,
   ViroAnimations,
   ViroText,
+  ViroParticleEmitter,
 } from '@reactvision/react-viro';
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -266,6 +267,12 @@ var ModelItemRender = createReactClass({
       this._updateAnimationState();
     }
 
+    // Also check for parentAnimations changes - child needs to animate if parent is animating
+    if (JSON.stringify(prevProps.parentAnimations) !== JSON.stringify(this.props.parentAnimations)) {
+      console.log('[ModelItemRender] parentAnimations changed for UUID:', this.props.modelIDProps.uuid, 'parent anims:', JSON.stringify(this.props.parentAnimations));
+      this._updateAnimationState();
+    }
+
 
     // CRITICAL: Handle case where LOAD_SCENE updates Redux AFTER component mounts
     // When isFromDraft changes from false/undefined to true, update state with saved transforms
@@ -347,10 +354,19 @@ var ModelItemRender = createReactClass({
 
   _getActiveAnimationType() {
     const objectAnims = this.props.objectAnimations || {};
-    const animOrder = ['bounce', 'pulse', 'rotate', 'scale', 'wiggle', 'random'];
+    const parentAnims = this.props.parentAnimations || {};
+    const animOrder = ['bounce', 'pulse', 'rotate', 'scale', 'wiggle', 'random', 'path', 'vertical'];
+
+    // Check own animations first
     for (const animType of animOrder) {
       if (objectAnims[animType]?.active) {
         return animType;
+      }
+    }
+    // Also check parent animations - child needs to animate if parent is animating
+    for (const animType of animOrder) {
+      if (parentAnims[animType]?.active) {
+        return 'parent_' + animType; // Indicate it's a parent animation
       }
     }
     return null;
@@ -360,16 +376,103 @@ var ModelItemRender = createReactClass({
     if (!this.arNodeRef) return;
 
     const objectAnims = this.props.objectAnimations || {};
+    const parentAnims = this.props.parentAnimations || {}; // Inherited from parent
     const elapsed = Date.now() - this._animationStartTime;
+
+    // Get base transforms BEFORE processing animations
+    const basePosition = this.state.position;
+    const baseRotation = this.state.rotation;
+    const baseScale = this.state.scale;
 
     // Calculate combined transform offsets from ALL active animations
     let positionOffset = [0, 0, 0];
     let rotationOffset = [0, 0, 0];
     let scaleMultiplier = [1, 1, 1];
 
-    // Process each animation type
-    const animOrder = ['bounce', 'pulse', 'rotate', 'scale', 'wiggle', 'random'];
+    // Process parent animations FIRST (if child has a parent)
+    // This makes child inherit parent's path, bounce, etc.
+    const animOrder = ['path', 'vertical', 'bounce', 'pulse', 'rotate', 'scale', 'wiggle', 'random'];
 
+    // DEBUG: Log parent animations if any exist
+    if (Object.keys(parentAnims).length > 0) {
+      console.log('[ModelItemRender] parentAnims keys:', Object.keys(parentAnims), 'path active?', parentAnims.path?.active);
+    }
+
+    // FIRST: Apply parent's animations (path, vertical, etc) - child follows parent
+    // This is done BEFORE child's own animations so they stack
+    for (const animType of animOrder) {
+      const parentAnimData = parentAnims[animType];
+      if (!parentAnimData?.active) continue;
+
+      console.log('[ModelItemRender] Applying parent animation:', animType);
+
+      const intensity = parentAnimData.intensity || 1.0;
+      const cycleDuration = this._getAnimationCycleDuration(animType);
+      const cycleProgress = (elapsed % cycleDuration) / cycleDuration;
+
+      // Apply parent animation offsets using switch logic inline
+      switch (animType) {
+        case 'bounce':
+          positionOffset[1] += Math.sin(cycleProgress * Math.PI * 2) * (0.15 * intensity);
+          break;
+        case 'pulse':
+          const parentPulseFactor = 1 + Math.sin(cycleProgress * Math.PI * 2) * (0.15 * intensity);
+          scaleMultiplier[0] *= parentPulseFactor;
+          scaleMultiplier[1] *= parentPulseFactor;
+          scaleMultiplier[2] *= parentPulseFactor;
+          break;
+        case 'rotate':
+          const parentRotSpeed = intensity;
+          const parentRotAxes = parentAnimData.axes || { x: false, y: true, z: false };
+          if (parentRotAxes.x) rotationOffset[0] += cycleProgress * 360 * parentRotSpeed;
+          if (parentRotAxes.y) rotationOffset[1] += cycleProgress * 360 * parentRotSpeed;
+          if (parentRotAxes.z) rotationOffset[2] += cycleProgress * 360 * parentRotSpeed;
+          break;
+        case 'wiggle':
+          const parentWiggleAmt = 8 * intensity;
+          rotationOffset[2] += Math.sin(cycleProgress * Math.PI * 2) * parentWiggleAmt;
+          break;
+        case 'path':
+          // Path animation - interpolate along user-drawn XZ path
+          if (parentAnimData.points && parentAnimData.points.length >= 2) {
+            const pathDuration = (parentAnimData.duration || 5) * 1000;
+            const pathProgress = (elapsed % pathDuration) / pathDuration;
+            const pathPoints = parentAnimData.points;
+            const n = pathPoints.length;
+            const t = pathProgress * (n - 1);
+            const i0 = Math.floor(t);
+            const i1 = Math.min(i0 + 1, n - 1);
+            const localT = t - i0;
+            const p0 = pathPoints[i0];
+            const p1 = pathPoints[i1];
+            positionOffset[0] += p0.x + (p1.x - p0.x) * localT;
+            positionOffset[2] += p0.z + (p1.z - p0.z) * localT;
+          }
+          break;
+        case 'vertical':
+          // Vertical animation - interpolate Y based on curve
+          if (parentAnimData.points && parentAnimData.points.length >= 2) {
+            const vDuration = (parentAnims.path?.duration || 5) * 1000;
+            const vProgress = (elapsed % vDuration) / vDuration;
+            const curvePoints = parentAnimData.points;
+            let yOffset = 0;
+            for (let i = 0; i < curvePoints.length - 1; i++) {
+              const seg0 = curvePoints[i];
+              const seg1 = curvePoints[i + 1];
+              if (vProgress >= seg0.t && vProgress <= seg1.t) {
+                const segT = (vProgress - seg0.t) / (seg1.t - seg0.t);
+                yOffset = seg0.y + (seg1.y - seg0.y) * segT;
+                break;
+              }
+            }
+            positionOffset[1] += yOffset;
+          }
+          break;
+        // 'random'/'float' and 'scale' can be added similarly if needed
+      }
+    }
+
+    // SECOND: Apply child's own animations on top of parent's
     for (const animType of animOrder) {
       const animData = objectAnims[animType];
       if (!animData?.active) continue;
@@ -446,13 +549,105 @@ var ModelItemRender = createReactClass({
           positionOffset[1] += Math.sin(cycleProgress * Math.PI * 2 * yFreq + yPhase) * baseAmplitude * 0.6; // Y is more subtle
           positionOffset[2] += Math.sin(cycleProgress * Math.PI * 2 * zFreq + zPhase) * baseAmplitude;
           break;
+
+        case 'path':
+          // Path animation - follow drawn XZ path
+          const pathData = animData;
+          if (!pathData.points || pathData.points.length < 2) {
+            console.log('[ModelItemRender] Path has insufficient points:', pathData.points?.length);
+            break;
+          }
+
+          const pathDuration = (pathData.duration || 5) * 1000; // ms
+          let pathProgress;
+
+          if (pathData.playMode === 'once') {
+            // Play once and stop
+            pathProgress = Math.min(elapsed / pathDuration, 1);
+          } else if (pathData.playMode === 'pingpong') {
+            // Ping-pong: forward then backward
+            const cycle = Math.floor(elapsed / pathDuration);
+            const cycleT = (elapsed % pathDuration) / pathDuration;
+            pathProgress = cycle % 2 === 0 ? cycleT : 1 - cycleT;
+          } else {
+            // Loop (default)
+            pathProgress = (elapsed % pathDuration) / pathDuration;
+          }
+
+          // Interpolate position along path (use smooth or linear based on settings)
+          const pathPos = this._interpolatePathPosition(pathData.points, pathProgress, pathData.interpolation || 'smooth');
+
+          // Debug log every ~60 frames
+          if (Math.random() < 0.02) {
+            console.log('[ModelItemRender] Path anim:', {
+              progress: pathProgress.toFixed(2),
+              pathPos,
+              basePos: [basePosition[0].toFixed(2), basePosition[2].toFixed(2)],
+            });
+          }
+
+          // Set position directly to path point (not offset)
+          // Path points are absolute XZ coordinates
+          positionOffset[0] = pathPos.x - basePosition[0];
+          positionOffset[2] = pathPos.z - basePosition[2];
+
+          // Calculate tangent rotation if followPath is enabled
+          if (pathData.followPath) {
+            // Get a slightly ahead position to calculate direction
+            const lookAheadT = Math.min(1, pathProgress + 0.02);
+            const lookAheadPos = this._interpolatePathPosition(pathData.points, lookAheadT, pathData.interpolation || 'smooth');
+
+            // Calculate direction vector
+            const dx = lookAheadPos.x - pathPos.x;
+            const dz = lookAheadPos.z - pathPos.z;
+
+            // Calculate Y rotation (heading) from direction - atan2 gives angle in radians
+            // Convert to degrees. In ViroReact, Y rotation is around Y axis
+            // atan2(dx, -dz) because negative Z is forward in AR
+            if (Math.abs(dx) > 0.001 || Math.abs(dz) > 0.001) {
+              const headingRad = Math.atan2(dx, -dz);
+              const headingDeg = headingRad * (180 / Math.PI);
+
+              // ADD to Y rotation offset (not replace) so other animations can layer on top
+              // The heading is absolute, so subtract base rotation to get the offset
+              rotationOffset[1] += headingDeg - baseRotation[1];
+            }
+          }
+          break;
+
+        case 'vertical':
+          // Vertical animation - Y position over time
+          const verticalData = animData;
+          if (!verticalData.points || verticalData.points.length < 2) break;
+
+          // Use path duration if available, otherwise default
+          const pathAnimData = objectAnims.path;
+          const vertDuration = (pathAnimData?.duration || 5) * 1000; // ms
+
+          // Calculate progress based on path's play mode too for consistency
+          let vertProgress;
+          const vertPlayMode = pathAnimData?.playMode || 'loop';
+
+          if (vertPlayMode === 'once') {
+            vertProgress = Math.min(elapsed / vertDuration, 1);
+          } else if (vertPlayMode === 'pingpong') {
+            const cycle = Math.floor(elapsed / vertDuration);
+            const cycleT = (elapsed % vertDuration) / vertDuration;
+            vertProgress = cycle % 2 === 0 ? cycleT : 1 - cycleT;
+          } else {
+            vertProgress = (elapsed % vertDuration) / vertDuration;
+          }
+
+          // Interpolate Y value from curve
+          const yValue = this._interpolateVerticalPosition(verticalData.points, vertProgress, verticalData.interpolation || 'smooth');
+
+          // Add Y offset
+          positionOffset[1] = yValue;
+          break;
       }
     }
 
     // Apply combined transforms via setNativeProps
-    const basePosition = this.state.position;
-    const baseRotation = this.state.rotation;
-    const baseScale = this.state.scale;
 
     const newPosition = [
       basePosition[0] + positionOffset[0],
@@ -487,8 +682,115 @@ var ModelItemRender = createReactClass({
       case 'wiggle': return 300;
       case 'random':
       case 'float': return 4000; // 4 seconds for smooth Lissajous wave motion
+      case 'path': return 5000; // Default 5 seconds, overridden by pathData.duration
       default: return 1000;
     }
+  },
+
+  // Interpolate position along a path given a progress value (0-1)
+  // Supports 'linear' and 'smooth' (Catmull-Rom spline) interpolation
+  _interpolatePathPosition(points, t, interpolation = 'linear') {
+    if (!points || points.length === 0) return { x: 0, z: 0 };
+    if (points.length === 1) return points[0];
+
+    // Clamp t to [0, 1]
+    t = Math.max(0, Math.min(1, t));
+
+    // Total segments in the path
+    const segmentCount = points.length - 1;
+    if (segmentCount === 0) return points[0];
+
+    // Find which segment we're in
+    const segment = Math.min(Math.floor(t * segmentCount), segmentCount - 1);
+    const segmentT = (t * segmentCount) - segment;
+
+    if (interpolation === 'smooth' && points.length >= 3) {
+      // Catmull-Rom spline interpolation for smooth curves
+      // Get 4 control points (with clamping at edges)
+      const p0 = points[Math.max(0, segment - 1)];
+      const p1 = points[segment];
+      const p2 = points[segment + 1];
+      const p3 = points[Math.min(points.length - 1, segment + 2)];
+
+      return this._catmullRom(p0, p1, p2, p3, segmentT);
+    } else {
+      // Linear interpolation
+      const p1 = points[segment];
+      const p2 = points[segment + 1];
+
+      return {
+        x: p1.x + (p2.x - p1.x) * segmentT,
+        z: p1.z + (p2.z - p1.z) * segmentT,
+      };
+    }
+  },
+
+  // Catmull-Rom spline interpolation between 4 points
+  _catmullRom(p0, p1, p2, p3, t) {
+    const t2 = t * t;
+    const t3 = t2 * t;
+
+    // Catmull-Rom basis matrix coefficients
+    const x = 0.5 * (
+      (2 * p1.x) +
+      (-p0.x + p2.x) * t +
+      (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+      (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
+    );
+
+    const z = 0.5 * (
+      (2 * p1.z) +
+      (-p0.z + p2.z) * t +
+      (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * t2 +
+      (-p0.z + 3 * p1.z - 3 * p2.z + p3.z) * t3
+    );
+
+    return { x, z };
+  },
+
+  // Interpolate Y position from vertical curve points
+  // Points are {t: 0-1, y: height in meters}
+  _interpolateVerticalPosition(points, t, interpolation = 'linear') {
+    if (!points || points.length === 0) return 0;
+    if (points.length === 1) return points[0].y;
+
+    t = Math.max(0, Math.min(1, t));
+
+    // Find the two points surrounding t
+    let p1 = points[0];
+    let p2 = points[points.length - 1];
+
+    for (let i = 0; i < points.length - 1; i++) {
+      if (t >= points[i].t && t <= points[i + 1].t) {
+        p1 = points[i];
+        p2 = points[i + 1];
+        break;
+      }
+    }
+
+    // Calculate local t within segment
+    const segmentLength = p2.t - p1.t;
+    const localT = segmentLength > 0 ? (t - p1.t) / segmentLength : 0;
+
+    if (interpolation === 'smooth' && points.length >= 3) {
+      // Find indices for Catmull-Rom
+      const i = points.findIndex(p => p === p1);
+      const p0 = points[Math.max(0, i - 1)];
+      const p3 = points[Math.min(points.length - 1, i + 2)];
+
+      // Catmull-Rom for Y
+      const t2 = localT * localT;
+      const t3 = t2 * localT;
+      return 0.5 * (
+        (2 * p1.y) +
+        (-p0.y + p2.y) * localT +
+        (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+        (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3
+      );
+    }
+
+    // Linear interpolation
+    return p1.y + (p2.y - p1.y) * localT;
   },
 
   _updateAnimationState() {
@@ -639,6 +941,14 @@ var ModelItemRender = createReactClass({
               console.log('[ModelItemRender] No animation for:', this.props.modelIDProps.uuid, 'isCustom:', isCustom, 'isGLB:', isGLB, 'type:', modelItem.type, 'extension:', modelItem.extension);
             }
 
+            // Check if model should be hidden (emitter mode with objectVisible = false)
+            const hideModelForEmitter = this.props.emitterData?.isEmitter && this.props.emitterData?.objectVisible === false;
+
+            if (hideModelForEmitter) {
+              // Don't render the 3D model, only particles will show
+              return null;
+            }
+
             return (
               <Viro3DObject
                 source={modelSource}
@@ -679,8 +989,80 @@ var ModelItemRender = createReactClass({
             />
           )}
 
+          {/* Particle Emitter - renders particles when emitter is active */}
+          {this.props.emitterData?.isEmitter && (
+            <ViroParticleEmitter
+              position={[0, 0.3, 0]}
+              duration={-1}
+              visible={true}
+              run={true}
+              loop={true}
+              fixedToEmitter={true}
+
+              image={{
+                source: this.props.emitterData?.spriteUri
+                  ? { uri: this.props.emitterData.spriteUri }
+                  : require('../res/particle_snow.png'),
+                height: 0.06,
+                width: 0.06,
+                bloomThreshold: 0.5,
+              }}
+
+              spawnBehavior={{
+                particleLifetime: [4500, 5500],
+                emissionRatePerSecond: [12, 18],
+                spawnVolume: {
+                  shape: "box",
+                  params: [0.2, 0.1, 0.2],
+                  spawnOnSurface: false
+                },
+                maxParticles: 100,
+              }}
+
+              particleAppearance={{
+                opacity: {
+                  initialRange: [0.0, 0.0],
+                  factor: "time",
+                  interpolation: [
+                    { endValue: 1.0, interval: [0, 200] },
+                    { endValue: 1.0, interval: [200, 4000] },
+                    { endValue: 0.0, interval: [4000, 5000] }
+                  ]
+                },
+                rotation: {
+                  initialRange: [0, 360],
+                  factor: "time",
+                  interpolation: [
+                    { endValue: 540, interval: [0, 5000] }
+                  ]
+                },
+                scale: {
+                  initialRange: [[0.7, 0.7, 0.7], [1.3, 1.3, 1.3]],
+                  factor: "time",
+                  interpolation: [
+                    { endValue: [1.0, 1.0, 1.0], interval: [0, 1000] },
+                    { endValue: [0.3, 0.3, 0.3], interval: [4000, 5000] }
+                  ]
+                },
+              }}
+
+              particlePhysics={{
+                velocity: {
+                  initialRange: [[-0.15, 0.05, -0.15], [0.15, 0.2, 0.15]]
+                },
+                acceleration: {
+                  initialRange: [[0, -0.3, 0], [0, -0.5, 0]]
+                }
+              }}
+            />
+          )}
 
         </ViroNode>
+
+        {/* Render nested children inside this ViroNode for true parent-child transform inheritance */}
+        {this.props.childrenToRender && this.props.childrenToRender.length > 0 && (
+          this.props.childrenToRender
+        )}
       </ViroNode>
     );
   },

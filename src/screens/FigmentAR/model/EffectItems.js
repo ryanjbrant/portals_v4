@@ -8,7 +8,7 @@
  */
 
 import * as LoadingConstants from '../redux/LoadingStateConstants';
-import { getSmoke, getEmptyEffect, getGrayScale, getSepia, getSnow, getBubbles, getThermal, getSinCity, getBarrel, getPinCushion, getFireWorks, getGrass } from '../effects/effects.js'
+import { getSmoke, getEmptyEffect, getGrayScale, getSepia, getSnow, getBubbles, getThermal, getSinCity, getBarrel, getPinCushion, getFireWorks } from '../effects/effects.js'
 import * as EffectsConstants from '../redux/EffectsConstants';
 
 /**
@@ -56,15 +56,7 @@ var EffectItems = [
     "name": "effect_fireworks",
     "key": "effect_fireworks",
   },
-  {
-    "effect": getGrass,
-    "loading": LoadingConstants.NONE,
-    "postProcessEffects": EffectsConstants.EFFECT_NONE,
-    "icon_img": require("../res/icon_object_flowers.png"), // Reusing flowers icon as placeholder
-    "selected": false,
-    "name": "effect_grass",
-    "key": "effect_grass",
-  },
+
   {
     "effect": getSmoke,
     "loading": LoadingConstants.NONE,

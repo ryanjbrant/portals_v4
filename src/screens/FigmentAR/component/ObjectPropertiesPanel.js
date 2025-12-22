@@ -22,10 +22,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import PathAnimationTab from './PathAnimationTab';
+import VerticalAnimationTab from './VerticalAnimationTab';
 import * as ImagePicker from 'expo-image-picker';
 
 const { height, width } = Dimensions.get('window');
 const PANEL_HEIGHT = height * 0.55; // Standard panel height
+const PATH_PANEL_HEIGHT = height * 0.90; // Taller panel for path editor
+const VERTICAL_PANEL_HEIGHT = height * 0.62; // Vertical tab (time vs height graph)
 
 const ANIMATION_TYPES = ['bounce', 'pulse', 'rotate', 'scale', 'wiggle', 'random'];
 const ARTIFACT_TYPES = ['Sell', 'Redeem', 'Unlock', 'Collect', 'QR Redeem'];
@@ -33,9 +37,9 @@ const ARTIFACT_TYPES = ['Sell', 'Redeem', 'Unlock', 'Collect', 'QR Redeem'];
 class ObjectPropertiesPanel extends Component {
     constructor(props) {
         super(props);
-        this.translateY = new Animated.Value(PANEL_HEIGHT);
+        this.translateY = new Animated.Value(PATH_PANEL_HEIGHT);
         this.state = {
-            activeTab: 'details', // 'details' | 'animation'
+            activeTab: 'details', // 'details' | 'animation' | 'path'
             selectedAnimation: null, // Currently selected animation type for editing
             animations: props.currentAnimations || {},
             artifactData: props.currentArtifact || {
@@ -62,7 +66,7 @@ class ObjectPropertiesPanel extends Component {
                 }).start();
             } else {
                 Animated.timing(this.translateY, {
-                    toValue: PANEL_HEIGHT,
+                    toValue: PATH_PANEL_HEIGHT, // Use larger height to ensure full hide
                     duration: 250,
                     useNativeDriver: true,
                 }).start();
@@ -335,9 +339,14 @@ class ObjectPropertiesPanel extends Component {
         const { visible, onClose } = this.props;
         const { animations, activeTab, artifactData } = this.state;
 
+        // Use different heights for each tab type
+        let panelHeight = PANEL_HEIGHT;
+        if (activeTab === 'path') panelHeight = PATH_PANEL_HEIGHT;
+        else if (activeTab === 'vertical') panelHeight = VERTICAL_PANEL_HEIGHT;
+
         return (
             <Animated.View
-                style={[styles.container, { transform: [{ translateY: this.translateY }] }]}
+                style={[styles.container, { height: panelHeight, transform: [{ translateY: this.translateY }] }]}
                 pointerEvents={visible ? 'auto' : 'none'}
                 onStartShouldSetResponder={() => true}
                 onResponderRelease={() => { }}
@@ -372,152 +381,263 @@ class ObjectPropertiesPanel extends Component {
                         >
                             <Text style={[styles.tabText, activeTab === 'animation' && styles.activeTabText]}>Animation</Text>
                         </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.tab, activeTab === 'path' && styles.activeTab]}
+                            onPress={() => this.setState({ activeTab: 'path' })}
+                        >
+                            <Text style={[styles.tabText, activeTab === 'path' && styles.activeTabText]}>Path</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.tab, activeTab === 'vertical' && styles.activeTab]}
+                            onPress={() => this.setState({ activeTab: 'vertical' })}
+                        >
+                            <Text style={[styles.tabText, activeTab === 'vertical' && styles.activeTabText]}>Vertical</Text>
+                        </TouchableOpacity>
                     </View>
                     <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                         <Ionicons name="close-circle" size={28} color="rgba(255,255,255,0.8)" />
                     </TouchableOpacity>
                 </View>
 
-                <ScrollView
-                    style={styles.content}
-                    contentContainerStyle={{ paddingBottom: 40, flexGrow: 1 }}
-                    showsVerticalScrollIndicator={true}
-                    nestedScrollEnabled={true}
-                >
-                    {activeTab === 'details' ? (
-                        <>
-                            <View style={styles.toggleRow}>
-                                <Text style={styles.sectionTitle}>Artifact</Text>
-                                <Switch
-                                    value={artifactData.isArtifact}
-                                    onValueChange={(val) => this.updateArtifact({ isArtifact: val })}
-                                    trackColor={{ false: '#333', true: '#FF3050' }}
-                                    ios_backgroundColor="#333"
-                                />
-                            </View>
-                            <Text style={styles.description}>
-                                Enable to tag this object as an artifact. Artifacts appear in the feed and grid.
-                            </Text>
+                {/* Scrollable content for details/animation tabs */}
+                {activeTab !== 'path' && activeTab !== 'vertical' && (
+                    <ScrollView
+                        style={styles.content}
+                        contentContainerStyle={{ paddingBottom: 40, flexGrow: 1 }}
+                        showsVerticalScrollIndicator={true}
+                        nestedScrollEnabled={true}
+                    >
+                        {activeTab === 'details' ? (
+                            <>
+                                <View style={styles.toggleRow}>
+                                    <Text style={styles.sectionTitle}>Artifact</Text>
+                                    <Switch
+                                        value={artifactData.isArtifact}
+                                        onValueChange={(val) => this.updateArtifact({ isArtifact: val })}
+                                        trackColor={{ false: '#333', true: '#FF3050' }}
+                                        ios_backgroundColor="#333"
+                                    />
+                                </View>
+                                <Text style={styles.description}>
+                                    Enable to tag this object as an artifact. Artifacts appear in the feed and grid.
+                                </Text>
 
-                            {artifactData.isArtifact && this.renderArtifactForm()}
-                        </>
-                    ) : (
-                        <>
-                            {/* Active Animations Summary */}
-                            <View style={styles.activeAnimsContainer}>
-                                <Text style={styles.label}>ACTIVE</Text>
-                                <View style={styles.activeAnimChips}>
-                                    {ANIMATION_TYPES.filter(t => animations[t]?.active).map(type => (
+                                {artifactData.isArtifact && this.renderArtifactForm()}
+
+                                {/* Emitter Section */}
+                                <View style={[styles.toggleRow, { marginTop: 24 }]}>
+                                    <Text style={styles.sectionTitle}>Make Emitter</Text>
+                                    <Switch
+                                        value={this.props.currentEmitter?.isEmitter || false}
+                                        onValueChange={(val) => this.props.onUpdateEmitter?.({
+                                            ...(this.props.currentEmitter || {}),
+                                            isEmitter: val
+                                        })}
+                                        trackColor={{ false: '#333', true: '#FF3050' }}
+                                        ios_backgroundColor="#333"
+                                    />
+                                </View>
+                                <Text style={styles.description}>
+                                    Turn this object into a particle emitter that shoots sprites.
+                                </Text>
+
+                                {this.props.currentEmitter?.isEmitter && (
+                                    <>
+                                        {/* Particle Sprite Picker */}
                                         <TouchableOpacity
-                                            key={type}
-                                            style={styles.activeChip}
-                                            onPress={() => this.selectAnimation(type)}
-                                        >
-                                            <Text style={styles.activeChipText}>{type.toUpperCase()}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                    {ANIMATION_TYPES.filter(t => animations[t]?.active).length === 0 && (
-                                        <Text style={styles.noAnimsText}>None</Text>
-                                    )}
-                                </View>
-                            </View>
-
-                            {/* Animation Selector Dropdown */}
-                            <TouchableOpacity
-                                style={styles.animSelector}
-                                onPress={() => {
-                                    if (Platform.OS === 'ios') {
-                                        ActionSheetIOS.showActionSheetWithOptions(
-                                            {
-                                                options: [...ANIMATION_TYPES.map(t => `${t.toUpperCase()}${animations[t]?.active ? ' ✓' : ''}`), 'Cancel'],
-                                                cancelButtonIndex: ANIMATION_TYPES.length,
-                                                title: 'Select Animation',
-                                            },
-                                            (buttonIndex) => {
-                                                if (buttonIndex < ANIMATION_TYPES.length) {
-                                                    this.selectAnimation(ANIMATION_TYPES[buttonIndex]);
+                                            style={styles.spritePickerBtn}
+                                            onPress={async () => {
+                                                const result = await ImagePicker.launchImageLibraryAsync({
+                                                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                                    allowsEditing: true,
+                                                    aspect: [1, 1],
+                                                    quality: 0.8,
+                                                });
+                                                if (!result.canceled && result.assets?.[0]) {
+                                                    this.props.onUpdateEmitter?.({
+                                                        ...(this.props.currentEmitter || {}),
+                                                        spriteUri: result.assets[0].uri,
+                                                    });
                                                 }
-                                            }
-                                        );
-                                    }
-                                }}
-                            >
-                                <Text style={styles.animSelectorLabel}>Edit Animation</Text>
-                                <View style={styles.animSelectorValue}>
-                                    <Text style={styles.animSelectorText}>
-                                        {this.state.selectedAnimation ? this.state.selectedAnimation.toUpperCase() : 'Select...'}
-                                    </Text>
-                                    <Ionicons name="chevron-down" size={18} color="rgba(255,255,255,0.6)" />
-                                </View>
-                            </TouchableOpacity>
+                                            }}
+                                        >
+                                            {this.props.currentEmitter?.spriteUri ? (
+                                                <View style={styles.spritePreviewContainer}>
+                                                    <View style={styles.spritePreview}>
+                                                        <Text style={styles.spritePreviewText}>✓</Text>
+                                                    </View>
+                                                    <Text style={styles.spritePickerText}>Change Sprite</Text>
+                                                </View>
+                                            ) : (
+                                                <>
+                                                    <Ionicons name="image-outline" size={24} color="white" />
+                                                    <Text style={styles.spritePickerText}>Select Particle Sprite</Text>
+                                                </>
+                                            )}
+                                        </TouchableOpacity>
 
-                            {/* Selected Animation Properties */}
-                            {this.state.selectedAnimation && (() => {
-                                const type = this.state.selectedAnimation;
-                                const anim = animations[type] || { active: false, intensity: 1.0, distance: 1.0, axis: { x: false, y: true, z: false } };
-                                return (
-                                    <View style={styles.animPropsCard}>
-                                        {/* Enable/Disable Toggle */}
-                                        <View style={styles.animToggleRow}>
-                                            <Text style={styles.animPropsTitle}>{type.toUpperCase()}</Text>
+                                        {/* Is Visible Toggle */}
+                                        <View style={[styles.toggleRow, { marginTop: 16 }]}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                <Ionicons name="eye-outline" size={18} color="white" style={{ marginRight: 8 }} />
+                                                <Text style={styles.toggleLabel}>Object Visible</Text>
+                                            </View>
                                             <Switch
-                                                value={anim.active}
-                                                onValueChange={() => this.toggleAnimation(type)}
+                                                value={this.props.currentEmitter?.objectVisible !== false}
+                                                onValueChange={(val) => this.props.onUpdateEmitter?.({
+                                                    ...(this.props.currentEmitter || {}),
+                                                    objectVisible: val,
+                                                })}
                                                 trackColor={{ false: '#333', true: '#FF3050' }}
                                                 ios_backgroundColor="#333"
                                             />
                                         </View>
+                                        <Text style={[styles.description, { marginTop: 4 }]}>
+                                            Hide the object to show only particles.
+                                        </Text>
+                                    </>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                {/* Active Animations Summary */}
+                                <View style={styles.activeAnimsContainer}>
+                                    <Text style={styles.label}>ACTIVE</Text>
+                                    <View style={styles.activeAnimChips}>
+                                        {ANIMATION_TYPES.filter(t => animations[t]?.active).map(type => (
+                                            <TouchableOpacity
+                                                key={type}
+                                                style={styles.activeChip}
+                                                onPress={() => this.selectAnimation(type)}
+                                            >
+                                                <Text style={styles.activeChipText}>{type.toUpperCase()}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                        {ANIMATION_TYPES.filter(t => animations[t]?.active).length === 0 && (
+                                            <Text style={styles.noAnimsText}>None</Text>
+                                        )}
+                                    </View>
+                                </View>
 
-                                        {anim.active && (
-                                            <>
-                                                {/* Intensity */}
-                                                <View style={styles.propRow}>
-                                                    <Text style={styles.propLabel}>Intensity</Text>
-                                                    <View style={styles.pillContainer}>
-                                                        {[0.5, 1.0, 2.0].map((val) => (
-                                                            <TouchableOpacity
-                                                                key={val}
-                                                                style={[styles.pill, anim.intensity === val && styles.pillActive]}
-                                                                onPress={() => this.updateIntensity(type, val)}
-                                                            >
-                                                                <Text style={[styles.pillText, anim.intensity === val && styles.pillTextActive]}>
-                                                                    {val}x
-                                                                </Text>
-                                                            </TouchableOpacity>
-                                                        ))}
-                                                    </View>
-                                                </View>
+                                {/* Animation Selector Dropdown */}
+                                <TouchableOpacity
+                                    style={styles.animSelector}
+                                    onPress={() => {
+                                        if (Platform.OS === 'ios') {
+                                            ActionSheetIOS.showActionSheetWithOptions(
+                                                {
+                                                    options: [...ANIMATION_TYPES.map(t => `${t.toUpperCase()}${animations[t]?.active ? ' ✓' : ''}`), 'Cancel'],
+                                                    cancelButtonIndex: ANIMATION_TYPES.length,
+                                                    title: 'Select Animation',
+                                                },
+                                                (buttonIndex) => {
+                                                    if (buttonIndex < ANIMATION_TYPES.length) {
+                                                        this.selectAnimation(ANIMATION_TYPES[buttonIndex]);
+                                                    }
+                                                }
+                                            );
+                                        }
+                                    }}
+                                >
+                                    <Text style={styles.animSelectorLabel}>Edit Animation</Text>
+                                    <View style={styles.animSelectorValue}>
+                                        <Text style={styles.animSelectorText}>
+                                            {this.state.selectedAnimation ? this.state.selectedAnimation.toUpperCase() : 'Select...'}
+                                        </Text>
+                                        <Ionicons name="chevron-down" size={18} color="rgba(255,255,255,0.6)" />
+                                    </View>
+                                </TouchableOpacity>
 
-                                                {/* Axis Selector for Rotation */}
-                                                {type === 'rotate' && this.renderAxisSelector(type, anim.axis)}
+                                {/* Selected Animation Properties */}
+                                {this.state.selectedAnimation && (() => {
+                                    const type = this.state.selectedAnimation;
+                                    const anim = animations[type] || { active: false, intensity: 1.0, distance: 1.0, axis: { x: false, y: true, z: false } };
+                                    return (
+                                        <View style={styles.animPropsCard}>
+                                            {/* Enable/Disable Toggle */}
+                                            <View style={styles.animToggleRow}>
+                                                <Text style={styles.animPropsTitle}>{type.toUpperCase()}</Text>
+                                                <Switch
+                                                    value={anim.active}
+                                                    onValueChange={() => this.toggleAnimation(type)}
+                                                    trackColor={{ false: '#333', true: '#FF3050' }}
+                                                    ios_backgroundColor="#333"
+                                                />
+                                            </View>
 
-                                                {/* Distance for Random */}
-                                                {type === 'random' && (
+                                            {anim.active && (
+                                                <>
+                                                    {/* Intensity */}
                                                     <View style={styles.propRow}>
-                                                        <Text style={styles.propLabel}>Distance</Text>
+                                                        <Text style={styles.propLabel}>Intensity</Text>
                                                         <View style={styles.pillContainer}>
-                                                            {[0.5, 1.0, 2.0, 3.0].map((val) => (
+                                                            {[0.5, 1.0, 2.0].map((val) => (
                                                                 <TouchableOpacity
                                                                     key={val}
-                                                                    style={[styles.pill, (anim.distance || 1.0) === val && styles.pillActive]}
-                                                                    onPress={() => this.updateDistance(type, val)}
+                                                                    style={[styles.pill, anim.intensity === val && styles.pillActive]}
+                                                                    onPress={() => this.updateIntensity(type, val)}
                                                                 >
-                                                                    <Text style={[styles.pillText, (anim.distance || 1.0) === val && styles.pillTextActive]}>
+                                                                    <Text style={[styles.pillText, anim.intensity === val && styles.pillTextActive]}>
                                                                         {val}x
                                                                     </Text>
                                                                 </TouchableOpacity>
                                                             ))}
                                                         </View>
                                                     </View>
-                                                )}
-                                            </>
-                                        )}
-                                    </View>
-                                );
-                            })()}
-                        </>
-                    )}
-                </ScrollView>
+
+                                                    {/* Axis Selector for Rotation */}
+                                                    {type === 'rotate' && this.renderAxisSelector(type, anim.axis)}
+
+                                                    {/* Distance for Random */}
+                                                    {type === 'random' && (
+                                                        <View style={styles.propRow}>
+                                                            <Text style={styles.propLabel}>Distance</Text>
+                                                            <View style={styles.pillContainer}>
+                                                                {[0.5, 1.0, 2.0, 3.0].map((val) => (
+                                                                    <TouchableOpacity
+                                                                        key={val}
+                                                                        style={[styles.pill, (anim.distance || 1.0) === val && styles.pillActive]}
+                                                                        onPress={() => this.updateDistance(type, val)}
+                                                                    >
+                                                                        <Text style={[styles.pillText, (anim.distance || 1.0) === val && styles.pillTextActive]}>
+                                                                            {val}x
+                                                                        </Text>
+                                                                    </TouchableOpacity>
+                                                                ))}
+                                                            </View>
+                                                        </View>
+                                                    )}
+                                                </>
+                                            )}
+                                        </View>
+                                    );
+                                })()}
+                            </>
+                        )}
+                    </ScrollView>
+                )}
+
+                {/* Path tab - no scroll to avoid drawing interference */}
+                {activeTab === 'path' && (
+                    <View style={styles.pathContent}>
+                        <PathAnimationTab
+                            objectPosition={this.props.currentPosition}
+                            currentPath={this.props.currentPathAnimation}
+                            onApplyPath={this.props.onUpdatePathAnimation}
+                        />
+                    </View>
+                )}
+
+                {/* Vertical tab - height over time curve (no scroll to avoid drawing interference) */}
+                {activeTab === 'vertical' && (
+                    <View style={styles.pathContent}>
+                        <VerticalAnimationTab
+                            duration={this.props.currentPathAnimation?.duration || 5}
+                            currentVertical={this.props.currentVerticalAnimation}
+                            onApplyVertical={this.props.onUpdateVerticalAnimation}
+                        />
+                    </View>
+                )}
             </Animated.View>
         );
     }
@@ -529,7 +649,7 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        height: PANEL_HEIGHT,
+        // height is set dynamically in render based on activeTab
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         overflow: 'hidden',
@@ -539,6 +659,11 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 10,
         zIndex: 1000,
+    },
+    pathContent: {
+        flex: 1,
+        paddingHorizontal: 20,
+        paddingBottom: 20,
     },
 
     handleBarContainer: { alignItems: 'center', paddingTop: 12, paddingBottom: 4 },
@@ -775,6 +900,47 @@ const styles = StyleSheet.create({
     propLabel: {
         color: 'rgba(255,255,255,0.5)',
         fontSize: 12,
+    },
+    spritePickerBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderRadius: 12,
+        paddingVertical: 14,
+        marginTop: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        borderStyle: 'dashed',
+    },
+    spritePickerText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    spritePreviewContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    spritePreview: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        backgroundColor: '#22C55E',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    spritePreviewText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    toggleLabel: {
+        color: 'white',
+        fontSize: 15,
+        fontWeight: '500',
     },
 });
 

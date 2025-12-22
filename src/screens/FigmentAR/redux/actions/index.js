@@ -207,3 +207,39 @@ export function updateObjectAnimation(uuid, animationType, animationData) {
     animationData: animationData,
   };
 }
+
+// action to update path animation state
+export function updatePathAnimation(uuid, pathData) {
+  return {
+    type: 'UPDATE_PATH_ANIMATION',
+    uuid: uuid,
+    pathData: pathData,
+  };
+}
+
+// action to update vertical animation state (height over time)
+export function updateVerticalAnimation(uuid, verticalData) {
+  return {
+    type: 'UPDATE_VERTICAL_ANIMATION',
+    uuid: uuid,
+    verticalData: verticalData,
+  };
+}
+
+// action to update emitter state (particle system)
+export function updateEmitter(uuid, emitterData) {
+  return {
+    type: 'UPDATE_EMITTER',
+    uuid: uuid,
+    emitterData: emitterData,
+  };
+}
+
+// action to set object parent (hierarchy/grouping)
+export function setObjectParent(uuid, parentId) {
+  return {
+    type: 'SET_OBJECT_PARENT',
+    uuid: uuid,
+    parentId: parentId, // null to unparent
+  };
+}
