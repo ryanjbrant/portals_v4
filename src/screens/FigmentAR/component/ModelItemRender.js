@@ -34,6 +34,10 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 var createReactClass = require('create-react-class');
 
+// Global store for attractor world positions (so followers can read animated positions)
+// Key: UUID, Value: { x, y, z } current animated world position
+const attractorWorldPositions = {};
+
 // Bright modern color palette (HSL values for vibrant colors)
 const BRIGHT_COLORS = [
   '#FF3366', // Hot Pink
@@ -310,6 +314,38 @@ var ModelItemRender = createReactClass({
         });
       }
     }
+
+    // VOICE COMMAND: Sync position/scale changes from Redux (e.g., ARRANGE_FORMATION, BATCH_TRANSFORM)
+    const prevPosition = prevProps.modelIDProps.position;
+    const newPosition = this.props.modelIDProps.position;
+    const prevScale = prevProps.modelIDProps.scale;
+    const newScale = this.props.modelIDProps.scale;
+
+    const positionChanged = JSON.stringify(prevPosition) !== JSON.stringify(newPosition);
+    const scaleChanged = JSON.stringify(prevScale) !== JSON.stringify(newScale);
+
+    if ((positionChanged || scaleChanged) && !isNowFromDraft) {
+      console.log('[ModelItemRender] Redux position/scale changed for:', this.props.modelIDProps.uuid, {
+        prevPosition,
+        newPosition,
+        prevScale,
+        newScale,
+      });
+
+      // Update React state
+      this.setState({
+        position: newPosition || this.state.position,
+        scale: newScale || this.state.scale,
+      });
+
+      // Force ViroReact native component to update
+      if (this.arNodeRef) {
+        const nativeUpdate = {};
+        if (positionChanged && newPosition) nativeUpdate.position = newPosition;
+        if (scaleChanged && newScale) nativeUpdate.scale = newScale;
+        this.arNodeRef.setNativeProps(nativeUpdate);
+      }
+    }
   },
 
   componentWillUnmount() {
@@ -369,6 +405,11 @@ var ModelItemRender = createReactClass({
         return 'parent_' + animType; // Indicate it's a parent animation
       }
     }
+    // Check if this object is following an attractor (needs animation tick)
+    if (objectAnims?.attractor?.useAttractor && objectAnims?.attractor?.attractorUUID) {
+      return 'attractor_follower';
+    }
+    // Note: Physics is handled natively by ViroReact's physicsBody prop, no JS animation loop needed
     return null;
   },
 
@@ -422,11 +463,14 @@ var ModelItemRender = createReactClass({
           scaleMultiplier[2] *= parentPulseFactor;
           break;
         case 'rotate':
+          // Use elapsed time for continuous rotation without snapping
           const parentRotSpeed = intensity;
+          const parentDegreesPerMs = (360 * parentRotSpeed) / 2000;
+          const parentRotAngle = (elapsed * parentDegreesPerMs) % 360;
           const parentRotAxes = parentAnimData.axes || { x: false, y: true, z: false };
-          if (parentRotAxes.x) rotationOffset[0] += cycleProgress * 360 * parentRotSpeed;
-          if (parentRotAxes.y) rotationOffset[1] += cycleProgress * 360 * parentRotSpeed;
-          if (parentRotAxes.z) rotationOffset[2] += cycleProgress * 360 * parentRotSpeed;
+          if (parentRotAxes.x) rotationOffset[0] += parentRotAngle;
+          if (parentRotAxes.y) rotationOffset[1] += parentRotAngle;
+          if (parentRotAxes.z) rotationOffset[2] += parentRotAngle;
           break;
         case 'wiggle':
           const parentWiggleAmt = 8 * intensity;
@@ -498,9 +542,11 @@ var ModelItemRender = createReactClass({
           break;
 
         case 'rotate':
-          // Continuous rotation on selected axes (additive)
-          const rotateSpeed = intensity; // 1.0 = 1 full rotation per cycle
-          const rotateAngle = cycleProgress * 360 * rotateSpeed;
+          // Continuous rotation on selected axes - use elapsed time, not cycleProgress
+          // to avoid snapping when cycle resets from 360° back to 0°
+          const rotateSpeed = intensity; // 1.0 = 1 full rotation per 2 seconds
+          const degreesPerMs = (360 * rotateSpeed) / 2000; // Based on 2000ms cycle
+          const rotateAngle = (elapsed * degreesPerMs) % 360; // Use modulo to keep numbers reasonable
           const axis = animData.axis || { x: false, y: true, z: false }; // Default to Y-axis
           if (axis.x) rotationOffset[0] += rotateAngle;
           if (axis.y) rotationOffset[1] += rotateAngle;
@@ -649,7 +695,7 @@ var ModelItemRender = createReactClass({
 
     // Apply combined transforms via setNativeProps
 
-    const newPosition = [
+    let newPosition = [
       basePosition[0] + positionOffset[0],
       basePosition[1] + positionOffset[1],
       basePosition[2] + positionOffset[2],
@@ -664,6 +710,59 @@ var ModelItemRender = createReactClass({
       baseScale[1] * scaleMultiplier[1],
       baseScale[2] * scaleMultiplier[2],
     ];
+
+    // ========== ATTRACTOR/FOLLOWER LOGIC ==========
+    const attractorSettings = objectAnims?.attractor;
+
+    // If THIS object is an attractor, broadcast its current animated position
+    if (attractorSettings?.isAttractor) {
+      const uuid = this.props.modelIDProps.uuid;
+      attractorWorldPositions[uuid] = {
+        x: newPosition[0],
+        y: newPosition[1],
+        z: newPosition[2],
+      };
+    }
+
+    // If this object is a follower (useAttractor=true), chase the attractor's ANIMATED position
+    if (attractorSettings?.useAttractor && attractorSettings?.attractorUUID) {
+      // Get attractor's animated world position from global store (not Redux base position)
+      const attractorAnimatedPos = attractorWorldPositions[attractorSettings.attractorUUID];
+      if (attractorAnimatedPos) {
+        // Calculate chase speed (0.5x to 2x, default 1x) - higher = more aggressive chasing
+        const followSpeed = (attractorSettings.followSpeed || 1.0) * 0.6; // Very aggressive chasing
+
+        // Add slight random offset for swarm effect (based on uuid hash)
+        const uuidHash = (this.props.modelIDProps.uuid || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+        const offsetX = Math.sin(uuidHash * 0.1 + elapsed * 0.001) * 0.3;
+        const offsetY = Math.sin(uuidHash * 0.15 + elapsed * 0.0008) * 0.15; // Add Y variation
+        const offsetZ = Math.cos(uuidHash * 0.2 + elapsed * 0.001) * 0.3;
+
+        // Target position (attractor's animated position + offset)
+        const targetPos = [
+          attractorAnimatedPos.x + offsetX,
+          attractorAnimatedPos.y + offsetY,
+          attractorAnimatedPos.z + offsetZ,
+        ];
+
+        // Lerp toward attractor (smooth chasing)
+        newPosition = [
+          newPosition[0] + (targetPos[0] - newPosition[0]) * followSpeed,
+          newPosition[1] + (targetPos[1] - newPosition[1]) * followSpeed,
+          newPosition[2] + (targetPos[2] - newPosition[2]) * followSpeed,
+        ];
+
+        // Store the chased position for next frame (persistence)
+        this._lastChasedPosition = newPosition;
+      }
+    } else if (this._lastChasedPosition) {
+      // Continue from last chased position if we were following before
+      delete this._lastChasedPosition;
+    }
+
+    // ========== PHYSICS ==========
+    // Note: Physics is now handled natively by ViroReact's physicsBody prop on Viro3DObject
+    // The native physics engine handles gravity, collision detection, and mesh-based collision shapes
 
     this.arNodeRef.setNativeProps({
       position: newPosition,
@@ -949,20 +1048,40 @@ var ModelItemRender = createReactClass({
               return null;
             }
 
-            return (
-              <Viro3DObject
-                source={modelSource}
-                type={modelItem.type}
-                resources={modelItem.resources || []}
-                materials={isCustom ? ["pbr"] : (modelItem.type === 'GLB' ? [this.state.materialName] : modelItem.materials)}
-                scale={this.state.scale}
-                animation={animationConfig}
-                onClickState={this._onClickState(this.props.modelIDProps.uuid)}
-                onError={this._onError(this.props.modelIDProps.uuid)}
-                onLoadStart={this._onObjectLoadStart(this.props.modelIDProps.uuid)}
-                onLoadEnd={this._onObjectLoadEnd(this.props.modelIDProps.uuid)}
-                lightReceivingBitMask={this.props.bitMask | 1} />
-            );
+            return (() => {
+              // Build physics body config if dynamic
+              const physicsData = this.props.physicsData || {};
+              const physicsBody = physicsData.isDynamic ? {
+                type: 'Dynamic',
+                mass: 1,
+                useGravity: (physicsData.gravity ?? 1) !== 0,
+                // Apply upward force if negative gravity
+                force: (physicsData.gravity ?? 1) < 0 ? [0, Math.abs(physicsData.gravity) * 15, 0] : undefined,
+                friction: 0.5,
+                restitution: 0.5, // Bounce factor
+              } : null;
+
+              return (
+                <Viro3DObject
+                  source={modelSource}
+                  type={modelItem.type}
+                  resources={modelItem.resources || []}
+                  materials={isCustom ? ["pbr"] : (modelItem.type === 'GLB' ? [this.state.materialName] : modelItem.materials)}
+                  scale={this.state.scale}
+                  animation={animationConfig}
+                  onClickState={this._onClickState(this.props.modelIDProps.uuid)}
+                  onError={this._onError(this.props.modelIDProps.uuid)}
+                  onLoadStart={this._onObjectLoadStart(this.props.modelIDProps.uuid)}
+                  onLoadEnd={this._onObjectLoadEnd(this.props.modelIDProps.uuid)}
+                  lightReceivingBitMask={this.props.bitMask | 1}
+                  physicsBody={physicsBody}
+                  viroTag={this.props.modelIDProps.uuid}
+                  onCollision={physicsData.isDynamic ? (tag, point, normal) => {
+                    console.log('[Physics] Collision:', tag, point, normal);
+                  } : undefined}
+                />
+              );
+            })()
           })()}
 
 

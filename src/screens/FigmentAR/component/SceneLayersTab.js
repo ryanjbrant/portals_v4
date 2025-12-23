@@ -2,6 +2,7 @@
  * SceneLayersTab.js
  * Hierarchical list of scene objects with drag-to-parent functionality
  * Uses long-press to initiate drag to avoid scroll conflicts
+ * Swipe left to delete objects
  */
 
 import React, { useState, useRef, useCallback } from 'react';
@@ -12,8 +13,10 @@ import {
     TouchableOpacity,
     Dimensions,
     Alert,
+    Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ROW_HEIGHT = 52;
@@ -23,6 +26,7 @@ const SceneLayersTab = ({
     modelItems = {},
     onSelectObject,
     onSetParent,
+    onDeleteObject, // New: callback to delete object
 }) => {
     const [selectedForMove, setSelectedForMove] = useState(null);
 
@@ -98,6 +102,31 @@ const SceneLayersTab = ({
         onSetParent?.(uuid, null);
     }, [onSetParent]);
 
+    // Delete object from scene
+    const handleDelete = useCallback((uuid, name) => {
+        onDeleteObject?.(uuid);
+    }, [onDeleteObject]);
+
+    // Render delete action for swipe
+    const renderRightActions = (progress, dragX, uuid, name) => {
+        const trans = dragX.interpolate({
+            inputRange: [-80, 0],
+            outputRange: [0, 80],
+            extrapolate: 'clamp',
+        });
+
+        return (
+            <Animated.View style={[styles.deleteAction, { transform: [{ translateX: trans }] }]}>
+                <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDelete(uuid, name)}
+                >
+                    <Ionicons name="trash" size={20} color="white" />
+                </TouchableOpacity>
+            </Animated.View>
+        );
+    };
+
     // Render empty state
     if (items.length === 0) {
         return (
@@ -110,7 +139,7 @@ const SceneLayersTab = ({
     }
 
     return (
-        <View style={styles.container}>
+        <GestureHandlerRootView style={styles.container}>
             {/* Instructions */}
             {selectedForMove ? (
                 <View style={styles.moveMode}>
@@ -121,7 +150,7 @@ const SceneLayersTab = ({
                     </TouchableOpacity>
                 </View>
             ) : (
-                <Text style={styles.hint}>Long press to move • Tap to select</Text>
+                <Text style={styles.hint}>Long press to move • Swipe to delete</Text>
             )}
 
             {/* Object List */}
@@ -131,59 +160,65 @@ const SceneLayersTab = ({
                     const hasParent = !!item.parentId;
 
                     return (
-                        <TouchableOpacity
+                        <Swipeable
                             key={item.uuid}
-                            style={[
-                                styles.row,
-                                { marginLeft: item.depth * INDENT_SIZE },
-                                isMoving && styles.rowMoving,
-                                selectedForMove && !isMoving && styles.rowDropTarget,
-                            ]}
-                            onPress={() => handleTap(item)}
-                            onLongPress={() => handleLongPress(item.uuid)}
-                            delayLongPress={300}
-                            activeOpacity={0.7}
+                            renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item.uuid, item.name)}
+                            friction={2}
+                            rightThreshold={40}
                         >
-                            {/* Indent indicator */}
-                            {item.depth > 0 && (
-                                <View style={styles.indentLine}>
-                                    <Text style={styles.indentDash}>—</Text>
+                            <TouchableOpacity
+                                style={[
+                                    styles.row,
+                                    { marginLeft: item.depth * INDENT_SIZE },
+                                    isMoving && styles.rowMoving,
+                                    selectedForMove && !isMoving && styles.rowDropTarget,
+                                ]}
+                                onPress={() => handleTap(item)}
+                                onLongPress={() => handleLongPress(item.uuid)}
+                                delayLongPress={300}
+                                activeOpacity={0.7}
+                            >
+                                {/* Indent indicator */}
+                                {item.depth > 0 && (
+                                    <View style={styles.indentLine}>
+                                        <Text style={styles.indentDash}>—</Text>
+                                    </View>
+                                )}
+
+                                {/* Icon */}
+                                <View style={[
+                                    styles.iconContainer,
+                                    isMoving && styles.iconContainerMoving,
+                                    selectedForMove && !isMoving && styles.iconContainerTarget
+                                ]}>
+                                    <Ionicons name={getIcon(item)} size={18} color={isMoving ? 'black' : 'white'} />
                                 </View>
-                            )}
 
-                            {/* Icon */}
-                            <View style={[
-                                styles.iconContainer,
-                                isMoving && styles.iconContainerMoving,
-                                selectedForMove && !isMoving && styles.iconContainerTarget
-                            ]}>
-                                <Ionicons name={getIcon(item)} size={18} color={isMoving ? 'black' : 'white'} />
-                            </View>
-
-                            {/* Name */}
-                            <View style={styles.nameContainer}>
-                                <Text style={[styles.name, isMoving && styles.nameMoving]} numberOfLines={1}>
-                                    {item.name || 'Untitled'}
-                                </Text>
-                            </View>
-
-                            {/* Unparent button (if has parent) */}
-                            {hasParent && !selectedForMove && (
-                                <TouchableOpacity
-                                    style={styles.unparentBtn}
-                                    onPress={() => handleUnparent(item.uuid)}
-                                >
-                                    <Ionicons name="return-up-back" size={18} color="rgba(255,255,255,0.5)" />
-                                </TouchableOpacity>
-                            )}
-
-                            {/* Move indicator */}
-                            {isMoving && (
-                                <View style={styles.movingIndicator}>
-                                    <Ionicons name="move" size={18} color="#FFD60A" />
+                                {/* Name */}
+                                <View style={styles.nameContainer}>
+                                    <Text style={[styles.name, isMoving && styles.nameMoving]} numberOfLines={1}>
+                                        {item.name || 'Untitled'}
+                                    </Text>
                                 </View>
-                            )}
-                        </TouchableOpacity>
+
+                                {/* Unparent button (if has parent) */}
+                                {hasParent && !selectedForMove && (
+                                    <TouchableOpacity
+                                        style={styles.unparentBtn}
+                                        onPress={() => handleUnparent(item.uuid)}
+                                    >
+                                        <Ionicons name="return-up-back" size={18} color="rgba(255,255,255,0.5)" />
+                                    </TouchableOpacity>
+                                )}
+
+                                {/* Move indicator */}
+                                {isMoving && (
+                                    <View style={styles.movingIndicator}>
+                                        <Ionicons name="move" size={18} color="#FFD60A" />
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                        </Swipeable>
                     );
                 })}
             </View>
@@ -201,7 +236,7 @@ const SceneLayersTab = ({
                     <Text style={styles.unparentBarText}>Make Top Level (No Parent)</Text>
                 </TouchableOpacity>
             )}
-        </View>
+        </GestureHandlerRootView>
     );
 };
 
@@ -333,6 +368,21 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.4)',
         fontSize: 13,
         marginTop: 4,
+    },
+    deleteAction: {
+        backgroundColor: '#FF3B30',
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: 70,
+        height: ROW_HEIGHT,
+        marginBottom: 6,
+        borderRadius: 12,
+    },
+    deleteButton: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });
 

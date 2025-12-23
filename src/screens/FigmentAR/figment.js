@@ -204,13 +204,19 @@ export class figment extends Component {
           shadowOpacity={0.35}
         />
 
-        {/* Global Shadow Receiver Plane (Invisible, catches shadows) */}
+        {/* Global Shadow Receiver Plane (Invisible, catches shadows AND physics collisions) */}
         <ViroQuad
-          position={[0, -0.75, 0]}
+          position={[0, -0.01, 0]}
           rotation={[-90, 0, 0]}
           width={100}
           height={100}
           arShadowReceiver={true}
+          physicsBody={{
+            type: 'Static',
+            friction: 0.8,
+            restitution: 0.3,
+          }}
+          viroTag="floor"
         />
 
         {models}
@@ -236,6 +242,7 @@ export class figment extends Component {
     let objBitMask = startingBitMask;
     const objectAnimations = root.props.objectAnimations || {};
     const objectEmitters = root.props.objectEmitters || {};
+    const objectPhysics = root.props.objectPhysics || {};
 
     // Build hierarchy: separate top-level items from children
     const topLevelItems = [];
@@ -262,6 +269,7 @@ export class figment extends Component {
       const uuid = item.uuid;
       const modelAnimations = objectAnimations[uuid] || {};
       const modelEmitter = objectEmitters[uuid] || {};
+      const modelPhysics = objectPhysics[uuid] || {};
       const children = childrenByParent[uuid] || [];
 
       // Render this item's children recursively
@@ -280,11 +288,13 @@ export class figment extends Component {
           onClickStateCallback={root._onModelsClickStateCallback}
           onTransformUpdate={root.props.arSceneNavigator?.viroAppProps?.onTransformUpdate}
           bitMask={Math.pow(2, bitMask)}
-          isHidden={item.hidden === true}
+          isHidden={item.hidden === true || modelAnimations?.attractor?.attractorVisible === false}
           objectAnimations={modelAnimations}
           parentAnimations={{}} // No longer needed - using true hierarchy
           emitterData={modelEmitter}
+          physicsData={modelPhysics}
           childrenToRender={renderedChildren}
+          allModelItems={this.props.modelItems}
         />
       );
     };

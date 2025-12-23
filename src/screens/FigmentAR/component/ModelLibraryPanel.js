@@ -46,7 +46,7 @@ class ModelLibraryPanel extends Component {
         super(props);
         this.translateY = new Animated.Value(PANEL_HEIGHT);
         this.state = {
-            activeTab: 'objects', // 'objects', 'video', 'images', 'audio'
+            activeTab: 'layers', // 'layers', 'objects', 'video', 'images', 'audio'
             searchQuery: '',
             personalModels: [],
             videoItems: [],
@@ -799,6 +799,19 @@ class ModelLibraryPanel extends Component {
                 {/* Tabs - 4 media types */}
                 <View style={styles.tabContainer}>
                     <TouchableOpacity
+                        style={[styles.tab, activeTab === 'layers' && styles.tabActive]}
+                        onPress={() => this.setState({ activeTab: 'layers' })}
+                    >
+                        <Ionicons
+                            name="layers"
+                            size={16}
+                            color={activeTab === 'layers' ? 'black' : 'rgba(255,255,255,0.5)'}
+                        />
+                        <Text style={[styles.tabText, activeTab === 'layers' && styles.tabTextActive]}>
+                            Layers
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                         style={[styles.tab, activeTab === 'objects' && styles.tabActive]}
                         onPress={() => this.setState({ activeTab: 'objects' })}
                     >
@@ -850,19 +863,6 @@ class ModelLibraryPanel extends Component {
                             Audio
                         </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.tab, activeTab === 'layers' && styles.tabActive]}
-                        onPress={() => this.setState({ activeTab: 'layers' })}
-                    >
-                        <Ionicons
-                            name="layers"
-                            size={16}
-                            color={activeTab === 'layers' ? 'black' : 'rgba(255,255,255,0.5)'}
-                        />
-                        <Text style={[styles.tabText, activeTab === 'layers' && styles.tabTextActive]}>
-                            Layers
-                        </Text>
-                    </TouchableOpacity>
                 </View>
 
                 {/* Search Bar - Temporarily disabled due to keyboard/AR incompatibility */}
@@ -899,6 +899,7 @@ class ModelLibraryPanel extends Component {
                             modelItems={this.props.modelItems}
                             onSelectObject={this.props.onSelectObject}
                             onSetParent={this.props.onSetParent}
+                            onDeleteObject={this.props.onDeleteObject}
                         />
                     )}
                 </ScrollView>

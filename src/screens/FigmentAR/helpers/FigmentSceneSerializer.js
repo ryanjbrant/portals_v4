@@ -37,6 +37,7 @@ export function serializeFigmentScene(arobjects, ui) {
                 if (item.artifact) obj.artifact = item.artifact;
                 if (item.materials) obj.materials = item.materials;
                 if (item.physics) obj.physics = item.physics;
+                if (item.parentId) obj.parentId = item.parentId; // Parent-child hierarchy
 
                 objects.push(obj);
             }

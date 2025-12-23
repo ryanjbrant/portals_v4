@@ -18,8 +18,13 @@ import Svg, { Path, Circle, Line, G } from 'react-native-svg';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_SIZE = SCREEN_WIDTH - 40; // Padding on sides
-const GRID_METERS = 10; // 10m x 10m grid
-const METERS_TO_PIXELS = GRID_SIZE / GRID_METERS;
+const DEFAULT_GRID_METERS = 5; // 5m x 5m grid default (was 10)
+
+const GRID_SCALE_OPTIONS = [
+    { value: 1, label: '1m' },
+    { value: 5, label: '5m' },
+    { value: 10, label: '10m' },
+];
 
 const PLAY_MODES = [
     { key: 'once', label: 'Once', icon: 'play' },
@@ -88,6 +93,16 @@ const PathAnimationTab = ({
     const [interpolation, setInterpolation] = useState(currentPath?.interpolation || 'smooth');
     const [followPath, setFollowPath] = useState(currentPath?.followPath ?? true); // Object faces path direction
     const [isDrawing, setIsDrawing] = useState(false);
+    const [gridMeters, setGridMeters] = useState(DEFAULT_GRID_METERS); // Grid scale (1m, 5m, 10m)
+
+    // Dynamic meters-to-pixels conversion based on gridMeters
+    const metersToPixelsRatio = GRID_SIZE / gridMeters;
+
+    // Use a ref to track the current ratio so panResponder always uses latest value
+    const metersToPixelsRatioRef = useRef(metersToPixelsRatio);
+    useEffect(() => {
+        metersToPixelsRatioRef.current = metersToPixelsRatio;
+    }, [metersToPixelsRatio]);
 
     // Reset state when currentPath changes (different object selected)
     useEffect(() => {
@@ -99,18 +114,20 @@ const PathAnimationTab = ({
     }, [currentPath]);
 
     // Convert meters to grid pixels (center is 0,0)
+    // Note: Z is positive upward on screen (negative Z in AR = forward = UP on grid)
     const metersToPixels = useCallback((x, z) => {
         return {
-            px: (GRID_SIZE / 2) + (x * METERS_TO_PIXELS),
-            py: (GRID_SIZE / 2) - (z * METERS_TO_PIXELS), // Z is inverted (negative = forward)
+            px: (GRID_SIZE / 2) + (x * metersToPixelsRatio),
+            py: (GRID_SIZE / 2) + (z * metersToPixelsRatio), // Forward (negative Z) = UP on screen
         };
-    }, []);
+    }, [metersToPixelsRatio]);
 
-    // Convert pixels to meters
+    // Convert pixels to meters - uses ref so panResponder gets latest value
     const pixelsToMeters = useCallback((px, py) => {
+        const ratio = metersToPixelsRatioRef.current;
         return {
-            x: (px - GRID_SIZE / 2) / METERS_TO_PIXELS,
-            z: -(py - GRID_SIZE / 2) / METERS_TO_PIXELS,
+            x: (px - GRID_SIZE / 2) / ratio,
+            z: (py - GRID_SIZE / 2) / ratio, // UP on screen = negative Z (forward)
         };
     }, []);
 
@@ -248,12 +265,12 @@ const PathAnimationTab = ({
     // Render grid lines
     const renderGrid = () => {
         const lines = [];
-        const step = GRID_SIZE / GRID_METERS; // 1 meter per step
+        const step = GRID_SIZE / gridMeters; // Dynamic based on gridMeters
 
         // Vertical lines
-        for (let i = 0; i <= GRID_METERS; i++) {
+        for (let i = 0; i <= gridMeters; i++) {
             const x = i * step;
-            const isCenter = i === GRID_METERS / 2;
+            const isCenter = i === gridMeters / 2;
             lines.push(
                 <Line
                     key={`v${i}`}
@@ -268,9 +285,9 @@ const PathAnimationTab = ({
         }
 
         // Horizontal lines
-        for (let i = 0; i <= GRID_METERS; i++) {
+        for (let i = 0; i <= gridMeters; i++) {
             const y = i * step;
-            const isCenter = i === GRID_METERS / 2;
+            const isCenter = i === gridMeters / 2;
             lines.push(
                 <Line
                     key={`h${i}`}
@@ -342,104 +359,124 @@ const PathAnimationTab = ({
                     />
                 </Svg>
 
-                {/* Grid labels */}
-                <Text style={[styles.gridLabel, styles.gridLabelTop]}>-5m</Text>
-                <Text style={[styles.gridLabel, styles.gridLabelBottom]}>+5m</Text>
-                <Text style={[styles.gridLabel, styles.gridLabelLeft]}>-5m</Text>
-                <Text style={[styles.gridLabel, styles.gridLabelRight]}>+5m</Text>
+                {/* Grid labels - dynamic based on gridMeters */}
+                {/* Top = forward (negative Z), Bottom = behind (positive Z) */}
+                <Text style={[styles.gridLabel, styles.gridLabelTop]}>+{gridMeters / 2}m</Text>
+                <Text style={[styles.gridLabel, styles.gridLabelBottom]}>-{gridMeters / 2}m</Text>
+                <Text style={[styles.gridLabel, styles.gridLabelLeft]}>-{gridMeters / 2}m</Text>
+                <Text style={[styles.gridLabel, styles.gridLabelRight]}>+{gridMeters / 2}m</Text>
+
+                {/* Legend - overlayed on top-right of grid */}
+                <View style={styles.legendOverlay}>
+                    <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#007AFF' }]} />
+                        <Text style={styles.legendText}>You</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#FFCC00' }]} />
+                        <Text style={styles.legendText}>Object</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#00FF00' }]} />
+                        <Text style={styles.legendText}>Start</Text>
+                    </View>
+                </View>
+
+                {/* Grid Scale Selector - bottom-right of grid */}
+                <View style={styles.scaleButtonGroup}>
+                    {GRID_SCALE_OPTIONS.map((opt, index) => (
+                        <TouchableOpacity
+                            key={opt.value}
+                            style={[
+                                styles.scaleButton,
+                                index === 0 && styles.scaleButtonFirst,
+                                index === GRID_SCALE_OPTIONS.length - 1 && styles.scaleButtonLast,
+                                gridMeters === opt.value && styles.scaleButtonActive,
+                            ]}
+                            onPress={() => setGridMeters(opt.value)}
+                        >
+                            <Text style={[styles.scaleButtonText, gridMeters === opt.value && styles.scaleButtonTextActive]}>
+                                {opt.label}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
             </View>
 
-            {/* Legend */}
-            <View style={styles.legend}>
-                <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#007AFF' }]} />
-                    <Text style={styles.legendText}>You</Text>
-                </View>
-                <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#FFCC00' }]} />
-                    <Text style={styles.legendText}>Object</Text>
-                </View>
-                <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#00FF00' }]} />
-                    <Text style={styles.legendText}>Start</Text>
-                </View>
-            </View>
-
-            {/* Play Mode & Path Style - compact row */}
-            <View style={styles.compactRow}>
-                {/* Play Mode Dropdown */}
-                <View style={styles.compactField}>
-                    <Text style={styles.compactLabel}>MODE</Text>
-                    <View style={styles.dropdownContainer}>
+            {/* Settings Card */}
+            <View style={styles.formCard}>
+                {/* Mode Row */}
+                <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Mode</Text>
+                    <View style={styles.pillContainer}>
                         {PLAY_MODES.map((mode) => (
                             <TouchableOpacity
                                 key={mode.key}
-                                style={[styles.dropdownOption, playMode === mode.key && styles.dropdownOptionActive]}
+                                style={[styles.pill, playMode === mode.key && styles.pillActive]}
                                 onPress={() => setPlayMode(mode.key)}
                             >
-                                <Text style={[styles.dropdownText, playMode === mode.key && styles.dropdownTextActive]}>
-                                    {mode.label}
+                                <Text style={[styles.pillText, playMode === mode.key && styles.pillTextActive]}>
+                                    {mode.key === 'pingpong' ? '⇄' : mode.key === 'loop' ? '↻' : '▶'}
                                 </Text>
                             </TouchableOpacity>
                         ))}
                     </View>
                 </View>
 
-                {/* Path Style */}
-                <View style={styles.compactField}>
-                    <Text style={styles.compactLabel}>STYLE</Text>
-                    <View style={styles.dropdownContainer}>
+                <View style={styles.formDivider} />
+
+                {/* Style Row */}
+                <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Style</Text>
+                    <View style={styles.pillContainer}>
                         <TouchableOpacity
-                            style={[styles.dropdownOption, interpolation === 'linear' && styles.dropdownOptionActive]}
+                            style={[styles.pill, interpolation === 'linear' && styles.pillActive]}
                             onPress={() => setInterpolation('linear')}
                         >
-                            <Text style={[styles.dropdownText, interpolation === 'linear' && styles.dropdownTextActive]}>Linear</Text>
+                            <Text style={[styles.pillText, interpolation === 'linear' && styles.pillTextActive]}>Linear</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[styles.dropdownOption, interpolation === 'smooth' && styles.dropdownOptionActive]}
+                            style={[styles.pill, interpolation === 'smooth' && styles.pillActive]}
                             onPress={() => setInterpolation('smooth')}
                         >
-                            <Text style={[styles.dropdownText, interpolation === 'smooth' && styles.dropdownTextActive]}>Smooth</Text>
+                            <Text style={[styles.pillText, interpolation === 'smooth' && styles.pillTextActive]}>Smooth</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
-            </View>
 
-            {/* Follow Path Toggle */}
-            <View style={styles.section}>
-                <Text style={styles.sectionLabel}>ORIENTATION</Text>
-                <TouchableOpacity
-                    style={[styles.toggleRow, { marginTop: 0 }]}
-                    onPress={() => setFollowPath(!followPath)}
-                    activeOpacity={0.7}
-                >
-                    <View style={styles.toggleInfo}>
-                        <Ionicons name="compass" size={18} color="white" style={{ marginRight: 8 }} />
-                        <Text style={styles.toggleLabel}>Follow Path</Text>
+                <View style={styles.formDivider} />
+
+                {/* Duration Row */}
+                <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Duration</Text>
+                    <View style={styles.durationStepper}>
+                        <TouchableOpacity
+                            style={styles.stepperBtn}
+                            onPress={() => setDuration(d => Math.max(2, d - 1))}
+                        >
+                            <Ionicons name="remove" size={16} color="white" />
+                        </TouchableOpacity>
+                        <Text style={styles.stepperValue}>{duration}s</Text>
+                        <TouchableOpacity
+                            style={styles.stepperBtn}
+                            onPress={() => setDuration(d => Math.min(30, d + 1))}
+                        >
+                            <Ionicons name="add" size={16} color="white" />
+                        </TouchableOpacity>
                     </View>
-                    <View style={[styles.toggleTrack, followPath && styles.toggleTrackActive]}>
+                </View>
+
+                <View style={styles.formDivider} />
+
+                {/* Follow Path Row */}
+                <View style={styles.formRow}>
+                    <Text style={styles.formLabel}>Follow Path</Text>
+                    <TouchableOpacity
+                        style={[styles.toggleTrack, followPath && styles.toggleTrackActive]}
+                        onPress={() => setFollowPath(!followPath)}
+                        activeOpacity={0.7}
+                    >
                         <View style={[styles.toggleThumb, followPath && styles.toggleThumbActive]} />
-                    </View>
-                </TouchableOpacity>
-                <Text style={styles.toggleHint}>Object faces direction of travel</Text>
-            </View>
-
-            {/* Duration */}
-            <View style={styles.section}>
-                <Text style={styles.sectionLabel}>DURATION</Text>
-                <View style={styles.durationContainer}>
-                    <TouchableOpacity
-                        style={styles.durationBtn}
-                        onPress={() => setDuration(d => Math.max(2, d - 1))}
-                    >
-                        <Ionicons name="remove" size={20} color="white" />
-                    </TouchableOpacity>
-                    <Text style={styles.durationValue}>{duration}s</Text>
-                    <TouchableOpacity
-                        style={styles.durationBtn}
-                        onPress={() => setDuration(d => Math.min(30, d + 1))}
-                    >
-                        <Ionicons name="add" size={20} color="white" />
                     </TouchableOpacity>
                 </View>
             </View>
@@ -484,11 +521,15 @@ const styles = StyleSheet.create({
     gridLabelBottom: { bottom: 4, alignSelf: 'center', left: GRID_SIZE / 2 - 10 },
     gridLabelLeft: { left: 4, top: GRID_SIZE / 2 - 6 },
     gridLabelRight: { right: 4, top: GRID_SIZE / 2 - 6 },
-    legend: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        gap: 16,
-        marginTop: 12,
+    legendOverlay: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        borderRadius: 8,
+        padding: 6,
+        paddingHorizontal: 8,
+        gap: 4,
     },
     legendItem: {
         flexDirection: 'row',
@@ -543,6 +584,12 @@ const styles = StyleSheet.create({
         gap: 12,
         marginTop: 12,
     },
+    compactFieldMode: {
+        flex: 3, // MODE gets more space for 3 buttons
+    },
+    compactFieldStyle: {
+        flex: 2, // STYLE has 2 buttons
+    },
     compactField: {
         flex: 1,
     },
@@ -552,6 +599,77 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         letterSpacing: 0.5,
         marginBottom: 6,
+    },
+    segmentedControl: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 8,
+        overflow: 'hidden',
+    },
+    segmentedOption: {
+        flex: 1,
+        paddingVertical: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    segmentedFirst: {
+        borderTopLeftRadius: 8,
+        borderBottomLeftRadius: 8,
+    },
+    segmentedLast: {
+        borderTopRightRadius: 8,
+        borderBottomRightRadius: 8,
+    },
+    segmentedOptionActive: {
+        backgroundColor: '#FFD60A',
+    },
+    segmentedText: {
+        color: 'rgba(255,255,255,0.5)',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    segmentedTextActive: {
+        color: 'black',
+    },
+    compactLabel: {
+        color: 'rgba(255,255,255,0.5)',
+        fontSize: 10,
+        fontWeight: '600',
+        letterSpacing: 0.5,
+        marginBottom: 6,
+    },
+    scaleButtonGroup: {
+        position: 'absolute',
+        bottom: 8,
+        right: 8,
+        flexDirection: 'row',
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        borderRadius: 6,
+        overflow: 'hidden',
+    },
+    scaleButton: {
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    scaleButtonFirst: {
+        borderTopLeftRadius: 6,
+        borderBottomLeftRadius: 6,
+    },
+    scaleButtonLast: {
+        borderTopRightRadius: 6,
+        borderBottomRightRadius: 6,
+    },
+    scaleButtonActive: {
+        backgroundColor: '#007AFF',
+    },
+    scaleButtonText: {
+        color: 'rgba(255,255,255,0.5)',
+        fontSize: 10,
+        fontWeight: '600',
+    },
+    scaleButtonTextActive: {
+        color: 'white',
     },
     dropdownContainer: {
         flexDirection: 'row',
@@ -669,6 +787,50 @@ const styles = StyleSheet.create({
     },
     toggleThumbActive: {
         alignSelf: 'flex-end',
+    },
+    // FormCard styles (matching Object Details panel)
+    formCard: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 12,
+        marginTop: 16,
+        overflow: 'hidden',
+    },
+    formRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+    },
+    formLabel: {
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    formDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        marginHorizontal: 16,
+    },
+    durationStepper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    stepperBtn: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    stepperValue: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+        minWidth: 36,
+        textAlign: 'center',
     },
 });
 

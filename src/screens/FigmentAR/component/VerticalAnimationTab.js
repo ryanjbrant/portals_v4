@@ -63,6 +63,86 @@ const perpendicularDistance = (point, lineStart, lineEnd) => {
     return Math.sqrt((point.t - projT) ** 2 + (point.y - projY) ** 2);
 };
 
+// Curve Presets - common Y-position patterns
+const CURVE_PRESETS = [
+    {
+        name: 'Sine', icon: 'pulse', generate: () => {
+            const points = [];
+            for (let i = 0; i <= 16; i++) {
+                const t = i / 16;
+                const y = Math.sin(t * Math.PI * 2) * 1.0 + 1.0;
+                points.push({ t, y });
+            }
+            points[points.length - 1].y = points[0].y;
+            return points;
+        }
+    },
+    {
+        name: 'Bounce', icon: 'basketball', generate: () => [
+            { t: 0, y: 0 }, { t: 0.15, y: 2.0 }, { t: 0.30, y: 0 },
+            { t: 0.40, y: 1.2 }, { t: 0.50, y: 0 }, { t: 0.58, y: 0.7 },
+            { t: 0.66, y: 0 }, { t: 0.72, y: 0.35 }, { t: 0.78, y: 0 },
+            { t: 0.84, y: 0.15 }, { t: 0.90, y: 0 }, { t: 1.0, y: 0 },
+        ]
+    },
+    {
+        name: 'Sawtooth', icon: 'caret-up', generate: () => [
+            { t: 0, y: 0 }, { t: 0.45, y: 2.0 }, { t: 0.50, y: 0 },
+            { t: 0.95, y: 2.0 }, { t: 1.0, y: 0 },
+        ]
+    },
+    {
+        name: 'Triangle', icon: 'triangle', generate: () => [
+            { t: 0, y: 0 }, { t: 0.25, y: 2.0 }, { t: 0.50, y: 0 },
+            { t: 0.75, y: 2.0 }, { t: 1.0, y: 0 },
+        ]
+    },
+    {
+        name: 'Hop', icon: 'arrow-up', generate: () => [
+            { t: 0, y: 0 }, { t: 0.10, y: 1.5 }, { t: 0.45, y: 1.5 },
+            { t: 0.55, y: 0 }, { t: 1.0, y: 0 },
+        ]
+    },
+    {
+        name: 'Pulse', icon: 'flash', generate: () => [
+            { t: 0, y: 0 }, { t: 0.20, y: 0 }, { t: 0.25, y: 2.5 },
+            { t: 0.30, y: 0 }, { t: 0.70, y: 0 }, { t: 0.75, y: 2.5 },
+            { t: 0.80, y: 0 }, { t: 1.0, y: 0 },
+        ]
+    },
+    {
+        name: 'Float', icon: 'cloud', generate: () => {
+            const points = [];
+            for (let i = 0; i <= 20; i++) {
+                const t = i / 20;
+                const y = 1.0 + Math.sin(t * Math.PI * 4) * 0.3 + Math.sin(t * Math.PI * 2.5) * 0.2;
+                points.push({ t, y: Math.max(0, y) });
+            }
+            points[points.length - 1].y = points[0].y;
+            return points;
+        }
+    },
+    {
+        name: 'Step', icon: 'git-commit', generate: () => [
+            { t: 0, y: 0 }, { t: 0.24, y: 0 }, { t: 0.25, y: 1.0 },
+            { t: 0.49, y: 1.0 }, { t: 0.50, y: 2.0 }, { t: 0.74, y: 2.0 },
+            { t: 0.75, y: 1.0 }, { t: 0.99, y: 1.0 }, { t: 1.0, y: 0 },
+        ]
+    },
+    {
+        name: 'Ease', icon: 'swap-horizontal', generate: () => {
+            const points = [];
+            for (let i = 0; i <= 12; i++) {
+                const t = i / 12;
+                const y = (1 - Math.cos(t * Math.PI * 2)) * 1.0;
+                points.push({ t, y });
+            }
+            points[points.length - 1].y = points[0].y;
+            return points;
+        }
+    },
+];
+
 const VerticalAnimationTab = ({
     duration = 5, // Duration from path tab or default 5 seconds
     currentVertical = null, // Existing vertical animation data
@@ -74,6 +154,7 @@ const VerticalAnimationTab = ({
     );
     const [interpolation, setInterpolation] = useState(currentVertical?.interpolation || 'smooth');
     const [isDrawing, setIsDrawing] = useState(false);
+    const [showPresetPicker, setShowPresetPicker] = useState(false);
 
     // Reset state when currentVertical changes (different object selected)
     useEffect(() => {
@@ -317,37 +398,74 @@ const VerticalAnimationTab = ({
                 <Text style={styles.axisLabel}>{duration}s</Text>
             </View>
 
-            {/* Interpolation Mode */}
+            {/* Curve Style + Presets Row */}
             <View style={styles.section}>
-                <Text style={styles.sectionLabel}>CURVE STYLE</Text>
-                <View style={styles.pillContainer}>
-                    <TouchableOpacity
-                        style={[styles.pill, interpolation === 'linear' && styles.pillActive]}
-                        onPress={() => setInterpolation('linear')}
-                    >
-                        <Ionicons
-                            name="analytics"
-                            size={14}
-                            color={interpolation === 'linear' ? 'white' : 'rgba(255,255,255,0.5)'}
-                        />
-                        <Text style={[styles.pillText, interpolation === 'linear' && styles.pillTextActive]}>
-                            Linear
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.pill, interpolation === 'smooth' && styles.pillActive]}
-                        onPress={() => setInterpolation('smooth')}
-                    >
-                        <Ionicons
-                            name="water"
-                            size={14}
-                            color={interpolation === 'smooth' ? 'white' : 'rgba(255,255,255,0.5)'}
-                        />
-                        <Text style={[styles.pillText, interpolation === 'smooth' && styles.pillTextActive]}>
-                            Smooth
-                        </Text>
-                    </TouchableOpacity>
+                <View style={styles.stylePresetsRow}>
+                    {/* Left: Curve Style */}
+                    <View style={styles.curveStyleGroup}>
+                        <Text style={styles.sectionLabel}>CURVE STYLE</Text>
+                        <View style={styles.pillContainer}>
+                            <TouchableOpacity
+                                style={[styles.pill, interpolation === 'linear' && styles.pillActive]}
+                                onPress={() => setInterpolation('linear')}
+                            >
+                                <Ionicons
+                                    name="analytics"
+                                    size={14}
+                                    color={interpolation === 'linear' ? 'white' : 'rgba(255,255,255,0.5)'}
+                                />
+                                <Text style={[styles.pillText, interpolation === 'linear' && styles.pillTextActive]}>
+                                    Linear
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.pill, interpolation === 'smooth' && styles.pillActive]}
+                                onPress={() => setInterpolation('smooth')}
+                            >
+                                <Ionicons
+                                    name="water"
+                                    size={14}
+                                    color={interpolation === 'smooth' ? 'white' : 'rgba(255,255,255,0.5)'}
+                                />
+                                <Text style={[styles.pillText, interpolation === 'smooth' && styles.pillTextActive]}>
+                                    Smooth
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* Right: Presets Dropdown */}
+                    <View style={styles.presetsGroup}>
+                        <Text style={styles.sectionLabel}>PRESET</Text>
+                        <TouchableOpacity
+                            style={styles.presetDropdown}
+                            onPress={() => setShowPresetPicker(!showPresetPicker)}
+                        >
+                            <Ionicons name="shapes" size={14} color="rgba(255,255,255,0.8)" />
+                            <Text style={styles.presetDropdownText}>Select...</Text>
+                            <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.5)" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
+
+                {/* Presets Dropdown Menu */}
+                {showPresetPicker && (
+                    <View style={styles.presetMenu}>
+                        {CURVE_PRESETS.map((preset) => (
+                            <TouchableOpacity
+                                key={preset.name}
+                                style={styles.presetMenuItem}
+                                onPress={() => {
+                                    setCurvePoints(preset.generate());
+                                    setShowPresetPicker(false);
+                                }}
+                            >
+                                <Ionicons name={preset.icon} size={16} color="rgba(255,255,255,0.8)" />
+                                <Text style={styles.presetMenuText}>{preset.name}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
             </View>
 
             {/* Action Buttons */}
@@ -381,6 +499,7 @@ const styles = StyleSheet.create({
     graphContainer: {
         flexDirection: 'row',
         alignItems: 'center',
+        alignSelf: 'center',
     },
     yLabels: {
         width: 30,
@@ -402,6 +521,7 @@ const styles = StyleSheet.create({
         marginLeft: 30,
         marginTop: 4,
         width: GRAPH_WIDTH,
+        alignSelf: 'center',
     },
     axisLabel: {
         color: 'rgba(255,255,255,0.4)',
@@ -440,6 +560,59 @@ const styles = StyleSheet.create({
     },
     pillTextActive: {
         color: 'white',
+    },
+    stylePresetsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+    },
+    curveStyleGroup: {
+        flex: 1,
+    },
+    presetsGroup: {
+        marginLeft: 16,
+    },
+    presetDropdown: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    presetDropdownText: {
+        color: 'rgba(255,255,255,0.7)',
+        fontSize: 12,
+        fontWeight: '500',
+    },
+    presetMenu: {
+        marginTop: 12,
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        padding: 12,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        borderRadius: 12,
+    },
+    presetMenuItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    presetMenuText: {
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: 11,
+        fontWeight: '500',
+    },
+    presetBtnText: {
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: 11,
+        fontWeight: '500',
     },
     actions: {
         flexDirection: 'row',

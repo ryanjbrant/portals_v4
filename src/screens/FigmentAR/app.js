@@ -39,6 +39,15 @@ import {
   updateVerticalAnimation,
   updateEmitter,
   setObjectParent,
+  // Voice command actions
+  batchTransformAll,
+  arrangeInFormation,
+  addModelAtPosition,
+  transformObject,
+  // Attractor/follower system
+  updateAttractorSettings,
+  // Physics system
+  updatePhysicsSettings,
 } from './redux/actions';
 import { serializeFigmentScene } from './helpers/FigmentSceneSerializer';
 import { useAppStore } from '../../store';
@@ -46,6 +55,7 @@ import { saveScene as saveSceneToCloud, loadSceneById } from '../../services/sce
 import { CollaboratorModal } from '../../components/CollaboratorModal';
 import { AIEnhancePanel } from '../../components/AIEnhancePanel';
 import { generateAIVideo, waitForGeneration, uploadVideoForAI, uploadAssetForAI } from '../../services/aiVideoService';
+import VoiceComposerButton from './component/VoiceComposerButton';
 
 const kObjSelectMode = 1;
 const kPortalSelectMode = 2;
@@ -147,6 +157,7 @@ export class App extends Component {
     this._handleNewScene = this._handleNewScene.bind(this);
     this._onListPressed = this._onListPressed.bind(this);
     this._handleAIGenerate = this._handleAIGenerate.bind(this);
+    this._handleVoiceActions = this._handleVoiceActions.bind(this);
 
     this.state = {
       currentModeSelected: kObjSelectMode,
@@ -426,6 +437,44 @@ export class App extends Component {
     this.props.dispatchUpdateEmitter(uuid, emitterData);
   }
 
+  // Handle attractor settings update for selected object
+  _onUpdateAttractor(attractorData) {
+    const uuid = this.props.currentItemSelectionIndex;
+    if (uuid === -1) return;
+
+    console.log('[App] Attractor update:', attractorData, 'for UUID:', uuid);
+    this.props.dispatchUpdateAttractorSettings(uuid, attractorData);
+  }
+
+  // Get list of objects that are marked as attractors (for follower selector)
+  _getAvailableAttractors() {
+    const attractors = [];
+    const items = this.props.modelItems || {};
+    const animations = this.props.objectAnimations || {};
+
+    Object.keys(items).forEach(uuid => {
+      const item = items[uuid];
+      const anim = animations[uuid];
+      if (anim?.attractor?.isAttractor) {
+        attractors.push({
+          uuid: uuid,
+          name: item.name || 'Object',
+        });
+      }
+    });
+
+    return attractors;
+  }
+
+  // Handle physics settings update for selected object
+  _onUpdatePhysics(physicsData) {
+    const uuid = this.props.currentItemSelectionIndex;
+    if (uuid === -1) return;
+
+    console.log('[App] Physics update:', physicsData, 'for UUID:', uuid);
+    this.props.dispatchUpdatePhysicsSettings(uuid, physicsData);
+  }
+
   // Handle rename scene
   _handleRename() {
     Alert.prompt(
@@ -445,6 +494,260 @@ export class App extends Component {
       "plain-text",
       this.props.sceneTitle || "Untitled Scene"
     );
+  }
+
+  // Handle voice composer actions from AI
+  _handleVoiceActions(actions) {
+    console.log('[App] Voice Actions received:', actions);
+
+    actions.forEach((action) => {
+      switch (action.type) {
+        case 'ADD_OBJECT':
+          // objectIndex corresponds to ModelData index
+          const objectIndex = action.objectIndex !== undefined ? action.objectIndex : 0;
+          console.log('[App] Adding object at index:', objectIndex, 'position:', action.position);
+
+          // If position is specified, use addModelAtPosition; otherwise use AR hit test
+          if (action.position) {
+            this.props.dispatchAddModelAtPosition(
+              objectIndex,
+              action.position,
+              action.scale || [0.3, 0.3, 0.3],
+              action.rotation || [0, 0, 0]
+            );
+          } else {
+            this.props.dispatchAddModel(objectIndex);
+          }
+          break;
+
+        case 'SET_ANIMATION':
+          // Find object by name or use selected/uuid
+          let animUuid = action.uuid;
+          if (action.objectName) {
+            animUuid = this._findObjectByName(action.objectName);
+          } else if (action.uuid === 'selected') {
+            animUuid = this.props.currentItemSelectionIndex;
+          }
+
+          // If we have a specific UUID, apply to that object
+          if (animUuid && animUuid !== -1) {
+            console.log('[App] Setting animation:', action.animationType, 'on:', animUuid);
+            this.props.dispatchUpdateObjectAnimation(animUuid, action.animationType, {
+              active: action.animationActive ?? true,
+              speed: action.speed,
+            });
+          } else {
+            // No specific object - apply to ALL objects
+            const allUuids = Object.keys(this.props.modelItems || {});
+            console.log('[App] Setting animation:', action.animationType, 'on ALL objects:', allUuids.length);
+            allUuids.forEach((uuid) => {
+              this.props.dispatchUpdateObjectAnimation(uuid, action.animationType, {
+                active: action.animationActive ?? true,
+                speed: action.speed,
+              });
+            });
+          }
+          break;
+
+        case 'ADD_EMITTER':
+          // Add particle emitter with preset
+          const selectedUuid = this.props.currentItemSelectionIndex;
+          if (selectedUuid && selectedUuid !== -1) {
+            console.log('[App] Adding emitter preset:', action.emitterPreset, 'to:', selectedUuid);
+            this.props.dispatchUpdateEmitter(selectedUuid, {
+              preset: action.emitterPreset,
+              active: true,
+            });
+          }
+          break;
+
+        case 'CLEAR_SCENE':
+          console.log('[App] Clearing scene');
+          this.props.dispatchRemoveAll();
+          break;
+
+        case 'BATCH_TRANSFORM':
+          // Random sizes, positions, or uniform transforms
+          console.log('[App] Batch transform:', action.transformType, action.params);
+          this.props.dispatchBatchTransformAll(action.transformType, action.params || {});
+          break;
+
+        case 'ARRANGE_FORMATION':
+          // Ring, grid, line, scatter formations
+          console.log('[App] Arrange in formation:', action.formationType, action.params);
+          this.props.dispatchArrangeFormation(action.formationType, action.params || {});
+          break;
+
+        case 'REMOVE_OBJECT':
+          // Find by name or use uuid
+          let removeUuid = action.uuid;
+          if (action.objectName) {
+            removeUuid = this._findObjectByName(action.objectName);
+          }
+          if (removeUuid) {
+            console.log('[App] Removing object:', removeUuid);
+            this.props.dispatchRemoveModelWithUUID(removeUuid);
+          }
+          break;
+
+        case 'TRANSFORM_OBJECT':
+          // Direct transform of specific object
+          let transformUuid = action.uuid;
+          if (action.objectName) {
+            transformUuid = this._findObjectByName(action.objectName);
+          }
+          if (transformUuid) {
+            console.log('[App] Transforming object:', transformUuid, action.transforms);
+            this.props.dispatchTransformObject(transformUuid, action.transforms);
+          }
+          break;
+
+        case 'GENERATE_STRUCTURE':
+          // Generate complex 3D structures from primitives
+          const blockIndex = action.params?.blockIndex || 0; // Default to cube
+          const structures = this._generateStructure(action.structureType, action.params, blockIndex);
+          console.log('[App] Generating structure:', action.structureType, 'blocks:', structures.length);
+          structures.forEach((struct, i) => {
+            console.log(`[App] Structure block ${i}:`, {
+              position: struct.position,
+              scale: struct.scale,
+              rotation: struct.rotation
+            });
+            this.props.dispatchAddModelAtPosition(
+              struct.index,
+              struct.position,
+              struct.scale,
+              struct.rotation
+            );
+          });
+          break;
+
+        default:
+          console.log('[App] Unknown voice action:', action.type);
+      }
+    });
+  }
+
+  // Generate structure presets (igloo, wall, tower, pyramid, stairs)
+  _generateStructure(structureType, params, blockIndex) {
+    const blocks = [];
+    const scale = params?.scale || [0.25, 0.25, 0.25];
+
+    switch (structureType) {
+      case 'igloo':
+        // Dome of blocks using spherical coordinates
+        const radius = params?.radius || 1.2;
+        const layers = 5;
+        for (let layer = 0; layer < layers; layer++) {
+          const layerAngle = (layer / layers) * (Math.PI / 2); // 0 to 90 degrees
+          const layerRadius = Math.cos(layerAngle) * radius;
+          const layerY = Math.sin(layerAngle) * radius;
+          const blocksInLayer = Math.max(1, Math.floor(8 * (1 - layer / layers)));
+
+          for (let i = 0; i < blocksInLayer; i++) {
+            const angle = (i / blocksInLayer) * Math.PI * 2;
+            blocks.push({
+              index: blockIndex,
+              position: [
+                Math.cos(angle) * layerRadius,
+                layerY,
+                -2 + Math.sin(angle) * layerRadius
+              ],
+              scale: [...scale], // Fresh copy
+              rotation: [0, (angle * 180 / Math.PI), 0]
+            });
+          }
+        }
+        break;
+
+      case 'wall':
+        const wallWidth = params?.width || 5;
+        const wallHeight = params?.height || 3;
+        const spacing = 0.3;
+        for (let y = 0; y < wallHeight; y++) {
+          for (let x = 0; x < wallWidth; x++) {
+            blocks.push({
+              index: blockIndex,
+              position: [(x - wallWidth / 2) * spacing, y * spacing, -2],
+              scale: [...scale], // Fresh copy
+              rotation: [0, 0, 0]
+            });
+          }
+        }
+        break;
+
+      case 'tower':
+        const towerHeight = params?.height || 6;
+        for (let y = 0; y < towerHeight; y++) {
+          blocks.push({
+            index: blockIndex,
+            position: [0, y * 0.35, -2],
+            scale: [...scale], // Fresh copy
+            rotation: [0, y * 15, 0] // Slight twist
+          });
+        }
+        break;
+
+      case 'pyramid':
+        const pyramidLayers = params?.layers || 4;
+        for (let layer = 0; layer < pyramidLayers; layer++) {
+          const size = pyramidLayers - layer;
+          const yPos = layer * 0.3;
+          for (let x = 0; x < size; x++) {
+            for (let z = 0; z < size; z++) {
+              blocks.push({
+                index: blockIndex,
+                position: [
+                  (x - size / 2 + 0.5) * 0.32,
+                  yPos,
+                  -2 + (z - size / 2 + 0.5) * 0.32
+                ],
+                scale: [...scale], // Fresh copy
+                rotation: [0, 0, 0]
+              });
+            }
+          }
+        }
+        break;
+
+      case 'stairs':
+        const steps = params?.steps || 5;
+        for (let i = 0; i < steps; i++) {
+          blocks.push({
+            index: blockIndex,
+            position: [i * 0.3, i * 0.2, -2],
+            scale: [...scale], // Fresh copy
+            rotation: [0, 0, 0]
+          });
+        }
+        break;
+
+      default:
+        // Unknown structure - add a single block
+        blocks.push({
+          index: blockIndex,
+          position: [0, 0, -2],
+          scale: scale,
+          rotation: [0, 0, 0]
+        });
+    }
+
+    return blocks;
+  }
+
+  // Find object UUID by name (case-insensitive partial match)
+  _findObjectByName(name) {
+    if (!name || !this.props.modelItems) return null;
+    const searchName = name.toLowerCase();
+    const uuids = Object.keys(this.props.modelItems);
+    for (const uuid of uuids) {
+      const item = this.props.modelItems[uuid];
+      const itemName = (item.name || '').toLowerCase();
+      if (itemName.includes(searchName) || searchName.includes(itemName)) {
+        return uuid;
+      }
+    }
+    return null;
   }
 
   // Handle save draft
@@ -692,6 +995,11 @@ export class App extends Component {
           onUpdateVerticalAnimation={(data) => this._onUpdateVerticalAnimation(data)}
           currentEmitter={this.props.currentItemSelectionIndex !== -1 ? (this.props.objectEmitters?.[this.props.currentItemSelectionIndex] || null) : null}
           onUpdateEmitter={(data) => this._onUpdateEmitter(data)}
+          currentAttractor={this.props.currentItemSelectionIndex !== -1 ? (this.props.objectAnimations[this.props.currentItemSelectionIndex]?.attractor || null) : null}
+          onUpdateAttractor={(data) => this._onUpdateAttractor(data)}
+          availableAttractors={this._getAvailableAttractors()}
+          currentPhysics={this.props.currentItemSelectionIndex !== -1 ? (this.props.objectPhysics?.[this.props.currentItemSelectionIndex] || null) : null}
+          onUpdatePhysics={(data) => this._onUpdatePhysics(data)}
         />
 
         {/* Portal Background Panel */}
@@ -744,11 +1052,29 @@ export class App extends Component {
             console.log('[App] onSetParent:', uuid, '->', parentId);
             this.props.dispatchSetObjectParent(uuid, parentId);
           }}
+          onDeleteObject={(uuid) => {
+            console.log('[App] onDeleteObject:', uuid);
+            this.props.dispatchRemoveModelWithUUID(uuid);
+          }}
         />
 
         {/* AR Initialization animation - hide during recording */}
         {!isRecordingInProgress && (
           <ARInitializationUI style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }} />
+        )}
+
+        {/* Voice Composer Button - floating mic in bottom right corner */}
+        {!isViewOnly && !isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
+          <View style={{ position: 'absolute', right: 20, bottom: 200, zIndex: 50 }}>
+            <VoiceComposerButton
+              onActionsReceived={this._handleVoiceActions}
+              sceneContext={{
+                objectCount: Object.keys(this.props.modelItems || {}).length,
+                selectedUuid: this.props.currentItemSelectionIndex !== -1 ? this.props.currentItemSelectionIndex : undefined,
+                objectNames: Object.values(this.props.modelItems || {}).map(item => item.name || 'Unnamed'),
+              }}
+            />
+          </View>
         )}
 
         {/* 2D UI buttons on top right of the app - hide during recording */}
@@ -2407,6 +2733,7 @@ function selectProps(store) {
     postProcessEffects: store.arobjects.postProcessEffects,
     objectAnimations: store.arobjects.objectAnimations, // Animation states from Redux
     objectEmitters: store.arobjects.objectEmitters, // Emitter states from Redux
+    objectPhysics: store.arobjects.objectPhysics, // Physics states from Redux
     currentScreen: store.ui.currentScreen,
     listMode: store.ui.listMode,
     listTitle: store.ui.listTitle,
@@ -2491,6 +2818,15 @@ const mapDispatchToProps = (dispatch) => {
     dispatchUpdateVerticalAnimation: (uuid, verticalData) => dispatch(updateVerticalAnimation(uuid, verticalData)),
     dispatchUpdateEmitter: (uuid, emitterData) => dispatch(updateEmitter(uuid, emitterData)),
     dispatchSetObjectParent: (uuid, parentId) => dispatch(setObjectParent(uuid, parentId)),
+    // Voice command dispatches
+    dispatchBatchTransformAll: (transformType, params) => dispatch(batchTransformAll(transformType, params)),
+    dispatchArrangeFormation: (formationType, params) => dispatch(arrangeInFormation(formationType, params)),
+    dispatchAddModelAtPosition: (index, position, scale, rotation) => dispatch(addModelAtPosition(index, position, scale, rotation)),
+    dispatchTransformObject: (uuid, transforms) => dispatch(transformObject(uuid, transforms)),
+    // Attractor/follower system
+    dispatchUpdateAttractorSettings: (uuid, attractorData) => dispatch(updateAttractorSettings(uuid, attractorData)),
+    // Physics system
+    dispatchUpdatePhysicsSettings: (uuid, physicsData) => dispatch(updatePhysicsSettings(uuid, physicsData)),
   }
 }
 

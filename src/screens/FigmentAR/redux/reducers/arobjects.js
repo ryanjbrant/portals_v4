@@ -421,6 +421,7 @@ function arobjects(state = initialState, action) {
               physics: obj.physics,
               artifact: obj.artifact || null,
               resources: [],
+              parentId: obj.parentId || null, // Parent-child hierarchy
             };
           } else if (obj.type === 'viro_portal') {
             loadedPortals[obj.id] = {
@@ -678,6 +679,42 @@ function arobjects(state = initialState, action) {
         },
       };
 
+    // ========== ATTRACTOR/FOLLOWER SYSTEM ==========
+    case 'UPDATE_ATTRACTOR_SETTINGS':
+      console.log('[arobjects.js REDUCER] UPDATE_ATTRACTOR_SETTINGS:', {
+        uuid: action.uuid,
+        attractorData: action.attractorData,
+      });
+      return {
+        ...state,
+        objectAnimations: {
+          ...state.objectAnimations,
+          [action.uuid]: {
+            ...(state.objectAnimations?.[action.uuid] || {}),
+            attractor: {
+              ...(state.objectAnimations?.[action.uuid]?.attractor || {}),
+              ...action.attractorData,
+            },
+          },
+        },
+      };
+
+    case 'UPDATE_PHYSICS_SETTINGS':
+      console.log('[arobjects.js REDUCER] UPDATE_PHYSICS_SETTINGS:', {
+        uuid: action.uuid,
+        physicsData: action.physicsData,
+      });
+      return {
+        ...state,
+        objectPhysics: {
+          ...state.objectPhysics,
+          [action.uuid]: {
+            ...(state.objectPhysics?.[action.uuid] || {}),
+            ...action.physicsData,
+          },
+        },
+      };
+
     case 'SET_OBJECT_PARENT':
       console.log('[arobjects.js REDUCER] SET_OBJECT_PARENT:', {
         uuid: action.uuid,
@@ -775,6 +812,220 @@ function arobjects(state = initialState, action) {
             parentId: action.parentId,
             position: newPosition,
             scale: newScale,
+          },
+        },
+      };
+
+    // ========== VOICE COMMAND REDUCERS ==========
+
+    case 'BATCH_TRANSFORM_ALL':
+      // Apply batch transforms to all objects
+      const batchUpdated = { ...state.modelItems };
+      const uuids = Object.keys(batchUpdated);
+      if (uuids.length === 0) return state;
+
+      // Calculate center position for cluster/spread operations
+      let batchCenterX = 0, batchCenterZ = -2;
+      if (action.transformType === 'spread') {
+        uuids.forEach(uuid => {
+          const item = batchUpdated[uuid];
+          if (item.position) {
+            batchCenterX += item.position[0];
+            batchCenterZ += item.position[2];
+          }
+        });
+        batchCenterX /= uuids.length;
+        batchCenterZ /= uuids.length;
+      }
+
+      uuids.forEach((uuid, i) => {
+        const item = batchUpdated[uuid];
+        const pos = item.position || [0, 0, -2];
+
+        switch (action.transformType) {
+          case 'moveUp':
+            const upDist = action.params?.distance || 1;
+            batchUpdated[uuid] = { ...item, position: [pos[0], pos[1] + upDist, pos[2]] };
+            break;
+
+          case 'moveDown':
+            const downDist = action.params?.distance || 1;
+            batchUpdated[uuid] = { ...item, position: [pos[0], pos[1] - downDist, pos[2]] };
+            break;
+
+          case 'moveToFloor':
+            batchUpdated[uuid] = { ...item, position: [pos[0], 0, pos[2]] };
+            break;
+
+          case 'liftInAir':
+            const liftHeight = action.params?.height || 1.5;
+            batchUpdated[uuid] = { ...item, position: [pos[0], liftHeight, pos[2]] };
+            break;
+
+          case 'cluster':
+            // Move all to center point
+            const clusterCenter = action.params?.center || [0, pos[1], -2];
+            batchUpdated[uuid] = { ...item, position: clusterCenter };
+            break;
+
+          case 'spread':
+            // Push away from center
+            const spreadFactor = action.params?.factor || 2;
+            const dx = pos[0] - batchCenterX;
+            const dz = pos[2] - batchCenterZ;
+            batchUpdated[uuid] = {
+              ...item,
+              position: [batchCenterX + dx * spreadFactor, pos[1], batchCenterZ + dz * spreadFactor]
+            };
+            break;
+
+          case 'randomScale':
+            const minS = action.params?.min || 0.1;
+            const maxS = action.params?.max || 1.0;
+            const randScale = minS + Math.random() * (maxS - minS);
+            batchUpdated[uuid] = { ...item, scale: [randScale, randScale, randScale] };
+            break;
+
+          case 'randomPosition':
+            const range = action.params?.range || 2;
+            batchUpdated[uuid] = {
+              ...item,
+              position: [
+                (Math.random() - 0.5) * range * 2,
+                pos[1],
+                -1.5 - Math.random() * range,
+              ],
+            };
+            break;
+
+          case 'randomRotation':
+            batchUpdated[uuid] = {
+              ...item,
+              rotation: [Math.random() * 360, Math.random() * 360, Math.random() * 360]
+            };
+            break;
+
+          case 'uniformScale':
+            const uniScale = action.params?.scale || 0.5;
+            batchUpdated[uuid] = { ...item, scale: [uniScale, uniScale, uniScale] };
+            break;
+
+          case 'stack':
+            // Stack objects vertically
+            const stackSpacing = action.params?.spacing || 0.4;
+            const stackY = i * stackSpacing;
+            batchUpdated[uuid] = { ...item, position: [0, stackY, -2] };
+            break;
+
+          case 'alignX':
+            batchUpdated[uuid] = { ...item, position: [0, pos[1], pos[2]] };
+            break;
+
+          case 'alignY':
+            const avgY = action.params?.y || 0;
+            batchUpdated[uuid] = { ...item, position: [pos[0], avgY, pos[2]] };
+            break;
+
+          case 'alignZ':
+            batchUpdated[uuid] = { ...item, position: [pos[0], pos[1], -2] };
+            break;
+
+          case 'reset':
+            batchUpdated[uuid] = { ...item, position: [0, 0, -2], scale: [0.3, 0.3, 0.3], rotation: [0, 0, 0] };
+            break;
+        }
+      });
+
+      return { ...state, modelItems: batchUpdated };
+
+    case 'ARRANGE_FORMATION':
+      // Arrange objects in geometric formations
+      const formationItems = { ...state.modelItems };
+      const formationUuids = Object.keys(formationItems);
+      const count = formationUuids.length;
+      if (count === 0) return state;
+
+      const radius = action.params.radius || 1.5;
+      const centerY = action.params.centerY || 0;
+      const centerZ = action.params.centerZ || -2;
+
+      formationUuids.forEach((uuid, i) => {
+        let newPos;
+        switch (action.formationType) {
+          case 'ring':
+          case 'circle':
+            const angle = (i / count) * Math.PI * 2;
+            newPos = [
+              Math.cos(angle) * radius,
+              centerY,
+              centerZ + Math.sin(angle) * radius,
+            ];
+            break;
+          case 'grid':
+            const cols = action.params.cols || Math.ceil(Math.sqrt(count));
+            const spacing = action.params.spacing || 0.5;
+            const row = Math.floor(i / cols);
+            const col = i % cols;
+            newPos = [
+              (col - (cols - 1) / 2) * spacing,
+              centerY,
+              centerZ - row * spacing,
+            ];
+            break;
+          case 'line':
+            const lineSpacing = action.params.spacing || 0.5;
+            newPos = [
+              (i - (count - 1) / 2) * lineSpacing,
+              centerY,
+              centerZ,
+            ];
+            break;
+          case 'scatter':
+            const scatterRange = action.params.range || 3;
+            newPos = [
+              (Math.random() - 0.5) * scatterRange * 2,
+              centerY + Math.random() * 0.5,
+              centerZ - Math.random() * scatterRange,
+            ];
+            break;
+          default:
+            newPos = formationItems[uuid].position;
+        }
+        formationItems[uuid] = { ...formationItems[uuid], position: newPos };
+      });
+
+      return { ...state, modelItems: formationItems };
+
+    case 'ADD_MODEL_AT_POSITION':
+      // Add model at specific position (for voice commands)
+      // Use the existing newModelItem function and override position/scale
+      const positionedModel = newModelItem(action.index);
+      positionedModel.position = action.position || [0, 0, -2];
+      positionedModel.scale = action.scale || [0.3, 0.3, 0.3];
+      positionedModel.rotation = action.rotation || [0, 0, 0];
+
+      return {
+        ...state,
+        modelItems: {
+          ...state.modelItems,
+          [positionedModel.uuid]: positionedModel,
+        },
+      };
+
+    case 'TRANSFORM_OBJECT':
+      // Directly transform a specific object
+      const targetItem = state.modelItems[action.uuid];
+      if (!targetItem) return state;
+
+      return {
+        ...state,
+        modelItems: {
+          ...state.modelItems,
+          [action.uuid]: {
+            ...targetItem,
+            position: action.transforms.position || targetItem.position,
+            scale: action.transforms.scale || targetItem.scale,
+            rotation: action.transforms.rotation || targetItem.rotation,
           },
         },
       };

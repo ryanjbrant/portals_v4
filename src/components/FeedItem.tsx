@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, Share } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, Share, Animated } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { Post } from '../types';
@@ -35,7 +35,84 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
     const navigation = useNavigation<any>();
     const currentUser = useAppStore(state => state.currentUser);
     const toggleLike = useAppStore(state => state.toggleLike);
-    const [isFollowing, setIsFollowing] = React.useState(false);
+    const [isFollowing, setIsFollowing] = useState(false);
+
+    // Loading states
+    const [videoReady, setVideoReady] = useState(false);
+    const [avatarLoaded, setAvatarLoaded] = useState(false);
+
+    // Animated values for fade-in
+    const videoOpacity = useRef(new Animated.Value(0)).current;
+    const avatarOpacity = useRef(new Animated.Value(0)).current;
+    const skeletonPulse = useRef(new Animated.Value(0.3)).current;
+
+    // Heart animation
+    const heartScale = useRef(new Animated.Value(1)).current;
+    const sparksOpacity = useRef(new Animated.Value(0)).current;
+    const spark1 = useRef(new Animated.Value(0)).current;
+    const spark2 = useRef(new Animated.Value(0)).current;
+    const spark3 = useRef(new Animated.Value(0)).current;
+    const spark4 = useRef(new Animated.Value(0)).current;
+
+    const handleLike = () => {
+        toggleLike(post.id);
+
+        // Springy heart animation
+        Animated.sequence([
+            Animated.timing(heartScale, { toValue: 0.6, duration: 80, useNativeDriver: true }),
+            Animated.spring(heartScale, { toValue: 1.3, friction: 3, tension: 400, useNativeDriver: true }),
+            Animated.spring(heartScale, { toValue: 1, friction: 4, tension: 200, useNativeDriver: true }),
+        ]).start();
+
+        // Spark burst animation
+        sparksOpacity.setValue(1);
+        spark1.setValue(0);
+        spark2.setValue(0);
+        spark3.setValue(0);
+        spark4.setValue(0);
+
+        Animated.parallel([
+            Animated.timing(spark1, { toValue: 1, duration: 400, useNativeDriver: true }),
+            Animated.timing(spark2, { toValue: 1, duration: 400, useNativeDriver: true }),
+            Animated.timing(spark3, { toValue: 1, duration: 400, useNativeDriver: true }),
+            Animated.timing(spark4, { toValue: 1, duration: 400, useNativeDriver: true }),
+            Animated.timing(sparksOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+        ]).start();
+    };
+
+    // Skeleton pulse animation
+    useEffect(() => {
+        const pulse = Animated.loop(
+            Animated.sequence([
+                Animated.timing(skeletonPulse, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+                Animated.timing(skeletonPulse, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+            ])
+        );
+        pulse.start();
+        return () => pulse.stop();
+    }, []);
+
+    // Fade in video when ready
+    useEffect(() => {
+        if (videoReady) {
+            Animated.timing(videoOpacity, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+            }).start();
+        }
+    }, [videoReady]);
+
+    // Fade in avatar when loaded
+    useEffect(() => {
+        if (avatarLoaded) {
+            Animated.timing(avatarOpacity, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+            }).start();
+        }
+    }, [avatarLoaded]);
 
     // Check if already following on mount
     useEffect(() => {
@@ -52,6 +129,27 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
         player.muted = false;
         player.play();
     });
+
+    // Listen for video playing state
+    useEffect(() => {
+        if (player && post.mediaUri) {
+            const checkPlaying = setInterval(() => {
+                if (player.playing) {
+                    setVideoReady(true);
+                    clearInterval(checkPlaying);
+                }
+            }, 100);
+            // Fallback: mark as ready after 2s
+            const timeout = setTimeout(() => {
+                setVideoReady(true);
+                clearInterval(checkPlaying);
+            }, 2000);
+            return () => {
+                clearInterval(checkPlaying);
+                clearTimeout(timeout);
+            };
+        }
+    }, [player, post.mediaUri]);
 
     const handleFollow = async () => {
         if (!currentUser) return;
@@ -89,21 +187,35 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
 
     return (
         <View style={styles.container}>
-            {/* Background Media */}
-            {post.mediaUri ? (
-                <VideoView
-                    style={styles.mediaContainer}
-                    player={player}
-                    contentFit="cover"
-                    nativeControls={false}
-                />
-            ) : (
+            {/* Skeleton Background - always visible, fades out when video ready */}
+            <Animated.View style={[styles.skeletonContainer, { opacity: skeletonPulse }]}>
                 <LinearGradient
-                    colors={['#1c0f24', '#0f1724']}
-                    style={styles.mediaContainer}
-                >
-                    <Text style={styles.placeholderText}>Video Placeholder</Text>
-                </LinearGradient>
+                    colors={['#1a1a1a', '#2a2a2a', '#1a1a1a']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                />
+            </Animated.View>
+
+            {/* Cover Image - shown while video loads */}
+            {post.coverImage && !videoReady && (
+                <Image
+                    source={{ uri: post.coverImage }}
+                    style={styles.coverImage}
+                    resizeMode="cover"
+                />
+            )}
+
+            {/* Video - fades in when ready */}
+            {post.mediaUri && (
+                <Animated.View style={[styles.mediaContainer, { opacity: videoOpacity }]}>
+                    <VideoView
+                        style={StyleSheet.absoluteFillObject}
+                        player={player}
+                        contentFit="cover"
+                        nativeControls={false}
+                    />
+                </Animated.View>
             )}
 
             {/* Right Action Bar - hidden when comments open */}
@@ -111,8 +223,16 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
                 <View style={styles.rightContainer}>
                     <View style={styles.actionButton}>
                         <View style={styles.avatarContainer}>
+                            {/* Skeleton for avatar */}
+                            <Animated.View style={[styles.avatarSkeleton, { opacity: skeletonPulse }]} />
                             <TouchableOpacity onPress={handleProfilePress}>
-                                <Image source={{ uri: post.user.avatar }} style={styles.avatar} />
+                                <Animated.View style={{ opacity: avatarOpacity }}>
+                                    <Image
+                                        source={{ uri: post.user.avatar }}
+                                        style={styles.avatar}
+                                        onLoad={() => setAvatarLoaded(true)}
+                                    />
+                                </Animated.View>
                             </TouchableOpacity>
 
                             {!isFollowing && currentUser?.id !== post.user.id && (
@@ -123,12 +243,48 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
                         </View>
                     </View>
 
-                    <TouchableOpacity style={styles.actionButton} onPress={() => toggleLike(post.id)}>
-                        <Ionicons
-                            name="heart"
-                            size={35}
-                            color={post.isLiked ? theme.colors.primary : theme.colors.white}
-                        />
+                    <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
+                        <View style={styles.heartContainer}>
+                            {/* Spark particles */}
+                            <Animated.View style={[styles.spark, {
+                                opacity: sparksOpacity,
+                                transform: [
+                                    { translateY: spark1.interpolate({ inputRange: [0, 1], outputRange: [0, -25] }) },
+                                    { scale: spark1.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 1.2, 0] }) },
+                                ],
+                            }]} />
+                            <Animated.View style={[styles.spark, {
+                                opacity: sparksOpacity,
+                                transform: [
+                                    { translateY: spark2.interpolate({ inputRange: [0, 1], outputRange: [0, 25] }) },
+                                    { scale: spark2.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 1.2, 0] }) },
+                                ],
+                            }]} />
+                            <Animated.View style={[styles.spark, {
+                                opacity: sparksOpacity,
+                                transform: [
+                                    { translateX: spark3.interpolate({ inputRange: [0, 1], outputRange: [0, -20] }) },
+                                    { translateY: spark3.interpolate({ inputRange: [0, 1], outputRange: [0, -15] }) },
+                                    { scale: spark3.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 1, 0] }) },
+                                ],
+                            }]} />
+                            <Animated.View style={[styles.spark, {
+                                opacity: sparksOpacity,
+                                transform: [
+                                    { translateX: spark4.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) },
+                                    { translateY: spark4.interpolate({ inputRange: [0, 1], outputRange: [0, -15] }) },
+                                    { scale: spark4.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 1, 0] }) },
+                                ],
+                            }]} />
+                            {/* Animated heart */}
+                            <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+                                <Ionicons
+                                    name="heart"
+                                    size={35}
+                                    color={post.isLiked ? theme.colors.primary : theme.colors.white}
+                                />
+                            </Animated.View>
+                        </View>
                         <Text style={styles.actionText}>{post.likes}</Text>
                     </TouchableOpacity>
 
@@ -213,6 +369,19 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 24,
     },
+    skeletonContainer: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    coverImage: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    avatarSkeleton: {
+        position: 'absolute',
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: '#333',
+    },
     rightContainer: {
         position: 'absolute',
         right: 8,
@@ -222,6 +391,17 @@ const styles = StyleSheet.create({
     actionButton: {
         alignItems: 'center',
         marginBottom: 20,
+    },
+    heartContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    spark: {
+        position: 'absolute',
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: theme.colors.primary,
     },
     avatarContainer: {
         marginBottom: 10,

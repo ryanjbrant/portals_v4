@@ -27,7 +27,7 @@ import VerticalAnimationTab from './VerticalAnimationTab';
 import * as ImagePicker from 'expo-image-picker';
 
 const { height, width } = Dimensions.get('window');
-const PANEL_HEIGHT = height * 0.55; // Standard panel height
+const PANEL_HEIGHT = height * 0.68; // Standard panel height (increased for Attractor controls)
 const PATH_PANEL_HEIGHT = height * 0.90; // Taller panel for path editor
 const VERTICAL_PANEL_HEIGHT = height * 0.62; // Vertical tab (time vs height graph)
 
@@ -403,100 +403,260 @@ class ObjectPropertiesPanel extends Component {
                 {activeTab !== 'path' && activeTab !== 'vertical' && (
                     <ScrollView
                         style={styles.content}
-                        contentContainerStyle={{ paddingBottom: 40, flexGrow: 1 }}
+                        contentContainerStyle={{ paddingBottom: 100, flexGrow: 1 }}
                         showsVerticalScrollIndicator={true}
                         nestedScrollEnabled={true}
                     >
                         {activeTab === 'details' ? (
                             <>
-                                <View style={styles.toggleRow}>
-                                    <Text style={styles.sectionTitle}>Artifact</Text>
-                                    <Switch
-                                        value={artifactData.isArtifact}
-                                        onValueChange={(val) => this.updateArtifact({ isArtifact: val })}
-                                        trackColor={{ false: '#333', true: '#FF3050' }}
-                                        ios_backgroundColor="#333"
-                                    />
-                                </View>
-                                <Text style={styles.description}>
-                                    Enable to tag this object as an artifact. Artifacts appear in the feed and grid.
-                                </Text>
+                                {/* Artifact & Emitter Card */}
+                                <View style={styles.formCard}>
+                                    {/* Artifact Toggle */}
+                                    <View style={styles.formRow}>
+                                        <Text style={styles.formLabel}>Artifact</Text>
+                                        <Switch
+                                            value={artifactData.isArtifact}
+                                            onValueChange={(val) => this.updateArtifact({ isArtifact: val })}
+                                            trackColor={{ false: '#333', true: '#FF3050' }}
+                                            ios_backgroundColor="#333"
+                                        />
+                                    </View>
 
+                                    <View style={styles.formDivider} />
+
+                                    {/* Emitter Toggle */}
+                                    <View style={styles.formRow}>
+                                        <Text style={styles.formLabel}>Emitter</Text>
+                                        <Switch
+                                            value={this.props.currentEmitter?.isEmitter || false}
+                                            onValueChange={(val) => this.props.onUpdateEmitter?.({
+                                                ...(this.props.currentEmitter || {}),
+                                                isEmitter: val
+                                            })}
+                                            trackColor={{ false: '#333', true: '#FF3050' }}
+                                            ios_backgroundColor="#333"
+                                        />
+                                    </View>
+
+                                    {/* Emitter sub-options */}
+                                    {this.props.currentEmitter?.isEmitter && (
+                                        <>
+                                            <View style={styles.formDivider} />
+
+                                            {/* Sprite Picker */}
+                                            <TouchableOpacity
+                                                style={styles.formRow}
+                                                onPress={async () => {
+                                                    const result = await ImagePicker.launchImageLibraryAsync({
+                                                        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                                        allowsEditing: true,
+                                                        aspect: [1, 1],
+                                                        quality: 0.8,
+                                                    });
+                                                    if (!result.canceled && result.assets?.[0]) {
+                                                        this.props.onUpdateEmitter?.({
+                                                            ...(this.props.currentEmitter || {}),
+                                                            spriteUri: result.assets[0].uri,
+                                                        });
+                                                    }
+                                                }}
+                                            >
+                                                <Text style={styles.formLabel}>Particle Sprite</Text>
+                                                <View style={styles.selectorValue}>
+                                                    <Text style={styles.selectorText}>
+                                                        {this.props.currentEmitter?.spriteUri ? 'Selected ✓' : 'Choose...'}
+                                                    </Text>
+                                                    <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.4)" />
+                                                </View>
+                                            </TouchableOpacity>
+
+                                            <View style={styles.formDivider} />
+
+                                            {/* Emitter Object Visibility */}
+                                            <View style={styles.formRow}>
+                                                <Text style={styles.formLabel}>Object Visible</Text>
+                                                <Switch
+                                                    value={this.props.currentEmitter?.objectVisible !== false}
+                                                    onValueChange={(val) => this.props.onUpdateEmitter?.({
+                                                        ...(this.props.currentEmitter || {}),
+                                                        objectVisible: val,
+                                                    })}
+                                                    trackColor={{ false: '#333', true: '#FF3050' }}
+                                                    ios_backgroundColor="#333"
+                                                />
+                                            </View>
+                                        </>
+                                    )}
+                                </View>
+
+                                {/* Artifact Form (expanded when artifact is on) */}
                                 {artifactData.isArtifact && this.renderArtifactForm()}
 
-                                {/* Emitter Section */}
-                                <View style={[styles.toggleRow, { marginTop: 24 }]}>
-                                    <Text style={styles.sectionTitle}>Make Emitter</Text>
-                                    <Switch
-                                        value={this.props.currentEmitter?.isEmitter || false}
-                                        onValueChange={(val) => this.props.onUpdateEmitter?.({
-                                            ...(this.props.currentEmitter || {}),
-                                            isEmitter: val
-                                        })}
-                                        trackColor={{ false: '#333', true: '#FF3050' }}
-                                        ios_backgroundColor="#333"
-                                    />
-                                </View>
-                                <Text style={styles.description}>
-                                    Turn this object into a particle emitter that shoots sprites.
-                                </Text>
+                                {/* Attractor Section */}
+                                <View style={[styles.formCard, { marginTop: 16 }]}>
+                                    {/* Is Attractor Toggle */}
+                                    <View style={styles.formRow}>
+                                        <Text style={styles.formLabel}>Is Attractor</Text>
+                                        <Switch
+                                            value={this.props.currentAttractor?.isAttractor || false}
+                                            onValueChange={(val) => this.props.onUpdateAttractor?.({
+                                                ...(this.props.currentAttractor || {}),
+                                                isAttractor: val,
+                                                useAttractor: false, // Can't be both
+                                            })}
+                                            trackColor={{ false: '#333', true: '#4CAF50' }}
+                                            ios_backgroundColor="#333"
+                                        />
+                                    </View>
 
-                                {this.props.currentEmitter?.isEmitter && (
-                                    <>
-                                        {/* Particle Sprite Picker */}
-                                        <TouchableOpacity
-                                            style={styles.spritePickerBtn}
-                                            onPress={async () => {
-                                                const result = await ImagePicker.launchImageLibraryAsync({
-                                                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                                                    allowsEditing: true,
-                                                    aspect: [1, 1],
-                                                    quality: 0.8,
-                                                });
-                                                if (!result.canceled && result.assets?.[0]) {
-                                                    this.props.onUpdateEmitter?.({
-                                                        ...(this.props.currentEmitter || {}),
-                                                        spriteUri: result.assets[0].uri,
-                                                    });
-                                                }
-                                            }}
-                                        >
-                                            {this.props.currentEmitter?.spriteUri ? (
-                                                <View style={styles.spritePreviewContainer}>
-                                                    <View style={styles.spritePreview}>
-                                                        <Text style={styles.spritePreviewText}>✓</Text>
-                                                    </View>
-                                                    <Text style={styles.spritePickerText}>Change Sprite</Text>
-                                                </View>
-                                            ) : (
+                                    {/* Attractor Visibility - only show if Is Attractor is on */}
+                                    {this.props.currentAttractor?.isAttractor && (
+                                        <>
+                                            <View style={styles.formDivider} />
+                                            <View style={styles.formRow}>
+                                                <Text style={styles.formLabel}>Attractor Visible</Text>
+                                                <Switch
+                                                    value={this.props.currentAttractor?.attractorVisible !== false}
+                                                    onValueChange={(val) => this.props.onUpdateAttractor?.({
+                                                        ...(this.props.currentAttractor || {}),
+                                                        attractorVisible: val,
+                                                    })}
+                                                    trackColor={{ false: '#333', true: '#4CAF50' }}
+                                                    ios_backgroundColor="#333"
+                                                />
+                                            </View>
+                                        </>
+                                    )}
+
+                                    {/* Use Attractor - only show if NOT an attractor */}
+                                    {!this.props.currentAttractor?.isAttractor && (
+                                        <>
+                                            <View style={styles.formDivider} />
+                                            <View style={styles.formRow}>
+                                                <Text style={styles.formLabel}>Use Attractor</Text>
+                                                <Switch
+                                                    value={this.props.currentAttractor?.useAttractor || false}
+                                                    onValueChange={(val) => this.props.onUpdateAttractor?.({
+                                                        ...(this.props.currentAttractor || {}),
+                                                        useAttractor: val,
+                                                    })}
+                                                    trackColor={{ false: '#333', true: '#FF9800' }}
+                                                    ios_backgroundColor="#333"
+                                                />
+                                            </View>
+
+                                            {this.props.currentAttractor?.useAttractor && (
                                                 <>
-                                                    <Ionicons name="image-outline" size={24} color="white" />
-                                                    <Text style={styles.spritePickerText}>Select Particle Sprite</Text>
+                                                    <View style={styles.formDivider} />
+                                                    {/* Follow Target */}
+                                                    <TouchableOpacity
+                                                        style={styles.formRow}
+                                                        onPress={() => {
+                                                            const attractors = this.props.availableAttractors || [];
+                                                            if (Platform.OS === 'ios' && attractors.length > 0) {
+                                                                ActionSheetIOS.showActionSheetWithOptions(
+                                                                    {
+                                                                        options: [...attractors.map(a => a.name), 'Cancel'],
+                                                                        cancelButtonIndex: attractors.length,
+                                                                        title: 'Select Attractor',
+                                                                    },
+                                                                    (buttonIndex) => {
+                                                                        if (buttonIndex < attractors.length) {
+                                                                            this.props.onUpdateAttractor?.({
+                                                                                ...(this.props.currentAttractor || {}),
+                                                                                attractorUUID: attractors[buttonIndex].uuid,
+                                                                            });
+                                                                        }
+                                                                    }
+                                                                );
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Text style={styles.formLabel}>Follow Target</Text>
+                                                        <View style={styles.selectorValue}>
+                                                            <Text style={styles.selectorText}>
+                                                                {this.props.currentAttractor?.attractorUUID
+                                                                    ? (this.props.availableAttractors?.find(a => a.uuid === this.props.currentAttractor.attractorUUID)?.name || 'Selected')
+                                                                    : 'Select...'}
+                                                            </Text>
+                                                            <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.4)" />
+                                                        </View>
+                                                    </TouchableOpacity>
+
+                                                    <View style={styles.formDivider} />
+                                                    {/* Follow Speed */}
+                                                    <View style={styles.formRow}>
+                                                        <Text style={styles.formLabel}>Speed</Text>
+                                                        <View style={styles.pillContainer}>
+                                                            {[0.5, 1.0, 2.0].map((val) => (
+                                                                <TouchableOpacity
+                                                                    key={val}
+                                                                    style={[styles.pill, (this.props.currentAttractor?.followSpeed || 1.0) === val && styles.pillActive]}
+                                                                    onPress={() => this.props.onUpdateAttractor?.({
+                                                                        ...(this.props.currentAttractor || {}),
+                                                                        followSpeed: val,
+                                                                    })}
+                                                                >
+                                                                    <Text style={[styles.pillText, (this.props.currentAttractor?.followSpeed || 1.0) === val && styles.pillTextActive]}>
+                                                                        {val}x
+                                                                    </Text>
+                                                                </TouchableOpacity>
+                                                            ))}
+                                                        </View>
+                                                    </View>
                                                 </>
                                             )}
-                                        </TouchableOpacity>
+                                        </>
+                                    )}
+                                </View>
 
-                                        {/* Is Visible Toggle */}
-                                        <View style={[styles.toggleRow, { marginTop: 16 }]}>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                                <Ionicons name="eye-outline" size={18} color="white" style={{ marginRight: 8 }} />
-                                                <Text style={styles.toggleLabel}>Object Visible</Text>
+                                {/* Physics Section */}
+                                <View style={[styles.formCard, { marginTop: 16 }]}>
+                                    {/* Is Dynamic Toggle */}
+                                    <View style={styles.formRow}>
+                                        <Text style={styles.formLabel}>Dynamic</Text>
+                                        <Switch
+                                            value={this.props.currentPhysics?.isDynamic || false}
+                                            onValueChange={(val) => this.props.onUpdatePhysics?.({
+                                                ...(this.props.currentPhysics || {}),
+                                                isDynamic: val,
+                                                gravity: val ? (this.props.currentPhysics?.gravity ?? 1) : 0,
+                                            })}
+                                            trackColor={{ false: '#333', true: '#2196F3' }}
+                                            ios_backgroundColor="#333"
+                                        />
+                                    </View>
+
+                                    {/* Gravity controls - only show if dynamic */}
+                                    {this.props.currentPhysics?.isDynamic && (
+                                        <>
+                                            <View style={styles.formDivider} />
+                                            <View style={styles.formRow}>
+                                                <Text style={styles.formLabel}>Gravity</Text>
+                                                <View style={styles.pillContainer}>
+                                                    {[
+                                                        { value: -1, label: '↑' },
+                                                        { value: 0, label: '○' },
+                                                        { value: 1, label: '↓' },
+                                                    ].map(({ value, label }) => (
+                                                        <TouchableOpacity
+                                                            key={value}
+                                                            style={[styles.pill, (this.props.currentPhysics?.gravity ?? 1) === value && styles.pillActive]}
+                                                            onPress={() => this.props.onUpdatePhysics?.({
+                                                                ...(this.props.currentPhysics || {}),
+                                                                gravity: value,
+                                                            })}
+                                                        >
+                                                            <Text style={[styles.pillText, (this.props.currentPhysics?.gravity ?? 1) === value && styles.pillTextActive]}>
+                                                                {label}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </View>
                                             </View>
-                                            <Switch
-                                                value={this.props.currentEmitter?.objectVisible !== false}
-                                                onValueChange={(val) => this.props.onUpdateEmitter?.({
-                                                    ...(this.props.currentEmitter || {}),
-                                                    objectVisible: val,
-                                                })}
-                                                trackColor={{ false: '#333', true: '#FF3050' }}
-                                                ios_backgroundColor="#333"
-                                            />
-                                        </View>
-                                        <Text style={[styles.description, { marginTop: 4 }]}>
-                                            Hide the object to show only particles.
-                                        </Text>
-                                    </>
-                                )}
+                                        </>
+                                    )}
+                                </View>
                             </>
                         ) : (
                             <>

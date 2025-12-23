@@ -243,3 +243,65 @@ export function setObjectParent(uuid, parentId) {
     parentId: parentId, // null to unparent
   };
 }
+
+// ========== VOICE COMMAND ACTIONS ==========
+
+// action to batch transform all objects (random sizes, positions, etc.)
+export function batchTransformAll(transformType, params = {}) {
+  return {
+    type: 'BATCH_TRANSFORM_ALL',
+    transformType: transformType, // 'randomScale' | 'randomPosition' | 'uniformScale' | 'reset'
+    params: params,
+  };
+}
+
+// action to arrange objects in a formation
+export function arrangeInFormation(formationType, params = {}) {
+  return {
+    type: 'ARRANGE_FORMATION',
+    formationType: formationType, // 'ring' | 'grid' | 'line' | 'dome' | 'scatter'
+    params: params, // { radius, spacing, rows, cols, etc. }
+  };
+}
+
+// action to add model at a specific position (for voice-commanded placement)
+export function addModelAtPosition(index, position, scale = [0.3, 0.3, 0.3], rotation = [0, 0, 0]) {
+  return {
+    type: 'ADD_MODEL_AT_POSITION',
+    index: index,
+    position: position,
+    scale: scale,
+    rotation: rotation,
+  };
+}
+
+// action to transform a specific object by UUID
+export function transformObject(uuid, transforms) {
+  return {
+    type: 'TRANSFORM_OBJECT',
+    uuid: uuid,
+    transforms: transforms, // { position?, scale?, rotation? }
+  };
+}
+
+// ========== ATTRACTOR/FOLLOWER SYSTEM ==========
+
+// action to update attractor settings for an object
+export function updateAttractorSettings(uuid, attractorData) {
+  return {
+    type: 'UPDATE_ATTRACTOR_SETTINGS',
+    uuid: uuid,
+    attractorData: attractorData, // { isAttractor?, useAttractor?, attractorUUID?, followSpeed? }
+  };
+}
+
+// ========== PHYSICS SYSTEM ==========
+
+// action to update physics settings for an object
+export function updatePhysicsSettings(uuid, physicsData) {
+  return {
+    type: 'UPDATE_PHYSICS_SETTINGS',
+    uuid: uuid,
+    physicsData: physicsData, // { isDynamic?, gravity? }
+  };
+}
