@@ -29,6 +29,7 @@ import PortalBackgroundPanel from './component/PortalBackgroundPanel';
 import ModelLibraryPanel from './component/ModelLibraryPanel';
 import PaintPanel from './component/PaintPanel';
 import WorldCaptureOverlay from './component/WorldCaptureOverlay';
+import TextTo3DModal from './component/TextTo3DModal';
 import * as ModelData from './model/ModelItems';
 import * as PortalData from './model/PortalItems';
 import * as LightingData from './model/LightingItems';
@@ -197,6 +198,7 @@ export class App extends Component {
       showContextualMenu: false, // Contextual settings menu visibility
       showPortalBackgroundPanel: false,
       showModelLibraryPanel: false, // New state for Model Library Panel // Portal background picker panel visibility
+      showTextTo3DModal: false, // Text-to-3D generation modal visibility
       objectAnimations: {}, // { [uuid]: { bounce: { active, intensity }, rotate: { active, intensity, axis }... } }
       isVideoBuffering: false, // Track 360 video buffering state for UI overlay
       showCollaboratorModal: false, // Collaborator invite modal visibility
@@ -208,6 +210,7 @@ export class App extends Component {
       generatedVideoUrl: null, // URL of AI-generated video
       isAIGenerated: false, // Track if current video is AI-generated
       aiGenerationId: null, // Track current generation task ID
+      isGenerating3D: false, // Loading state during 3D generation
       // World mode state
       isWorldMode: false, // True when editing user's world
       worldSceneId: null, // Existing world scene ID for editing
@@ -1190,6 +1193,24 @@ export class App extends Component {
           onDeleteObject={(uuid) => {
             console.log('[App] onDeleteObject:', uuid);
             this.props.dispatchRemoveModelWithUUID(uuid);
+          }}
+        />
+
+        {/* Text to 3D Generation Modal */}
+        <TextTo3DModal
+          visible={this.state.showTextTo3DModal}
+          onClose={() => this.setState({ showTextTo3DModal: false })}
+          onModelGenerated={(model) => {
+            console.log('[App] AI Generated model:', model);
+            // Add the generated model to the scene
+            this.props.dispatchAddCustomModel({
+              name: model.name,
+              uri: model.modelUrl || model.uri,
+              extension: 'glb',
+              type: 'GLB',
+              source: 'ai_generated',
+            });
+            this.setState({ showTextTo3DModal: false });
           }}
         />
 
@@ -2238,6 +2259,15 @@ export class App extends Component {
             >
               <Ionicons name="brush-outline" size={32} color="white" style={{ marginBottom: 4 }} />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Paint</Text>
+            </TouchableOpacity>
+
+            {/* AI Generate Button - Text to 3D */}
+            <TouchableOpacity
+              onPress={() => this.setState({ showTextTo3DModal: true })}
+              style={{ alignItems: 'center', marginHorizontal: 12, opacity: this.state.showTextTo3DModal ? 1 : 0.6 }}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={32} color="white" style={{ marginBottom: 4 }} />
+              <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Generate</Text>
             </TouchableOpacity>
           </View>
         )}
