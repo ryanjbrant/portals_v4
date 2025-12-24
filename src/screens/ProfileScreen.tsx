@@ -438,6 +438,7 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.15)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
     },
     buttonGroupBlur: {
         flexDirection: 'row',
