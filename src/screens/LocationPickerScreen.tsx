@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Dimensions, TextInput, Keyboard } from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Dimensions, TextInput, Keyboard, Platform } from 'react-native';
+import MapView, { Marker, Region, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Location from 'expo-location';
@@ -8,6 +8,21 @@ import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
 
 const { width, height } = Dimensions.get('window');
+
+// Custom Map Style (Dark/Monochromatic)
+const DARK_MAP_STYLE = [
+    { "elementType": "geometry", "stylers": [{ "color": "#212121" }] },
+    { "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] },
+    { "elementType": "labels.text.fill", "stylers": [{ "color": "#757575" }] },
+    { "elementType": "labels.text.stroke", "stylers": [{ "color": "#212121" }] },
+    { "featureType": "administrative", "elementType": "geometry", "stylers": [{ "color": "#757575" }] },
+    { "featureType": "poi", "elementType": "labels.text.fill", "stylers": [{ "color": "#757575" }] },
+    { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#181818" }] },
+    { "featureType": "road", "elementType": "geometry.fill", "stylers": [{ "color": "#2c2c2c" }] },
+    { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#8a8a8a" }] },
+    { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#000000" }] },
+    { "featureType": "water", "elementType": "labels.text.fill", "stylers": [{ "color": "#3d3d3d" }] }
+];
 
 export const LocationPickerScreen = () => {
     const navigation = useNavigation<any>();
@@ -194,7 +209,8 @@ export const LocationPickerScreen = () => {
                 initialRegion={region}
                 onRegionChangeComplete={handleRegionChange}
                 showsUserLocation
-                userInterfaceStyle="dark"
+                customMapStyle={DARK_MAP_STYLE}
+                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_DEFAULT}
             >
                 {selectedLocations.map((loc, index) => (
                     <Marker
