@@ -12,6 +12,7 @@ import { useAppStore } from '../store';
 import { AuthService } from '../services/auth';
 import { User } from '../types';
 import { db } from '../config/firebase';
+import { AnimatedBackground } from '../components/AnimatedBackground';
 
 const { width } = Dimensions.get('window');
 
@@ -101,7 +102,7 @@ export const ProfileScreen = () => {
         <View style={styles.container}>
             {/* World Background - Hero Element */}
             <View style={styles.backgroundContainer}>
-                {isSelf && profileUser.worldBackground ? (
+                {profileUser.worldBackground ? (
                     <ImageBackground
                         source={{ uri: profileUser.worldBackground }}
                         style={styles.backgroundImage}
@@ -114,10 +115,7 @@ export const ProfileScreen = () => {
                         />
                     </ImageBackground>
                 ) : (
-                    <LinearGradient
-                        colors={[theme.colors.surfaceHighlight, theme.colors.background]}
-                        style={styles.backgroundImage}
-                    />
+                    <AnimatedBackground />
                 )}
             </View>
 
