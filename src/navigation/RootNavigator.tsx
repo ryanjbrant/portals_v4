@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { LoginScreen } from '../screens/LoginScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
+import { OnboardingScreen, checkOnboardingComplete } from '../screens/OnboardingScreen';
 import { BottomTabNavigator } from './BottomTabNavigator';
 import { PeopleScreen } from '../screens/PeopleScreen';
 import { SearchScreen } from '../screens/SearchScreen';
@@ -74,11 +75,19 @@ const MainStackScreen = () => (
 export const RootNavigator = () => {
     const isAuthenticated = useAppStore((state) => state.isAuthenticated);
     const [isLoading, setIsLoading] = useState(true);
+    const [showOnboarding, setShowOnboarding] = useState(false);
     const isVoiceActive = useAppStore(state => state.isVoiceActive);
     const navigationRef = useNavigationContainerRef();
 
     useEffect(() => {
-        // ... (auth logic same)
+        // Check onboarding status
+        const checkOnboarding = async () => {
+            const isComplete = await checkOnboardingComplete();
+            setShowOnboarding(!isComplete);
+        };
+        checkOnboarding();
+
+        // Auth state listener
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
                 try {
@@ -115,12 +124,22 @@ export const RootNavigator = () => {
         return unsubscribe;
     }, []);
 
+    // Handle onboarding completion
+    const handleOnboardingComplete = () => {
+        setShowOnboarding(false);
+    };
+
     if (isLoading) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
                 <ActivityIndicator size="large" color={theme.colors.primary} />
             </View>
         );
+    }
+
+    // Show onboarding for new users (before auth or after)
+    if (showOnboarding) {
+        return <OnboardingScreen onComplete={handleOnboardingComplete} />;
     }
 
     return (
