@@ -13,7 +13,7 @@ import type { Auth } from 'firebase/auth';
 
 // Configure Fal.ai - API key should be set via environment or config
 // For security in production, use a server-side proxy
-const FAL_API_KEY = process.env.FAL_KEY || 'YOUR_FAL_API_KEY';
+const FAL_API_KEY = process.env.FAL_KEY || '8adf4d54-c697-45a8-a78e-38f76a3a85a5:6742d739e8516d2ea1ece9db0d646fe5';
 
 // Initialize Fal client
 fal.config({
@@ -108,39 +108,23 @@ export async function generateObjectFromText(
             throw new Error('No model URL in response');
         }
 
-        // Download the GLB file
-        onProgress?.({ status: 'downloading', message: 'Downloading model...', progress: 70 });
-        console.log('[TextTo3D] Downloading GLB from:', data.model_glb.url);
-
-        const response = await fetch(data.model_glb.url);
-        if (!response.ok) {
-            throw new Error(`Failed to download model: ${response.status}`);
-        }
-
-        const glbBlob = await response.blob();
-        console.log('[TextTo3D] Downloaded GLB size:', glbBlob.size);
-
-        // Upload to R2
+        // For React Native, skip the local download/re-upload step
+        // The Fal.ai URL is already publicly accessible, so we can use it directly
+        // and just save the metadata pointing to the Fal CDN URL
         onProgress?.({ status: 'uploading', message: 'Saving to library...', progress: 85 });
+
+        const glbUrl = data.model_glb.url;
+        console.log('[TextTo3D] Using Fal CDN URL:', glbUrl);
 
         const timestamp = Date.now();
         const safeName = prompt.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_');
         const fileName = `${safeName}_${timestamp}.glb`;
-        const r2Key = `portals/assets/models/generated/${fileName}`;
 
-        // Convert blob to base64 for upload
-        const arrayBuffer = await glbBlob.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-        const dataUri = `data:model/gltf-binary;base64,${base64}`;
-
-        await uploadToR2(dataUri, r2Key, 'model/gltf-binary');
-        const publicUrl = `${R2_PUBLIC_BASE}/${r2Key}`;
-        console.log('[TextTo3D] Uploaded to R2:', publicUrl);
-
-        // Save metadata to Firestore
+        // Save metadata to Firestore - using Fal's CDN URL directly
+        // (Fal URLs are persistent for a reasonable time)
         const docRef = await addDoc(collection(db, 'users', user.uid, 'uploads'), {
             name: `Generated: ${prompt.slice(0, 50)}`,
-            uri: publicUrl,
+            uri: glbUrl,
             type: '3D_MODEL',
             extension: 'glb',
             source: 'ai_generated',
@@ -154,7 +138,7 @@ export async function generateObjectFromText(
 
         return {
             success: true,
-            modelUrl: publicUrl,
+            modelUrl: glbUrl,
             modelName: `Generated: ${prompt.slice(0, 30)}`,
             firestoreId: docRef.id,
         };
