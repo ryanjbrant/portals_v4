@@ -163,7 +163,7 @@ export const MapScreen = () => {
                     <View style={styles.fuelBadge}>
                         <Ionicons name="flame" size={16} color={theme.colors.warning} />
                         <Text style={styles.fuelText}>
-                            {fuelEarnedSession > 0 ? `+${fuelEarnedSession}` : ' Active'}
+                            {fuelEarnedSession > 0 ? `+${fuelEarnedSession.toFixed(2)}` : ' Active'}
                         </Text>
                     </View>
                     <View style={styles.divider} />
