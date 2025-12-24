@@ -12,6 +12,8 @@ export interface User {
     flames: number; // Total likes received
     fuelBalance?: number; // Earned fuel from walking/rewards (spendable)
     isPrivate?: boolean;
+    worldSceneId?: string; // Reference to user's world scene
+    worldBackground?: string; // Cover image URL for profile background
     fuelStats?: {
         totalEarned: number;
         totalWalkedKm: number; // For "Explorer" badge logic

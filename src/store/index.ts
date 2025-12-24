@@ -80,6 +80,7 @@ interface AppState {
     draftPost: Partial<Post> | null;
     setDraftPost: (draft: Partial<Post> | null) => void;
     saveDraft: (sceneData: any, coverImage?: string) => Promise<string | undefined>;
+    saveWorld: (sceneData: any, coverImage: string) => Promise<{ sceneId: string; imageUrl: string } | undefined>;
     fetchDrafts: () => Promise<void>;
     deleteDraft: (id: string) => Promise<void>;
     updateDraftPost: (updates: Partial<Post>) => void;
@@ -613,6 +614,56 @@ export const useAppStore = create<AppState>((set, get) => ({
             return sceneId; // Return sceneId so caller can update Redux
         } catch (e) {
             console.error("[Store] Error saving scene:", e);
+            return undefined;
+        }
+    },
+    saveWorld: async (sceneData, coverImage) => {
+        try {
+            console.log("[Store] Saving world scene...");
+            const state = get();
+            const userId = state.currentUser?.id;
+            if (!userId) {
+                console.error("[Store] No user logged in");
+                return undefined;
+            }
+
+            // Save scene with isWorld flag
+            const { saveSceneToStorage } = require('../services/sceneSaver');
+            const result = await saveSceneToStorage(
+                {
+                    ...sceneData,
+                    status: 'world', // Special status for world scenes
+                    isWorld: true,
+                },
+                coverImage,
+                userId
+            );
+
+            const { sceneId, previewUrl } = result;
+            console.log("[Store] World scene saved:", sceneId, "preview:", previewUrl);
+
+            // Update user document with world info
+            const userRef = doc(db, 'users', userId);
+            await updateDoc(userRef, {
+                worldSceneId: sceneId,
+                worldBackground: previewUrl || null,
+            });
+
+            // Update local currentUser state
+            if (state.currentUser) {
+                set({
+                    currentUser: {
+                        ...state.currentUser,
+                        worldSceneId: sceneId,
+                        worldBackground: previewUrl,
+                    } as User
+                });
+            }
+
+            console.log("[Store] User document updated with world info");
+            return { sceneId, imageUrl: previewUrl || '' };
+        } catch (e) {
+            console.error("[Store] Error saving world:", e);
             return undefined;
         }
     },

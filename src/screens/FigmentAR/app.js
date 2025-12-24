@@ -28,6 +28,7 @@ import ObjectPropertiesPanel from './component/ObjectPropertiesPanel';
 import PortalBackgroundPanel from './component/PortalBackgroundPanel';
 import ModelLibraryPanel from './component/ModelLibraryPanel';
 import PaintPanel from './component/PaintPanel';
+import WorldCaptureOverlay from './component/WorldCaptureOverlay';
 import * as ModelData from './model/ModelItems';
 import * as PortalData from './model/PortalItems';
 import * as LightingData from './model/LightingItems';
@@ -207,6 +208,11 @@ export class App extends Component {
       generatedVideoUrl: null, // URL of AI-generated video
       isAIGenerated: false, // Track if current video is AI-generated
       aiGenerationId: null, // Track current generation task ID
+      // World mode state
+      isWorldMode: false, // True when editing user's world
+      worldSceneId: null, // Existing world scene ID for editing
+      showWorldCapture: false, // Show world capture overlay
+      capturedWorldImage: null, // Captured screenshot for preview
     };
 
     this._onBackgroundTap = this._onBackgroundTap.bind(this);
@@ -313,6 +319,19 @@ export class App extends Component {
       // Fetch the scene data from storage
       this._loadRemixScene(postData);
     }
+
+    // Check for world mode
+    const isWorldMode = route?.params?.mode === 'world';
+    const worldSceneId = route?.params?.worldSceneId;
+    if (isWorldMode) {
+      console.log('[App] World mode activated, worldSceneId:', worldSceneId);
+      this.setState({ isWorldMode: true, worldSceneId });
+
+      // Load existing world scene if editing
+      if (worldSceneId) {
+        this._loadWorldScene(worldSceneId);
+      }
+    }
   }
 
   // Load scene for remix mode
@@ -351,6 +370,99 @@ export class App extends Component {
       console.error('[App] Failed to load remix scene:', error);
       Alert.alert('Error', 'Failed to load scene: ' + error.message);
     }
+  }
+
+  // Load existing world scene for editing
+  async _loadWorldScene(worldSceneId) {
+    try {
+      const sceneData = await loadSceneById(worldSceneId);
+      if (sceneData && sceneData.objects && Array.isArray(sceneData.objects)) {
+        console.log('[App] World scene loaded, object count:', sceneData.objects.length);
+        this.props.dispatchLoadScene(sceneData);
+        this.props.dispatchSetSceneTitle(sceneData.title || 'My World');
+        this.props.dispatchSetSceneId(worldSceneId);
+      } else {
+        console.warn('[App] Invalid world scene data');
+      }
+    } catch (error) {
+      console.error('[App] Failed to load world scene:', error);
+    }
+  }
+
+  // Start world capture flow
+  _startWorldCapture() {
+    this.setState({ showWorldCapture: true, capturedWorldImage: null });
+  }
+
+  // Capture world screenshot
+  async _captureWorld() {
+    try {
+      if (this._arNavigator?.sceneNavigator?.takeScreenshot) {
+        const screenshot = await this._arNavigator.sceneNavigator.takeScreenshot('world_capture', false);
+        if (screenshot?.success && screenshot?.url) {
+          const imageUri = 'file://' + screenshot.url;
+          this.setState({ capturedWorldImage: imageUri });
+          console.log('[App] World screenshot captured:', imageUri);
+        }
+      }
+    } catch (e) {
+      console.error('[App] World capture failed:', e);
+      Alert.alert('Error', 'Failed to capture screenshot');
+    }
+  }
+
+  // Confirm and save world
+  async _confirmWorld() {
+    try {
+      const { capturedWorldImage } = this.state;
+      if (!capturedWorldImage) return;
+
+      // Serialize scene data
+      const arobjects = {
+        modelItems: this.props.modelItems,
+        portalItems: this.props.portalItems,
+        mediaItems: this.props.mediaItems,
+        effectItems: this.props.effectItems,
+        postProcessEffects: this.props.postProcessEffects,
+      };
+      const ui = {
+        sceneTitle: this.props.sceneTitle || 'My World',
+        selectedHdri: this.props.selectedHdri,
+      };
+
+      const sceneData = serializeFigmentScene(arobjects, ui);
+      sceneData.sceneId = this.state.worldSceneId; // Pass existing ID for update
+
+      console.log('[App] Saving world scene...', sceneData);
+
+      // Save via store
+      const result = await useAppStore.getState().saveWorld(sceneData, capturedWorldImage);
+
+      if (result) {
+        console.log('[App] World saved successfully:', result);
+        this.setState({ showWorldCapture: false, capturedWorldImage: null });
+
+        // Navigate back to profile
+        if (this.props.navigation?.navigate) {
+          this.props.navigation.navigate('Profile');
+        }
+      } else {
+        Alert.alert('Error', 'Failed to save world');
+      }
+    } catch (error) {
+      console.error('[App] Save world error:', error);
+      Alert.alert('Error', 'Failed to save world: ' + error.message);
+    }
+  }
+
+  // Retake world screenshot
+  _retakeWorld() {
+    this.setState({ capturedWorldImage: null });
+  }
+
+  // Cancel world capture
+  _cancelWorldCapture() {
+    this.setState({ showWorldCapture: false, capturedWorldImage: null });
   }
 
   componentWillUnmount() {
@@ -879,6 +991,16 @@ export class App extends Component {
     return (
       <View style={localStyles.flex}>
         <StatusBar hidden={true} />
+
+        {/* World Capture Overlay - Full screen overlay for capturing world screenshot */}
+        <WorldCaptureOverlay
+          visible={this.state.showWorldCapture}
+          capturedImage={this.state.capturedWorldImage}
+          onCapture={() => this._captureWorld()}
+          onConfirm={() => this._confirmWorld()}
+          onRetake={() => this._retakeWorld()}
+          onCancel={() => this._cancelWorldCapture()}
+        />
         {/* CRITICAL: Use memoized viroAppProps from state to prevent AR scene reload */}
         <ViroARSceneNavigator style={localStyles.arView}
           apiKey="YOUR-API-KEY-HERE"
@@ -944,6 +1066,18 @@ export class App extends Component {
                 <Ionicons name="save-outline" size={20} color="white" />
                 <Text style={{ color: 'white', marginLeft: 12, fontSize: 16 }}>Save Draft</Text>
               </TouchableOpacity>
+              {this.state.isWorldMode && (
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,214,10,0.15)' }}
+                  onPress={() => {
+                    this.setState({ isMenuOpen: false });
+                    this._startWorldCapture();
+                  }}
+                >
+                  <Ionicons name="globe-outline" size={20} color="#FFD60A" />
+                  <Text style={{ color: '#FFD60A', marginLeft: 12, fontSize: 16, fontWeight: '600' }}>Save World</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.1)' }}
                 onPress={() => {

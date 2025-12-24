@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -93,10 +93,24 @@ export const ProfileScreen = () => {
 
     return (
         <View style={styles.container}>
-            <LinearGradient
-                colors={[theme.colors.surfaceHighlight, theme.colors.background]}
-                style={styles.background}
-            />
+            {/* World Background - shows user's custom world if set */}
+            {isSelf && profileUser.worldBackground ? (
+                <ImageBackground
+                    source={{ uri: profileUser.worldBackground }}
+                    style={styles.background}
+                    resizeMode="cover"
+                >
+                    <LinearGradient
+                        colors={['transparent', theme.colors.background]}
+                        style={{ flex: 1 }}
+                    />
+                </ImageBackground>
+            ) : (
+                <LinearGradient
+                    colors={[theme.colors.surfaceHighlight, theme.colors.background]}
+                    style={styles.background}
+                />
+            )}
 
             <SafeAreaView style={[styles.topNav, !isSelf && { justifyContent: 'space-between' }]}>
                 {!isSelf && (
@@ -153,8 +167,16 @@ export const ProfileScreen = () => {
                                     <Text style={styles.primaryButtonText}>Edit Profile</Text>
                                 </TouchableOpacity>
 
-                                <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Figment')}>
-                                    <Text style={styles.secondaryButtonText}>Create World</Text>
+                                <TouchableOpacity
+                                    style={[styles.secondaryButton, profileUser.worldSceneId && { borderColor: '#FFD60A' }]}
+                                    onPress={() => navigation.navigate('Figment', {
+                                        mode: 'world',
+                                        worldSceneId: profileUser.worldSceneId || null
+                                    })}
+                                >
+                                    <Text style={[styles.secondaryButtonText, profileUser.worldSceneId && { color: '#FFD60A' }]}>
+                                        {profileUser.worldSceneId ? 'Edit World' : 'Create World'}
+                                    </Text>
                                 </TouchableOpacity>
                             </>
                         ) : (
