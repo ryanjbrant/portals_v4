@@ -437,52 +437,33 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
     },
-    heroButton: {
-        height: 56,
+    buttonGroupContainer: {
+        width: '100%',
+        marginTop: 24,
         borderRadius: 28,
         overflow: 'hidden',
-        minWidth: 180,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
+        borderColor: 'rgba(255,255,255,0.15)',
     },
-    heroButtonActive: {
-        backgroundColor: '#FFD60A',
-        borderColor: '#FFD60A',
-    },
-    heroButtonBlur: {
-        width: '100%',
-        height: '100%',
+    buttonGroupBlur: {
         flexDirection: 'row',
-        justifyContent: 'center',
+        height: 56,
         alignItems: 'center',
-        paddingHorizontal: 24,
     },
-    heroButtonText: {
-        color: '#fff',
-        fontSize: 18,
-        fontWeight: '600',
-    },
-    galleryButton: {
-        marginTop: 24,
-        width: '100%',
-        borderRadius: 20,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-    },
-    galleryButtonBlur: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 16,
-        paddingHorizontal: 20,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-    },
-    galleryButtonText: {
-        color: 'rgba(255,255,255,0.9)',
-        fontSize: 16,
-        fontWeight: '500',
+    groupButton: {
         flex: 1,
-        marginLeft: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+    },
+    groupButtonDivider: {
+        borderRightWidth: 1,
+        borderRightColor: 'rgba(255,255,255,0.1)',
+    },
+    groupButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });
