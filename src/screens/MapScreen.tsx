@@ -39,11 +39,41 @@ export const MapScreen = () => {
     const [navTarget, setNavTarget] = useState<Post | null>(null);
     const [fuelEarnedSession, setFuelEarnedSession] = useState(0);
     const [isTracking, setIsTracking] = useState(false);
+    const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number, longitude: number }[]>([]);
 
     // Filter posts with location
     const postsWithLocation = useMemo(() =>
         feed.filter(p => p.locations && p.locations.length > 0),
         [feed]);
+
+    /**
+     * Fetch walking directions from OSRM (free, no API key required)
+     */
+    const fetchWalkingRoute = async (
+        origin: { latitude: number; longitude: number },
+        destination: { latitude: number; longitude: number }
+    ): Promise<{ latitude: number, longitude: number }[]> => {
+        try {
+            const url = `https://router.project-osrm.org/route/v1/foot/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
+
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
+                // OSRM returns [lng, lat], we need {latitude, longitude}
+                return data.routes[0].geometry.coordinates.map((coord: [number, number]) => ({
+                    latitude: coord[1],
+                    longitude: coord[0]
+                }));
+            }
+
+            console.warn('[MapScreen] OSRM returned no route, using straight line');
+            return [origin, destination];
+        } catch (error) {
+            console.error('[MapScreen] Route fetch failed:', error);
+            return [origin, destination]; // Fallback to straight line
+        }
+    };
 
     // Initialize Services
     useEffect(() => {
@@ -87,17 +117,25 @@ export const MapScreen = () => {
 
 
     // Handlers
-    const handleNavigate = (post: Post) => {
+    const handleNavigate = async (post: Post) => {
         setNavTarget(post);
-        // Zoom to show both points
+
+        // Fetch walking route if we have locations
         if (userLocation && post.locations?.[0]) {
-            mapRef.current?.fitToCoordinates([
-                { latitude: userLocation.latitude, longitude: userLocation.longitude },
-                { latitude: post.locations[0].latitude, longitude: post.locations[0].longitude }
-            ], {
-                edgePadding: { top: 100, right: 50, bottom: 350, left: 50 },
-                animated: true
-            });
+            const origin = { latitude: userLocation.latitude, longitude: userLocation.longitude };
+            const destination = { latitude: post.locations[0].latitude, longitude: post.locations[0].longitude };
+
+            // Fetch walking directions
+            const route = await fetchWalkingRoute(origin, destination);
+            setRouteCoordinates(route);
+
+            // Zoom to show route
+            if (route.length > 0) {
+                mapRef.current?.fitToCoordinates(route, {
+                    edgePadding: { top: 100, right: 50, bottom: 350, left: 50 },
+                    animated: true
+                });
+            }
         }
     };
 
@@ -144,16 +182,13 @@ export const MapScreen = () => {
                     </Marker>
                 ))}
 
-                {/* Navigation Line */}
-                {navTarget && userLocation && navTarget.locations?.[0] && (
+                {/* Navigation Route (Walking Directions) */}
+                {navTarget && routeCoordinates.length > 0 && (
                     <Polyline
-                        coordinates={[
-                            { latitude: userLocation.latitude, longitude: userLocation.longitude },
-                            { latitude: navTarget.locations[0].latitude, longitude: navTarget.locations[0].longitude }
-                        ]}
+                        coordinates={routeCoordinates}
                         strokeColor={theme.colors.primary}
                         strokeWidth={4}
-                        lineDashPattern={[10, 5]} // Dashed line for "walking path"
+                        lineDashPattern={[0]} // Solid line for actual route
                     />
                 )}
             </MapView>
