@@ -130,10 +130,15 @@ export const ProfileScreen = () => {
                 )}
                 {isSelf && <View style={{ flex: 1 }} />}
                 {isSelf && (
-                    <TouchableOpacity style={styles.glassIconBtn} onPress={() => navigation.navigate('Activity')}>
-                        <Ionicons name="notifications-outline" size={24} color={theme.colors.white} />
-                        {hasUnread && <View style={styles.redDot} />}
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <TouchableOpacity style={styles.glassIconBtn} onPress={() => navigation.navigate('ProfileSettings')}>
+                            <Ionicons name="settings-outline" size={24} color={theme.colors.white} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.glassIconBtn} onPress={() => navigation.navigate('Activity')}>
+                            <Ionicons name="notifications-outline" size={24} color={theme.colors.white} />
+                            {hasUnread && <View style={styles.redDot} />}
+                        </TouchableOpacity>
+                    </View>
                 )}
             </SafeAreaView>
 
