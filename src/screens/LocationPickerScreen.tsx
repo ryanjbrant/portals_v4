@@ -209,7 +209,8 @@ export const LocationPickerScreen = () => {
                 initialRegion={region}
                 onRegionChangeComplete={handleRegionChange}
                 showsUserLocation
-                customMapStyle={DARK_MAP_STYLE}
+                customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
+                userInterfaceStyle="dark"
                 provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_DEFAULT}
             >
                 {selectedLocations.map((loc, index) => (

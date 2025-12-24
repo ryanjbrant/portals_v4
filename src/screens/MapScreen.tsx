@@ -113,11 +113,12 @@ export const MapScreen = () => {
             <MapView
                 ref={mapRef}
                 style={styles.map}
-                customMapStyle={DARK_MAP_STYLE}
+                customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
                 provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_DEFAULT}
+                userInterfaceStyle="dark"
                 showsUserLocation
                 showsCompass={false}
-                rotateEnabled={false} // Keep North up for easier map reading, or allow true for navigation
+                rotateEnabled={false}
             >
                 {/* POI Markers */}
                 {postsWithLocation.map((post, index) => (
