@@ -16,7 +16,7 @@ import PortalItemRender from './component/PortalItemRender';
 import EffectItemRender from './component/EffectItemRender';
 import MediaItemRender from './component/MediaItemRender';
 import AudioItemRender from './component/AudioItemRender';
-import { ARTrackingInitialized, switchListMode } from './redux/actions';
+import { ARTrackingInitialized, switchListMode, updateCameraTransform } from './redux/actions';
 
 
 import {
@@ -30,6 +30,7 @@ import {
   ViroQuad
 } from '@reactvision/react-viro';
 import * as LightingData from './model/LightingItems';
+import { PaintRenderer } from '../../ar/paint/PaintRenderer';
 
 
 export class figment extends Component {
@@ -54,6 +55,23 @@ export class figment extends Component {
     this._onPortalsClickStateCallback = this._onPortalsClickStateCallback.bind(this);
     this._onSceneClick = this._onSceneClick.bind(this);
     this._renderLightingSetup = this._renderLightingSetup.bind(this);
+    this._onCameraTransformUpdate = this._onCameraTransformUpdate.bind(this);
+  }
+
+  /**
+   * Called when camera transform updates - used for device painting
+   */
+  _onCameraTransformUpdate(cameraTransform) {
+    // Throttle updates to avoid overwhelming Redux
+    const now = Date.now();
+    if (!this._lastCameraUpdate || now - this._lastCameraUpdate > 50) {
+      this._lastCameraUpdate = now;
+      this.props.dispatchUpdateCameraTransform(
+        cameraTransform.position,
+        cameraTransform.forward,
+        cameraTransform.up
+      );
+    }
   }
 
   /**
@@ -92,7 +110,6 @@ export class figment extends Component {
     setup.lights.forEach((light, index) => {
       if (light.type === 'spot') {
         const spotProps = {
-          key: `spot-${index}`,
           position: light.position,
           direction: light.direction,
           color: light.color || '#ffffff',
@@ -112,7 +129,7 @@ export class figment extends Component {
           spotProps.shadowOpacity = light.shadowOpacity || 0.4;
         }
 
-        lights.push(<ViroSpotLight {...spotProps} />);
+        lights.push(<ViroSpotLight key={`spot-${index}`} {...spotProps} />);
       } else if (light.type === 'directional') {
         lights.push(
           <ViroDirectionalLight
@@ -183,7 +200,8 @@ export class figment extends Component {
 
     return (
       <ViroARScene ref={component => { this.arSceneRef = component }} physicsWorld={{ gravity: [0, -9.81, 0] }} postProcessEffects={[this.props.postProcessEffects]}
-        onTrackingUpdated={this._onTrackingUpdated}>
+        onTrackingUpdated={this._onTrackingUpdated}
+        onCameraTransformUpdate={this._onCameraTransformUpdate}>
         {/* Dynamic Lighting Setup based on selectedHdri */}
         {this._renderLightingSetup()}
 
@@ -223,6 +241,23 @@ export class figment extends Component {
         {portals}
         {effects}
         {audioItems}
+
+        {/* AR Paint Strokes */}
+        {(() => {
+          console.log('[figment.js] PaintRenderer props:', {
+            strokesLength: this.props.paintStrokes?.length || 0,
+            activePointsLength: this.props.activePaintPoints?.length || 0,
+            paintColor: this.props.paintColor,
+            paintBrushType: this.props.paintBrushType,
+          });
+          return null;
+        })()}
+        <PaintRenderer
+          strokes={this.props.paintStrokes || []}
+          activePoints={this.props.activePaintPoints || []}
+          activeColor={this.props.paintColor || '#FF3366'}
+          activeBrushType={this.props.paintBrushType || 'tube'}
+        />
       </ViroARScene>
     );
   }
@@ -469,7 +504,14 @@ function selectProps(store) {
     postProcessEffects: store.arobjects.postProcessEffects,
     objectAnimations: store.arobjects.objectAnimations, // Added for JS-driven animations
     objectEmitters: store.arobjects.objectEmitters, // Added for particle emitters
+    objectPhysics: store.arobjects.objectPhysics, // Added for physics
     selectedHdri: store.ui.selectedHdri,
+    // AR Paint state
+    paintStrokes: store.arobjects.paintStrokes,
+    activePaintPoints: store.arobjects.activePaintPoints,
+    paintColor: store.arobjects.paintColor,
+    paintBrushType: store.arobjects.paintBrushType,
+    cameraTransform: store.arobjects.cameraTransform,
   };
 }
 
@@ -478,6 +520,7 @@ const mapDispatchToProps = (dispatch) => {
   return {
     dispatchARTrackingInitialized: (trackingNormal) => dispatch(ARTrackingInitialized(trackingNormal)),
     dispatchSwitchListMode: (listMode, listTitle) => dispatch(switchListMode(listMode, listTitle)),
+    dispatchUpdateCameraTransform: (position, forward, up) => dispatch(updateCameraTransform(position, forward, up)),
   }
 }
 module.exports = connect(selectProps, mapDispatchToProps)(figment);

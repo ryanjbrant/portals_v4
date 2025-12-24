@@ -27,6 +27,7 @@ import ARInitializationUI from './component/ARInitializationUI.js';
 import ObjectPropertiesPanel from './component/ObjectPropertiesPanel';
 import PortalBackgroundPanel from './component/PortalBackgroundPanel';
 import ModelLibraryPanel from './component/ModelLibraryPanel';
+import PaintPanel from './component/PaintPanel';
 import * as ModelData from './model/ModelItems';
 import * as PortalData from './model/PortalItems';
 import * as LightingData from './model/LightingItems';
@@ -1063,6 +1064,9 @@ export class App extends Component {
           <ARInitializationUI style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }} />
         )}
 
+        {/* Paint Panel - rendered at root level for full-screen absolute positioning */}
+        {this._renderPaintPanel()}
+
         {/* Voice Composer Button - floating mic in bottom right corner */}
         {!isViewOnly && !isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
           <View style={{ position: 'absolute', right: 20, bottom: 200, zIndex: 50 }}>
@@ -1604,6 +1608,16 @@ export class App extends Component {
     );
   }
 
+  // Paint Panel - rendered at root level for full-screen positioning
+  _renderPaintPanel() {
+    const isPaint = this.props.listMode === UIConstants.LIST_MODE_PAINT;
+    const showSelectionUI = !this.state.isActivelyRecording && !this.state.showConfirmButtons && !this.state.showPhotosSelector && !this.state.showPortalBackgroundPanel && !this.state.showModelLibraryPanel && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN;
+    const shouldShowPaint = showSelectionUI && isPaint;
+
+    if (!shouldShowPaint) return null;
+    return <PaintPanel />;
+  }
+
   // Bottom bar for photo previews (simpler)
   _renderPhotoBottomBar() {
     return (
@@ -2003,11 +2017,13 @@ export class App extends Component {
     const isEffects = this.props.listMode === UIConstants.LIST_MODE_EFFECT;
     const isModels = this.props.listMode === UIConstants.LIST_MODE_MODEL;
     const isLighting = this.props.listMode === UIConstants.LIST_MODE_LIGHT;
+    const isPaint = this.props.listMode === UIConstants.LIST_MODE_PAINT;
 
     // Check if we should show the non-recording UI (Picker + Toolbar)
     const showSelectionUI = !this.state.isActivelyRecording && !this.state.showConfirmButtons && !this.state.showPhotosSelector && !this.state.showPortalBackgroundPanel && !this.state.showModelLibraryPanel && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN;
 
     const shouldShowPicker = showSelectionUI && (isPortals || isEffects || isModels || isLighting);
+    const shouldShowPaint = showSelectionUI && isPaint;
 
     // SVG Progress logic
     const circumference = 2 * Math.PI * 45;
@@ -2079,6 +2095,15 @@ export class App extends Component {
             >
               <Ionicons name="sunny-outline" size={32} color="white" style={{ marginBottom: 4 }} />
               <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Lighting</Text>
+            </TouchableOpacity>
+
+            {/* Paint Button */}
+            <TouchableOpacity
+              onPress={() => toggleMode(UIConstants.LIST_MODE_PAINT, UIConstants.LIST_TITLE_PAINT)}
+              style={{ alignItems: 'center', marginHorizontal: 12, opacity: this.props.listMode === UIConstants.LIST_MODE_PAINT ? 1 : 0.6 }}
+            >
+              <Ionicons name="brush-outline" size={32} color="white" style={{ marginBottom: 4 }} />
+              <Text style={{ color: 'white', fontSize: 10, marginTop: 4 }}>Paint</Text>
             </TouchableOpacity>
           </View>
         )}

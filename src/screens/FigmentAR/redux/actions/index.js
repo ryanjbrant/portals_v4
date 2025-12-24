@@ -305,3 +305,60 @@ export function updatePhysicsSettings(uuid, physicsData) {
     physicsData: physicsData, // { isDynamic?, gravity? }
   };
 }
+
+// ========== AR PAINT SYSTEM ==========
+
+// action to add a paint point to the active stroke
+export function addPaintPoint(point) {
+  return {
+    type: 'ADD_PAINT_POINT',
+    point: point, // [x, y, z]
+  };
+}
+
+// action to end the current paint stroke
+export function endPaintStroke() {
+  return {
+    type: 'END_PAINT_STROKE',
+  };
+}
+
+// action to undo the last paint stroke
+export function undoPaintStroke() {
+  return {
+    type: 'UNDO_PAINT_STROKE',
+  };
+}
+
+// action to clear all paint strokes
+export function clearPaint() {
+  return {
+    type: 'CLEAR_PAINT',
+  };
+}
+
+// action to set paint color
+export function setPaintColor(color) {
+  return {
+    type: 'SET_PAINT_COLOR',
+    color: color,
+  };
+}
+
+// action to set paint brush type
+export function setPaintBrush(brushType) {
+  return {
+    type: 'SET_PAINT_BRUSH',
+    brushType: brushType, // 'texture' | 'tube' | 'particle'
+  };
+}
+
+// action to update camera transform for device painting
+export function updateCameraTransform(position, forward, up) {
+  return {
+    type: 'UPDATE_CAMERA_TRANSFORM',
+    position: position,
+    forward: forward,
+    up: up,
+  };
+}

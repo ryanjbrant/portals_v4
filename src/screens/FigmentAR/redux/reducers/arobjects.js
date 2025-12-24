@@ -35,6 +35,18 @@ const initialState = {
   postProcessEffects: EffectsConstants.EFFECT_NONE,
   objectAnimations: {}, // Added for JS-driven animations (keyed by UUID)
   objectEmitters: {}, // Added for particle emitters (keyed by UUID)
+  objectPhysics: {}, // Added for physics settings (keyed by UUID)
+  // AR Paint state
+  paintStrokes: [], // Completed paint strokes
+  activePaintPoints: [], // Points in current stroke being drawn
+  paintColor: '#FF3366',
+  paintBrushType: 'tube', // 'texture' | 'tube' | 'particle'
+  // Camera state for device painting
+  cameraTransform: {
+    position: [0, 0, 0],
+    forward: [0, 0, -1],
+    up: [0, 1, 0],
+  },
 }
 
 // Creates a new model item with the given index from the data model in ModelItems.js
@@ -1027,6 +1039,69 @@ function arobjects(state = initialState, action) {
             scale: action.transforms.scale || targetItem.scale,
             rotation: action.transforms.rotation || targetItem.rotation,
           },
+        },
+      };
+
+    // ============ AR Paint Actions ============
+    case 'ADD_PAINT_POINT':
+      console.log('[Reducer] ADD_PAINT_POINT:', action.point, 'total:', state.activePaintPoints.length + 1);
+      return {
+        ...state,
+        activePaintPoints: [...state.activePaintPoints, action.point],
+      };
+
+    case 'END_PAINT_STROKE':
+      console.log('[Reducer] END_PAINT_STROKE, active points:', state.activePaintPoints.length);
+      if (state.activePaintPoints.length < 2) {
+        // Not enough points for a stroke
+        return { ...state, activePaintPoints: [] };
+      }
+      const newStroke = {
+        id: `stroke_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        points: [...state.activePaintPoints],
+        color: state.paintColor,
+        brushType: state.paintBrushType,
+        seed: Math.floor(Math.random() * 0xFFFFFFFF),
+      };
+      console.log('[Reducer] Created stroke:', newStroke.id, 'with', newStroke.points.length, 'points');
+      return {
+        ...state,
+        paintStrokes: [...state.paintStrokes, newStroke],
+        activePaintPoints: [],
+      };
+
+    case 'UNDO_PAINT_STROKE':
+      return {
+        ...state,
+        paintStrokes: state.paintStrokes.slice(0, -1),
+      };
+
+    case 'CLEAR_PAINT':
+      return {
+        ...state,
+        paintStrokes: [],
+        activePaintPoints: [],
+      };
+
+    case 'SET_PAINT_COLOR':
+      return {
+        ...state,
+        paintColor: action.color,
+      };
+
+    case 'SET_PAINT_BRUSH':
+      return {
+        ...state,
+        paintBrushType: action.brushType,
+      };
+
+    case 'UPDATE_CAMERA_TRANSFORM':
+      return {
+        ...state,
+        cameraTransform: {
+          position: action.position,
+          forward: action.forward,
+          up: action.up,
         },
       };
 
