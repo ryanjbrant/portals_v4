@@ -180,65 +180,13 @@ export const ProfileScreen = () => {
                         </View>
                     </View>
 
-                    {/* Hero Actions */}
+                    {/* Hero Actions - Consolidated */}
                     <View style={styles.actionContainer}>
-                        {isSelf ? (
-                            <View style={styles.buttonRow}>
-                                {/* Secondary: Edit Profile */}
-                                <TouchableOpacity style={styles.secondaryCircleBtn} onPress={() => navigation.navigate('ProfileSettings')}>
-                                    <Ionicons name="settings-outline" size={24} color={theme.colors.white} />
-                                </TouchableOpacity>
-
-                                {/* HERO: Create/Edit World */}
-                                <TouchableOpacity
-                                    style={[styles.heroButton, profileUser.worldSceneId && styles.heroButtonActive]}
-                                    onPress={() => navigation.navigate('Figment', {
-                                        mode: 'world',
-                                        worldSceneId: profileUser.worldSceneId || null
-                                    })}
-                                >
-                                    <BlurView intensity={20} style={styles.heroButtonBlur} tint="light">
-                                        <Ionicons
-                                            name={profileUser.worldSceneId ? "globe-outline" : "add-circle-outline"}
-                                            size={22}
-                                            color={profileUser.worldSceneId ? '#000' : '#fff'}
-                                            style={{ marginRight: 8 }}
-                                        />
-                                        <Text style={[styles.heroButtonText, profileUser.worldSceneId && { color: '#000' }]}>
-                                            {profileUser.worldSceneId ? 'Edit World' : 'Create World'}
-                                        </Text>
-                                    </BlurView>
-                                </TouchableOpacity>
-
-                                <View style={{ width: 44 }} />{/* Spacer for balance */}
-                            </View>
-                        ) : (
+                        {!isSelf && (
                             <View style={styles.buttonRow}>
                                 {/* Secondary: Message/Follow */}
                                 <TouchableOpacity style={styles.secondaryCircleBtn} onPress={isFollowing ? handleFollowToggle : handleFollowToggle}>
                                     <Ionicons name={isFollowing ? "person-remove-outline" : "person-add-outline"} size={24} color={theme.colors.white} />
-                                </TouchableOpacity>
-
-                                {/* HERO: Enter World */}
-                                <TouchableOpacity
-                                    style={[styles.heroButton, styles.heroButtonActive]}
-                                    onPress={() => {
-                                        if (profileUser.worldSceneId) {
-                                            navigation.navigate('Figment', {
-                                                viewOnly: true,
-                                                worldSceneId: profileUser.worldSceneId,
-                                                mode: 'world' // Ensure it loads world logic
-                                            });
-                                        } else {
-                                            Alert.alert('No World', 'This user has not created a world yet.');
-                                        }
-                                    }}
-                                    disabled={!profileUser.worldSceneId}
-                                >
-                                    <BlurView intensity={20} style={styles.heroButtonBlur} tint="light">
-                                        <Ionicons name="enter-outline" size={22} color="#000" style={{ marginRight: 8 }} />
-                                        <Text style={[styles.heroButtonText, { color: '#000' }]}>Enter World</Text>
-                                    </BlurView>
                                 </TouchableOpacity>
 
                                 {/* Secondary: Message */}
@@ -247,6 +195,66 @@ export const ProfileScreen = () => {
                                 </TouchableOpacity>
                             </View>
                         )}
+
+                        {/* Consolidated Action Group (World | Gallery) */}
+                        <View style={styles.buttonGroupContainer}>
+                            <BlurView intensity={20} tint="light" style={styles.buttonGroupBlur}>
+                                {/* Left: World Action */}
+                                <TouchableOpacity
+                                    style={[styles.groupButton, styles.groupButtonDivider]}
+                                    onPress={() => {
+                                        if (isSelf) {
+                                            navigation.navigate('Figment', {
+                                                mode: 'world',
+                                                worldSceneId: profileUser.worldSceneId || null
+                                            });
+                                        } else {
+                                            if (profileUser.worldSceneId) {
+                                                navigation.navigate('Figment', {
+                                                    viewOnly: true,
+                                                    worldSceneId: profileUser.worldSceneId,
+                                                    mode: 'world'
+                                                });
+                                            } else {
+                                                Alert.alert('No World', 'This user has not created a world yet.');
+                                            }
+                                        }
+                                    }}
+                                    disabled={!isSelf && !profileUser.worldSceneId}
+                                >
+                                    <Ionicons
+                                        name={isSelf ? (profileUser.worldSceneId ? "globe-outline" : "add-circle-outline") : "enter-outline"}
+                                        size={20}
+                                        color={(isSelf || profileUser.worldSceneId) ? "#fff" : "rgba(255,255,255,0.5)"}
+                                        style={{ marginRight: 8 }}
+                                    />
+                                    <Text style={[styles.groupButtonText, (!isSelf && !profileUser.worldSceneId) && { color: 'rgba(255,255,255,0.5)' }]}>
+                                        {isSelf ? (profileUser.worldSceneId ? 'Edit World' : 'Create World') : 'Enter World'}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                {/* Right: Gallery Action */}
+                                <TouchableOpacity
+                                    style={styles.groupButton}
+                                    onPress={() => {
+                                        if (isSelf || !profileUser.isPrivate || (profileUser.isPrivate && isFollowing)) {
+                                            navigation.navigate('ProfileGallery', { userId: profileUser.id, username: profileUser.username });
+                                        }
+                                    }}
+                                    disabled={!isSelf && profileUser.isPrivate && !isFollowing}
+                                >
+                                    <Ionicons
+                                        name={(!isSelf && profileUser.isPrivate && !isFollowing) ? "lock-closed-outline" : "grid-outline"}
+                                        size={20}
+                                        color={(!isSelf && profileUser.isPrivate && !isFollowing) ? "rgba(255,255,255,0.5)" : "#fff"}
+                                        style={{ marginRight: 8 }}
+                                    />
+                                    <Text style={[styles.groupButtonText, (!isSelf && profileUser.isPrivate && !isFollowing) && { color: 'rgba(255,255,255,0.5)' }]}>
+                                        Gallery
+                                    </Text>
+                                </TouchableOpacity>
+                            </BlurView>
+                        </View>
                     </View>
 
 
