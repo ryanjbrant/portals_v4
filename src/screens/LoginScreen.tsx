@@ -7,6 +7,8 @@ import { useAppStore } from '../store';
 import { AuthService } from '../services/auth';
 import { AnimatedBackground } from '../components/AnimatedBackground';
 import { BlurView } from 'expo-blur';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../config/firebase';
 
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
@@ -67,6 +69,48 @@ export const LoginScreen = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleForgotPassword = () => {
+        Alert.prompt(
+            'Reset Password',
+            'Enter your email address to receive a password reset link.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Send',
+                    onPress: async (inputEmail?: string) => {
+                        const resetEmail = inputEmail || email;
+                        if (!resetEmail || !resetEmail.includes('@')) {
+                            Alert.alert('Error', 'Please enter a valid email address.');
+                            return;
+                        }
+
+                        setLoading(true);
+                        try {
+                            await sendPasswordResetEmail(auth, resetEmail);
+                            Alert.alert(
+                                'Email Sent',
+                                `A password reset link has been sent to ${resetEmail}. Check your inbox.`,
+                                [{ text: 'OK' }]
+                            );
+                        } catch (error: any) {
+                            let message = 'Failed to send reset email. Please try again.';
+                            if (error.code === 'auth/user-not-found') {
+                                message = 'No account found with this email address.';
+                            } else if (error.code === 'auth/invalid-email') {
+                                message = 'Please enter a valid email address.';
+                            }
+                            Alert.alert('Error', message);
+                        } finally {
+                            setLoading(false);
+                        }
+                    }
+                }
+            ],
+            'plain-text',
+            email // Pre-fill with email if already entered
+        );
     };
 
     return (
@@ -130,7 +174,7 @@ export const LoginScreen = () => {
                             </TouchableOpacity>
                         </BlurView>
 
-                        <TouchableOpacity style={styles.forgotPassword}>
+                        <TouchableOpacity style={styles.forgotPassword} onPress={handleForgotPassword}>
                             <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
                         </TouchableOpacity>
 
