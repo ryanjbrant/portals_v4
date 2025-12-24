@@ -17,6 +17,7 @@ import { connect } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import {
     addPaintPoint,
+    addPaintPoints,
     endPaintStroke,
     undoPaintStroke,
     clearPaint,
@@ -27,6 +28,7 @@ import {
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PAINT_DISTANCE = 0.4; // 40cm in front of camera
 const POINT_INTERVAL = 50; // ms between points (higher = smoother, less responsive)
+const BATCH_FLUSH_INTERVAL = 100; // ms between batch dispatches
 
 // ============ Custom Slider ============
 
@@ -260,6 +262,7 @@ const PaintPanel = ({
     paintStrokes,
     cameraTransform,
     dispatchAddPaintPoint,
+    dispatchAddPaintPoints,
     dispatchEndPaintStroke,
     dispatchUndoPaintStroke,
     dispatchClearPaint,
@@ -271,6 +274,8 @@ const PaintPanel = ({
     const [opacity, setOpacity] = useState(100);
     const lastPointTime = useRef(0);
     const cameraRef = useRef(cameraTransform);
+    const pointBuffer = useRef([]); // Buffer for batched dispatch
+    const flushIntervalRef = useRef(null);
 
     // Keep camera ref updated
     useEffect(() => {
@@ -324,14 +329,26 @@ const PaintPanel = ({
         ];
     }, []);
 
+    // Flush buffered points to Redux
+    const flushBuffer = useCallback(() => {
+        if (pointBuffer.current.length > 0) {
+            dispatchAddPaintPoints([...pointBuffer.current]);
+            pointBuffer.current = [];
+        }
+    }, [dispatchAddPaintPoints]);
+
     const startPainting = useCallback((touchX, touchY) => {
         setIsPainting(true);
         lastPointTime.current = Date.now();
+        pointBuffer.current = [];
 
         // Add initial point at finger position
         const point = getTouchPaintPoint(touchX, touchY);
-        dispatchAddPaintPoint(point);
-    }, [getTouchPaintPoint, dispatchAddPaintPoint]);
+        pointBuffer.current.push(point);
+
+        // Start flush interval
+        flushIntervalRef.current = setInterval(flushBuffer, BATCH_FLUSH_INTERVAL);
+    }, [getTouchPaintPoint, flushBuffer]);
 
     const movePainting = useCallback((touchX, touchY) => {
         const now = Date.now();
@@ -340,13 +357,20 @@ const PaintPanel = ({
 
         lastPointTime.current = now;
         const point = getTouchPaintPoint(touchX, touchY);
-        dispatchAddPaintPoint(point);
-    }, [getTouchPaintPoint, dispatchAddPaintPoint]);
+        pointBuffer.current.push(point);
+    }, [getTouchPaintPoint]);
 
     const stopPainting = useCallback(() => {
+        // Clear flush interval
+        if (flushIntervalRef.current) {
+            clearInterval(flushIntervalRef.current);
+            flushIntervalRef.current = null;
+        }
+        // Flush remaining points
+        flushBuffer();
         setIsPainting(false);
         dispatchEndPaintStroke();
-    }, [dispatchEndPaintStroke]);
+    }, [flushBuffer, dispatchEndPaintStroke]);
 
     const panResponder = useRef(
         PanResponder.create({
@@ -439,6 +463,7 @@ function mapStateToProps(store) {
 function mapDispatchToProps(dispatch) {
     return {
         dispatchAddPaintPoint: (point) => dispatch(addPaintPoint(point)),
+        dispatchAddPaintPoints: (points) => dispatch(addPaintPoints(points)),
         dispatchEndPaintStroke: () => dispatch(endPaintStroke()),
         dispatchUndoPaintStroke: () => dispatch(undoPaintStroke()),
         dispatchClearPaint: () => dispatch(clearPaint()),

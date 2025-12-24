@@ -1050,6 +1050,15 @@ function arobjects(state = initialState, action) {
         activePaintPoints: [...state.activePaintPoints, action.point],
       };
 
+    case 'ADD_PAINT_POINTS_BATCH':
+      // Batched paint points for reduced bridge traffic
+      if (!action.points || action.points.length === 0) return state;
+      console.log('[Reducer] ADD_PAINT_POINTS_BATCH:', action.points.length, 'points');
+      return {
+        ...state,
+        activePaintPoints: [...state.activePaintPoints, ...action.points],
+      };
+
     case 'END_PAINT_STROKE':
       console.log('[Reducer] END_PAINT_STROKE, active points:', state.activePaintPoints.length);
       if (state.activePaintPoints.length < 2) {

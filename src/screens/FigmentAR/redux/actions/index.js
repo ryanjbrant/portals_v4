@@ -316,6 +316,14 @@ export function addPaintPoint(point) {
   };
 }
 
+// action to add multiple paint points at once (batched for performance)
+export function addPaintPoints(points) {
+  return {
+    type: 'ADD_PAINT_POINTS_BATCH',
+    points: points, // [[x, y, z], ...]
+  };
+}
+
 // action to end the current paint stroke
 export function endPaintStroke() {
   return {
