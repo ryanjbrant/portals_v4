@@ -97,6 +97,9 @@ export const RootNavigator = () => {
                         const user = snap.data() as User;
                         useAppStore.setState({ currentUser: user, isAuthenticated: true });
 
+                        // Fetch following list for immediate follow status in feed
+                        useAppStore.getState().fetchFollowing();
+
                         // Subscribe to notifications immediately after auth
                         const { NotificationService } = require('../services/notifications');
                         const notifUnsubscribe = NotificationService.subscribeToNotifications(

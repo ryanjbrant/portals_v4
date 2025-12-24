@@ -36,7 +36,10 @@ export const FeedItem = ({ post, onCommentPress, hideControls, isGalleryView }: 
     const navigation = useNavigation<any>();
     const currentUser = useAppStore(state => state.currentUser);
     const toggleLike = useAppStore(state => state.toggleLike);
-    const [isFollowing, setIsFollowing] = useState(false);
+    const followUser = useAppStore(state => state.followUser);
+    // Use global store to track followed users - persists across all FeedItems
+    const following = useAppStore(state => state.relationships.following);
+    const isFollowing = following.includes(post.user.id);
 
     // Dynamic height: full screen for gallery, reduced for feed with tab bar
     const itemHeight = isGalleryView ? height : SCREEN_HEIGHT;
@@ -118,14 +121,7 @@ export const FeedItem = ({ post, onCommentPress, hideControls, isGalleryView }: 
         }
     }, [avatarLoaded]);
 
-    // Check if already following on mount
-    useEffect(() => {
-        if (currentUser && post.user.id !== currentUser.id) {
-            AuthService.checkIsFollowing(currentUser.id, post.user.id)
-                .then(setIsFollowing)
-                .catch(console.error);
-        }
-    }, [currentUser?.id, post.user.id]);
+    // Follow status is now read from global store - no need to fetch per item
 
     // Video player for feed item
     const player = useVideoPlayer(post.mediaUri || null, player => {
@@ -157,13 +153,14 @@ export const FeedItem = ({ post, onCommentPress, hideControls, isGalleryView }: 
 
     const handleFollow = async () => {
         if (!currentUser) return;
-        setIsFollowing(true); // Optimistic hide
+        // Optimistically update global store - affects ALL posts by this user
+        followUser(post.user.id);
         try {
             const { AuthService } = await import('../services/auth');
             await AuthService.followUser(currentUser.id, post.user.id);
         } catch (error) {
             console.error(error);
-            setIsFollowing(false); // Revert
+            // TODO: Could add unfollowUser to revert on error
         }
     };
 
