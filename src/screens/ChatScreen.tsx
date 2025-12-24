@@ -161,7 +161,7 @@ export const ChatScreen = () => {
                         returnKeyType="send"
                     />
                     <TouchableOpacity onPress={handleSend} style={styles.sendButton}>
-                        <Ionicons name="send" size={20} color={theme.colors.white} />
+                        <Ionicons name="send" size={20} color="#000" />
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
