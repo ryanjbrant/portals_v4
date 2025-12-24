@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
+import { resetOnboarding } from './OnboardingScreen';
 
 export const ProfileSettingsScreen = () => {
     const navigation = useNavigation<any>();
@@ -169,6 +170,14 @@ export const ProfileSettingsScreen = () => {
                 <TouchableOpacity style={styles.row} onPress={() => setIsPrivate(!isPrivate)}>
                     <Text style={styles.rowLabel}>Private Profile</Text>
                     <Ionicons name={isPrivate ? "toggle" : "toggle-outline"} size={28} color={isPrivate ? theme.colors.primary : theme.colors.textDim} />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.row} onPress={async () => {
+                    await resetOnboarding();
+                    Alert.alert('Onboarding Reset', 'Restart the app to see onboarding again.');
+                }}>
+                    <Text style={styles.rowLabel}>Reset Onboarding</Text>
+                    <Ionicons name="refresh-outline" size={22} color={theme.colors.textDim} />
                 </TouchableOpacity>
 
                 <TouchableOpacity style={[styles.row, { borderBottomWidth: 0 }]} onPress={handleLogout}>

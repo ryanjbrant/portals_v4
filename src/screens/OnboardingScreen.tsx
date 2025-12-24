@@ -234,9 +234,20 @@ export const OnboardingScreen = ({ onComplete }: OnboardingScreenProps) => {
 export const checkOnboardingComplete = async (): Promise<boolean> => {
     try {
         const value = await AsyncStorage.getItem(ONBOARDING_KEY);
+        console.log('[Onboarding] Check complete:', value);
         return value === 'true';
     } catch {
         return false;
+    }
+};
+
+// Helper to reset onboarding (for testing)
+export const resetOnboarding = async (): Promise<void> => {
+    try {
+        await AsyncStorage.removeItem(ONBOARDING_KEY);
+        console.log('[Onboarding] Reset complete - will show on next launch');
+    } catch (e) {
+        console.error('[Onboarding] Reset failed:', e);
     }
 };
 
