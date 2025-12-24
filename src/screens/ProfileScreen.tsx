@@ -443,6 +443,8 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         height: 56,
         alignItems: 'center',
+        borderRadius: 28,
+        overflow: 'hidden',
     },
     groupButton: {
         flex: 1,
