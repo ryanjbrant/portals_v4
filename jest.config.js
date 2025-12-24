@@ -5,6 +5,7 @@ module.exports = {
     transformIgnorePatterns: [
         'node_modules/(?!(react-native|@react-native|@expo|expo-|@reactvision|react-redux|zustand)/)',
     ],
+    testPathIgnorePatterns: ['/node_modules/', '/_ref/'],
     testMatch: ['**/__tests__/**/*.(spec|test).(ts|tsx|js)'],
     collectCoverageFrom: [
         'src/**/*.{ts,tsx}',
