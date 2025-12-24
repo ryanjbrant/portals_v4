@@ -1,9 +1,9 @@
 import * as Location from 'expo-location';
 import { EventEmitter } from '../utils/EventEmitter';
 
-// Configuration
-const TRACKING_INTERVAL = 5000; // 5 seconds
-const DISTANCE_FILTER = 5; // 5 meters
+// Configuration - High precision for map accuracy
+const TRACKING_INTERVAL = 1000; // 1 second for responsive updates
+const DISTANCE_FILTER = 1; // 1 meter for high precision
 
 export interface GeoCoordinate {
     latitude: number;
@@ -120,7 +120,7 @@ class LocationService extends EventEmitter {
         if (this.currentLocation) return this.currentLocation;
 
         try {
-            const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
             return {
                 latitude: location.coords.latitude,
                 longitude: location.coords.longitude,
