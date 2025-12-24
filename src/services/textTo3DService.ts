@@ -53,8 +53,8 @@ interface FalResult {
 
 // Mobile-optimized settings for AR performance
 // Range: 40000-1500000, default 500000
-// 50K faces is a good balance for mobile AR
-const MOBILE_FACE_COUNT = 50000;
+// 40K is the minimum for lightest models on mobile AR
+const MOBILE_FACE_COUNT = 40000;
 
 /**
  * Generate a 3D object from a text prompt
@@ -77,13 +77,13 @@ export async function generateObjectFromText(
         console.log('[TextTo3D] Using mobile-optimized face count:', MOBILE_FACE_COUNT);
         onProgress?.({ status: 'queued', message: 'Starting generation...' });
 
-        // Call Fal.ai with mobile-optimized settings
+        // Call Fal.ai with aggressive mobile optimization for smallest file size
         const result = await fal.subscribe('fal-ai/hunyuan3d-v3/text-to-3d', {
             input: {
                 prompt: prompt,
-                face_count: MOBILE_FACE_COUNT, // Optimized for mobile AR (50K faces)
-                generate_type: 'Normal', // Textured model (can use 'LowPoly' for even lighter models)
-                enable_pbr: true, // Enable PBR materials for better rendering
+                face_count: MOBILE_FACE_COUNT, // Minimum for mobile AR (40K faces)
+                generate_type: 'LowPoly', // Low poly mode for smallest file size
+                enable_pbr: false, // Disable PBR for simpler materials and smaller size
             },
             logs: true,
             onQueueUpdate: (update) => {
