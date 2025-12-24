@@ -101,7 +101,8 @@ export const ProfileScreen = () => {
                     resizeMode="cover"
                 >
                     <LinearGradient
-                        colors={['transparent', theme.colors.background]}
+                        colors={['rgba(0,0,0,0.3)', 'transparent', theme.colors.background]}
+                        locations={[0, 0.3, 0.7]}
                         style={{ flex: 1 }}
                     />
                 </ImageBackground>
@@ -245,7 +246,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         top: 0,
-        height: 300,
+        bottom: 0,
     },
     content: {
         paddingTop: 60,
