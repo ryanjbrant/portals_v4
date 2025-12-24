@@ -144,122 +144,126 @@ export const ProfileScreen = () => {
 
             {/* Content - Bottom Sheet Style */}
             <View style={styles.contentContainer}>
-                {/* Avatar - Positioned outside BlurView for proper overflow clipping */}
-                <View style={styles.avatarContainer}>
-                    <Image source={{ uri: profileUser.avatar }} style={styles.avatar} />
-                    {profileUser.isVerified && (
-                        <View style={styles.verifiedBadge}>
-                            <Ionicons name="checkmark" size={10} color={theme.colors.white} />
-                        </View>
-                    )}
-                </View>
-
-                <BlurView intensity={40} tint="dark" style={[styles.glassPanel, { paddingBottom: insets.bottom + 20 }]}>
-
-                    {/* Identity */}
-                    <View style={styles.identitySection}>
-                        <Text style={styles.name}>{profileUser.name || profileUser.username}</Text>
-                        <Text style={styles.username}>@{profileUser.username}</Text>
-                        <Text style={styles.bioText} numberOfLines={2}>{profileUser.bio || "No bio yet."}</Text>
-                    </View>
-
-                    {/* Stats - Clean Row */}
-                    <View style={styles.statsRow}>
-                        <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Following', userId: profileUser.id })}>
-                            <Text style={styles.statNumber}>{profileUser.following}</Text>
-                            <Text style={styles.statLabel}>Following</Text>
-                        </TouchableOpacity>
-                        <View style={styles.statDivider} />
-                        <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Followers', userId: profileUser.id })}>
-                            <Text style={styles.statNumber}>{profileUser.followers}</Text>
-                            <Text style={styles.statLabel}>Followers</Text>
-                        </TouchableOpacity>
-                        <View style={styles.statDivider} />
-                        <View style={styles.statItem}>
-                            <Text style={styles.statNumber}>{profileUser.fuelBalance || 0}</Text>
-                            <Text style={styles.statLabel}>Fuel</Text>
-                        </View>
-                    </View>
-
-                    {/* Hero Actions - Consolidated */}
-                    <View style={styles.actionContainer}>
-                        {!isSelf && (
-                            <View style={styles.buttonRow}>
-                                {/* Secondary: Message/Follow */}
-                                <TouchableOpacity style={styles.secondaryCircleBtn} onPress={isFollowing ? handleFollowToggle : handleFollowToggle}>
-                                    <Ionicons name={isFollowing ? "person-remove-outline" : "person-add-outline"} size={24} color={theme.colors.white} />
-                                </TouchableOpacity>
-
-                                {/* Secondary: Message */}
-                                <TouchableOpacity style={styles.secondaryCircleBtn} onPress={() => navigation.navigate('Chat', { userId: profileUser.id })}>
-                                    <Ionicons name="chatbubble-outline" size={22} color={theme.colors.white} />
-                                </TouchableOpacity>
+                {/* Wrapper for relative positioning of avatar on panel edge */}
+                <View style={{ position: 'relative' }}>
+                    {/* Avatar - Positioned to straddle the top edge of panel */}
+                    <View style={styles.avatarContainer}>
+                        <Image source={{ uri: profileUser.avatar }} style={styles.avatar} />
+                        {profileUser.isVerified && (
+                            <View style={styles.verifiedBadge}>
+                                <Ionicons name="checkmark" size={10} color={theme.colors.white} />
                             </View>
                         )}
-
-                        {/* Consolidated Action Group (World | Gallery) */}
-                        <View style={styles.buttonGroupContainer}>
-                            <BlurView intensity={20} tint="light" style={styles.buttonGroupBlur}>
-                                {/* Left: World Action */}
-                                <TouchableOpacity
-                                    style={[styles.groupButton, styles.groupButtonDivider]}
-                                    onPress={() => {
-                                        if (isSelf) {
-                                            navigation.navigate('Figment', {
-                                                mode: 'world',
-                                                worldSceneId: profileUser.worldSceneId || null
-                                            });
-                                        } else {
-                                            if (profileUser.worldSceneId) {
-                                                navigation.navigate('Figment', {
-                                                    viewOnly: true,
-                                                    worldSceneId: profileUser.worldSceneId,
-                                                    mode: 'world'
-                                                });
-                                            } else {
-                                                Alert.alert('No World', 'This user has not created a world yet.');
-                                            }
-                                        }
-                                    }}
-                                    disabled={!isSelf && !profileUser.worldSceneId}
-                                >
-                                    <Ionicons
-                                        name={isSelf ? (profileUser.worldSceneId ? "globe-outline" : "add-circle-outline") : "enter-outline"}
-                                        size={20}
-                                        color={(isSelf || profileUser.worldSceneId) ? "#fff" : "rgba(255,255,255,0.5)"}
-                                        style={{ marginRight: 8 }}
-                                    />
-                                    <Text style={[styles.groupButtonText, (!isSelf && !profileUser.worldSceneId) && { color: 'rgba(255,255,255,0.5)' }]}>
-                                        {isSelf ? (profileUser.worldSceneId ? 'Edit World' : 'Create World') : 'Enter World'}
-                                    </Text>
-                                </TouchableOpacity>
-
-                                {/* Right: Gallery Action */}
-                                <TouchableOpacity
-                                    style={styles.groupButton}
-                                    onPress={() => {
-                                        if (isSelf || !profileUser.isPrivate || (profileUser.isPrivate && isFollowing)) {
-                                            navigation.navigate('ProfileGallery', { userId: profileUser.id, username: profileUser.username });
-                                        }
-                                    }}
-                                    disabled={!isSelf && profileUser.isPrivate && !isFollowing}
-                                >
-                                    <Ionicons
-                                        name={(!isSelf && profileUser.isPrivate && !isFollowing) ? "lock-closed-outline" : "grid-outline"}
-                                        size={20}
-                                        color={(!isSelf && profileUser.isPrivate && !isFollowing) ? "rgba(255,255,255,0.5)" : "#fff"}
-                                        style={{ marginRight: 8 }}
-                                    />
-                                    <Text style={[styles.groupButtonText, (!isSelf && profileUser.isPrivate && !isFollowing) && { color: 'rgba(255,255,255,0.5)' }]}>
-                                        Gallery
-                                    </Text>
-                                </TouchableOpacity>
-                            </BlurView>
-                        </View>
                     </View>
 
+                    <BlurView intensity={40} tint="dark" style={[styles.glassPanel, { paddingBottom: insets.bottom + 20 }]}>
 
-                </BlurView>
+                        {/* Identity */}
+                        <View style={styles.identitySection}>
+                            <Text style={styles.name}>{profileUser.name || profileUser.username}</Text>
+                            <Text style={styles.username}>@{profileUser.username}</Text>
+                            <Text style={styles.bioText} numberOfLines={2}>{profileUser.bio || "No bio yet."}</Text>
+                        </View>
+
+                        {/* Stats - Clean Row */}
+                        <View style={styles.statsRow}>
+                            <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Following', userId: profileUser.id })}>
+                                <Text style={styles.statNumber}>{profileUser.following}</Text>
+                                <Text style={styles.statLabel}>Following</Text>
+                            </TouchableOpacity>
+                            <View style={styles.statDivider} />
+                            <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Followers', userId: profileUser.id })}>
+                                <Text style={styles.statNumber}>{profileUser.followers}</Text>
+                                <Text style={styles.statLabel}>Followers</Text>
+                            </TouchableOpacity>
+                            <View style={styles.statDivider} />
+                            <View style={styles.statItem}>
+                                <Text style={styles.statNumber}>{profileUser.fuelBalance || 0}</Text>
+                                <Text style={styles.statLabel}>Fuel</Text>
+                            </View>
+                        </View>
+
+                        {/* Hero Actions - Consolidated */}
+                        <View style={styles.actionContainer}>
+                            {!isSelf && (
+                                <View style={styles.buttonRow}>
+                                    {/* Secondary: Message/Follow */}
+                                    <TouchableOpacity style={styles.secondaryCircleBtn} onPress={isFollowing ? handleFollowToggle : handleFollowToggle}>
+                                        <Ionicons name={isFollowing ? "person-remove-outline" : "person-add-outline"} size={24} color={theme.colors.white} />
+                                    </TouchableOpacity>
+
+                                    {/* Secondary: Message */}
+                                    <TouchableOpacity style={styles.secondaryCircleBtn} onPress={() => navigation.navigate('Chat', { userId: profileUser.id })}>
+                                        <Ionicons name="chatbubble-outline" size={22} color={theme.colors.white} />
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            {/* Consolidated Action Group (World | Gallery) */}
+                            <View style={styles.buttonGroupContainer}>
+                                <BlurView intensity={20} tint="light" style={styles.buttonGroupBlur}>
+                                    {/* Left: World Action */}
+                                    <TouchableOpacity
+                                        style={[styles.groupButton, styles.groupButtonDivider]}
+                                        onPress={() => {
+                                            if (isSelf) {
+                                                navigation.navigate('Figment', {
+                                                    mode: 'world',
+                                                    worldSceneId: profileUser.worldSceneId || null
+                                                });
+                                            } else {
+                                                if (profileUser.worldSceneId) {
+                                                    navigation.navigate('Figment', {
+                                                        viewOnly: true,
+                                                        worldSceneId: profileUser.worldSceneId,
+                                                        mode: 'world'
+                                                    });
+                                                } else {
+                                                    Alert.alert('No World', 'This user has not created a world yet.');
+                                                }
+                                            }
+                                        }}
+                                        disabled={!isSelf && !profileUser.worldSceneId}
+                                    >
+                                        <Ionicons
+                                            name={isSelf ? (profileUser.worldSceneId ? "globe-outline" : "add-circle-outline") : "enter-outline"}
+                                            size={20}
+                                            color={(isSelf || profileUser.worldSceneId) ? "#fff" : "rgba(255,255,255,0.5)"}
+                                            style={{ marginRight: 8 }}
+                                        />
+                                        <Text style={[styles.groupButtonText, (!isSelf && !profileUser.worldSceneId) && { color: 'rgba(255,255,255,0.5)' }]}>
+                                            {isSelf ? (profileUser.worldSceneId ? 'Edit World' : 'Create World') : 'Enter World'}
+                                        </Text>
+                                    </TouchableOpacity>
+
+                                    {/* Right: Gallery Action */}
+                                    <TouchableOpacity
+                                        style={styles.groupButton}
+                                        onPress={() => {
+                                            if (isSelf || !profileUser.isPrivate || (profileUser.isPrivate && isFollowing)) {
+                                                navigation.navigate('ProfileGallery', { userId: profileUser.id, username: profileUser.username });
+                                            }
+                                        }}
+                                        disabled={!isSelf && profileUser.isPrivate && !isFollowing}
+                                    >
+                                        <Ionicons
+                                            name={(!isSelf && profileUser.isPrivate && !isFollowing) ? "lock-closed-outline" : "grid-outline"}
+                                            size={20}
+                                            color={(!isSelf && profileUser.isPrivate && !isFollowing) ? "rgba(255,255,255,0.5)" : "#fff"}
+                                            style={{ marginRight: 8 }}
+                                        />
+                                        <Text style={[styles.groupButtonText, (!isSelf && profileUser.isPrivate && !isFollowing) && { color: 'rgba(255,255,255,0.5)' }]}>
+                                            Gallery
+                                        </Text>
+                                    </TouchableOpacity>
+                                </BlurView>
+                            </View>
+                        </View>
+
+
+
+                    </BlurView>
+                </View>
             </View>
 
             {/* Gallery (Scrollable content below header if needed, or handle differently) */}
@@ -318,6 +322,7 @@ const styles = StyleSheet.create({
         paddingBottom: 20,
     },
     glassPanel: {
+        marginTop: 50, // Space for avatar to overlap
         borderRadius: 32,
         paddingTop: 60, // Increased space for avatar overlap
         paddingHorizontal: 20,
@@ -329,7 +334,7 @@ const styles = StyleSheet.create({
     },
     avatarContainer: {
         position: 'absolute',
-        top: -50,
+        top: 0, // Aligns top with wrapper, but glassPanel has marginTop: 50
         left: 0,
         right: 0,
         alignItems: 'center',
