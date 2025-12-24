@@ -144,16 +144,17 @@ export const ProfileScreen = () => {
 
             {/* Content - Bottom Sheet Style */}
             <View style={styles.contentContainer}>
+                {/* Avatar - Positioned outside BlurView for proper overflow clipping */}
+                <View style={styles.avatarContainer}>
+                    <Image source={{ uri: profileUser.avatar }} style={styles.avatar} />
+                    {profileUser.isVerified && (
+                        <View style={styles.verifiedBadge}>
+                            <Ionicons name="checkmark" size={10} color={theme.colors.white} />
+                        </View>
+                    )}
+                </View>
+
                 <BlurView intensity={40} tint="dark" style={[styles.glassPanel, { paddingBottom: insets.bottom + 20 }]}>
-                    {/* Avatar - Floating above glass */}
-                    <View style={styles.avatarContainer}>
-                        <Image source={{ uri: profileUser.avatar }} style={styles.avatar} />
-                        {profileUser.isVerified && (
-                            <View style={styles.verifiedBadge}>
-                                <Ionicons name="checkmark" size={10} color={theme.colors.white} />
-                            </View>
-                        )}
-                    </View>
 
                     {/* Identity */}
                     <View style={styles.identitySection}>
@@ -318,18 +319,20 @@ const styles = StyleSheet.create({
     },
     glassPanel: {
         borderRadius: 32,
-        paddingTop: 50, // Space for avatar overlap
+        paddingTop: 60, // Increased space for avatar overlap
         paddingHorizontal: 20,
         alignItems: 'center',
-        overflow: 'visible',
+        overflow: 'hidden',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
         backgroundColor: 'rgba(20,20,30,0.4)',
     },
     avatarContainer: {
         position: 'absolute',
-        top: -50,
+        top: 0,
         alignSelf: 'center',
+        zIndex: 10,
+        transform: [{ translateY: -50 }],
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.4,
