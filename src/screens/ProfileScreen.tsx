@@ -249,26 +249,7 @@ export const ProfileScreen = () => {
                         )}
                     </View>
 
-                    {/* Gallery Access */}
-                    {(isSelf || !profileUser.isPrivate || (profileUser.isPrivate && isFollowing)) ? (
-                        <TouchableOpacity
-                            style={styles.galleryButton}
-                            onPress={() => navigation.navigate('ProfileGallery', { userId: profileUser.id, username: profileUser.username })}
-                        >
-                            <BlurView intensity={10} tint="light" style={styles.galleryButtonBlur}>
-                                <Ionicons name="grid-outline" size={20} color="rgba(255,255,255,0.8)" />
-                                <Text style={styles.galleryButtonText}>Open Gallery</Text>
-                                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.5)" />
-                            </BlurView>
-                        </TouchableOpacity>
-                    ) : (
-                        <View style={styles.galleryButton}>
-                            <BlurView intensity={10} tint="dark" style={styles.galleryButtonBlur}>
-                                <Ionicons name="lock-closed-outline" size={20} color="rgba(255,255,255,0.5)" />
-                                <Text style={[styles.galleryButtonText, { color: 'rgba(255,255,255,0.5)' }]}>Private Account</Text>
-                            </BlurView>
-                        </View>
-                    )}
+
                 </BlurView>
             </View>
 
