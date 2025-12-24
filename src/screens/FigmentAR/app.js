@@ -1224,7 +1224,7 @@ export class App extends Component {
 
         {/* Voice Composer Button - floating mic in bottom right corner */}
         {!isViewOnly && !isRecordingInProgress && this.props.currentScreen === UIConstants.SHOW_MAIN_SCREEN && (
-          <View style={{ position: 'absolute', right: 20, bottom: 200, zIndex: 50 }}>
+          <View style={{ position: 'absolute', right: 20, bottom: 160, zIndex: 50 }}>
             <VoiceComposerButton
               onActionsReceived={this._handleVoiceActions}
               sceneContext={{
