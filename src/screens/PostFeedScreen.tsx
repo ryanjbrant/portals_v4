@@ -1,11 +1,13 @@
 import React, { useRef, useEffect } from 'react';
-import { View, StyleSheet, FlatList, StatusBar, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet, FlatList, StatusBar, TouchableOpacity, Text, Dimensions } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { FeedItem } from '../components/FeedItem';
 import { Post } from '../types';
 import { theme } from '../theme/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '../store';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export const PostFeedScreen = () => {
     const route = useRoute<any>();
@@ -30,12 +32,13 @@ export const PostFeedScreen = () => {
     }, [initialIndex]);
 
     const renderItem = ({ item }: { item: Post }) => (
-        <FeedItem post={item} onCommentPress={() => { }} />
+        <FeedItem post={item} onCommentPress={() => { }} isGalleryView />
     );
 
+    // Fixed item layout for smooth snapping
     const getItemLayout = (_: any, index: number) => ({
-        length: theme.dimensions.height, // Assuming full screen height items
-        offset: theme.dimensions.height * index,
+        length: SCREEN_HEIGHT,
+        offset: SCREEN_HEIGHT * index,
         index,
     });
 
@@ -61,6 +64,10 @@ export const PostFeedScreen = () => {
                 initialNumToRender={3}
                 maxToRenderPerBatch={3}
                 windowSize={5}
+                getItemLayout={getItemLayout}
+                decelerationRate="fast"
+                snapToInterval={SCREEN_HEIGHT}
+                snapToAlignment="start"
                 onScrollToIndexFailed={info => {
                     const wait = new Promise(resolve => setTimeout(resolve, 500));
                     wait.then(() => {

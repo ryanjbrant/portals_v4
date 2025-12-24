@@ -29,13 +29,17 @@ interface FeedItemProps {
     post: Post;
     onCommentPress: () => void;
     hideControls?: boolean;
+    isGalleryView?: boolean; // True when viewing from gallery (no tab bar)
 }
 
-export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) => {
+export const FeedItem = ({ post, onCommentPress, hideControls, isGalleryView }: FeedItemProps) => {
     const navigation = useNavigation<any>();
     const currentUser = useAppStore(state => state.currentUser);
     const toggleLike = useAppStore(state => state.toggleLike);
     const [isFollowing, setIsFollowing] = useState(false);
+
+    // Dynamic height: full screen for gallery, reduced for feed with tab bar
+    const itemHeight = isGalleryView ? height : SCREEN_HEIGHT;
 
     // Loading states
     const [videoReady, setVideoReady] = useState(false);
@@ -186,7 +190,7 @@ export const FeedItem = ({ post, onCommentPress, hideControls }: FeedItemProps) 
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { height: itemHeight }]}>
             {/* Skeleton Background - always visible, fades out when video ready */}
             <Animated.View style={[styles.skeletonContainer, { opacity: skeletonPulse }]}>
                 <LinearGradient
