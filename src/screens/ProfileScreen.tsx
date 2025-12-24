@@ -1,17 +1,19 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, ImageBackground } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, ImageBackground, Dimensions, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+import { doc, getDoc } from 'firebase/firestore';
+
 import { theme } from '../theme/theme';
 import { useAppStore } from '../store';
-import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
-
-import { useRoute } from '@react-navigation/native';
 import { AuthService } from '../services/auth';
 import { User } from '../types';
-import { doc, getDoc } from 'firebase/firestore'; // Import directly for speed or use AuthService helper if we made one (we didn't make getById)
 import { db } from '../config/firebase';
+
+const { width } = Dimensions.get('window');
 
 export const ProfileScreen = () => {
     const navigation = useNavigation<any>();
@@ -25,11 +27,11 @@ export const ProfileScreen = () => {
     const targetUserId = route.params?.userId || currentUser?.id;
     const isSelf = targetUserId === currentUser?.id;
 
-    const [profileUser, setProfileUser] = React.useState<User | null>(isSelf ? currentUser : null);
-    const [isFollowing, setIsFollowing] = React.useState(false);
-    const [loading, setLoading] = React.useState(false);
+    const [profileUser, setProfileUser] = useState<User | null>(isSelf ? currentUser : null);
+    const [isFollowing, setIsFollowing] = useState(false);
+    const [loading, setLoading] = useState(false);
 
-    React.useEffect(() => {
+    useEffect(() => {
         const loadProfile = async () => {
             if (isSelf && currentUser) {
                 // Recalculate stats from actual subcollections (self-healing)
@@ -87,63 +89,76 @@ export const ProfileScreen = () => {
 
     if (!profileUser) return (
         <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+            <LinearGradient
+                colors={[theme.colors.surfaceHighlight, theme.colors.background]}
+                style={StyleSheet.absoluteFill}
+            />
             <Text style={{ color: 'white' }}>Loading...</Text>
         </View>
     );
 
     return (
         <View style={styles.container}>
-            {/* World Background - shows user's custom world if set */}
-            {isSelf && profileUser.worldBackground ? (
-                <ImageBackground
-                    source={{ uri: profileUser.worldBackground }}
-                    style={styles.background}
-                    resizeMode="cover"
-                >
+            {/* World Background - Hero Element */}
+            <View style={styles.backgroundContainer}>
+                {isSelf && profileUser.worldBackground ? (
+                    <ImageBackground
+                        source={{ uri: profileUser.worldBackground }}
+                        style={styles.backgroundImage}
+                        resizeMode="cover"
+                    >
+                        <LinearGradient
+                            colors={['rgba(0,0,0,0.4)', 'transparent', 'transparent']}
+                            locations={[0, 0.4, 1]}
+                            style={{ flex: 1 }}
+                        />
+                    </ImageBackground>
+                ) : (
                     <LinearGradient
-                        colors={['rgba(0,0,0,0.3)', 'transparent', theme.colors.background]}
-                        locations={[0, 0.3, 0.7]}
-                        style={{ flex: 1 }}
+                        colors={[theme.colors.surfaceHighlight, theme.colors.background]}
+                        style={styles.backgroundImage}
                     />
-                </ImageBackground>
-            ) : (
-                <LinearGradient
-                    colors={[theme.colors.surfaceHighlight, theme.colors.background]}
-                    style={styles.background}
-                />
-            )}
+                )}
+            </View>
 
-            <SafeAreaView style={[styles.topNav, !isSelf && { justifyContent: 'space-between' }]}>
+            {/* Top Navigation - Floating & Minimal */}
+            <SafeAreaView style={styles.topNav} edges={['top']}>
                 {!isSelf && (
-                    <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
-                        <Ionicons name="chevron-back" size={26} color={theme.colors.white} />
+                    <TouchableOpacity style={styles.glassIconBtn} onPress={() => navigation.goBack()}>
+                        <Ionicons name="chevron-back" size={24} color={theme.colors.white} />
                     </TouchableOpacity>
                 )}
                 {isSelf && <View style={{ flex: 1 }} />}
                 {isSelf && (
-                    <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Activity')}>
-                        <Ionicons name="notifications-outline" size={26} color={theme.colors.white} />
+                    <TouchableOpacity style={styles.glassIconBtn} onPress={() => navigation.navigate('Activity')}>
+                        <Ionicons name="notifications-outline" size={24} color={theme.colors.white} />
                         {hasUnread && <View style={styles.redDot} />}
                     </TouchableOpacity>
                 )}
             </SafeAreaView>
 
-            <ScrollView contentContainerStyle={styles.content}>
-                <View style={styles.header}>
+            {/* Content - Bottom Sheet Style */}
+            <View style={styles.contentContainer}>
+                <BlurView intensity={40} tint="dark" style={[styles.glassPanel, { paddingBottom: insets.bottom + 20 }]}>
+                    {/* Avatar - Floating above glass */}
                     <View style={styles.avatarContainer}>
                         <Image source={{ uri: profileUser.avatar }} style={styles.avatar} />
                         {profileUser.isVerified && (
                             <View style={styles.verifiedBadge}>
-                                <Ionicons name="checkmark" size={12} color={theme.colors.white} />
+                                <Ionicons name="checkmark" size={10} color={theme.colors.white} />
                             </View>
                         )}
                     </View>
 
-                    <Text style={styles.name}>{profileUser.name || profileUser.username}</Text>
-                    <Text style={styles.username}>@{profileUser.username}</Text>
+                    {/* Identity */}
+                    <View style={styles.identitySection}>
+                        <Text style={styles.name}>{profileUser.name || profileUser.username}</Text>
+                        <Text style={styles.username}>@{profileUser.username}</Text>
+                        <Text style={styles.bioText} numberOfLines={2}>{profileUser.bio || "No bio yet."}</Text>
+                    </View>
 
-                    {/* Stats Row */}
-                    <View style={styles.statsContainer}>
+                    {/* Stats - Clean Row */}
+                    <View style={styles.statsRow}>
                         <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('People', { tab: 'Following', userId: profileUser.id })}>
                             <Text style={styles.statNumber}>{profileUser.following}</Text>
                             <Text style={styles.statLabel}>Following</Text>
@@ -160,77 +175,81 @@ export const ProfileScreen = () => {
                         </View>
                     </View>
 
-                    {/* Action Buttons */}
+                    {/* Hero Actions */}
                     <View style={styles.actionContainer}>
                         {isSelf ? (
-                            <>
-                                <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('ProfileSettings')}>
-                                    <Text style={styles.primaryButtonText}>Edit Profile</Text>
+                            <View style={styles.buttonRow}>
+                                {/* Secondary: Edit Profile */}
+                                <TouchableOpacity style={styles.secondaryCircleBtn} onPress={() => navigation.navigate('ProfileSettings')}>
+                                    <Ionicons name="settings-outline" size={24} color={theme.colors.white} />
                                 </TouchableOpacity>
 
+                                {/* HERO: Create/Edit World */}
                                 <TouchableOpacity
-                                    style={[styles.secondaryButton, profileUser.worldSceneId && { borderColor: '#FFD60A' }]}
+                                    style={[styles.heroButton, profileUser.worldSceneId && styles.heroButtonActive]}
                                     onPress={() => navigation.navigate('Figment', {
                                         mode: 'world',
                                         worldSceneId: profileUser.worldSceneId || null
                                     })}
                                 >
-                                    <Text style={[styles.secondaryButtonText, profileUser.worldSceneId && { color: '#FFD60A' }]}>
-                                        {profileUser.worldSceneId ? 'Edit World' : 'Create World'}
-                                    </Text>
-                                </TouchableOpacity>
-                            </>
-                        ) : (
-                            <>
-                                <TouchableOpacity
-                                    style={[styles.primaryButton, isFollowing && { backgroundColor: theme.colors.surface }]}
-                                    onPress={handleFollowToggle}
-                                >
-                                    <Text style={[styles.primaryButtonText, isFollowing && { color: theme.colors.textDim }]}>
-                                        {isFollowing ? 'Following' : 'Follow'}
-                                    </Text>
+                                    <BlurView intensity={20} style={styles.heroButtonBlur} tint="light">
+                                        <Ionicons
+                                            name={profileUser.worldSceneId ? "globe-outline" : "add-circle-outline"}
+                                            size={22}
+                                            color={profileUser.worldSceneId ? '#000' : '#fff'}
+                                            style={{ marginRight: 8 }}
+                                        />
+                                        <Text style={[styles.heroButtonText, profileUser.worldSceneId && { color: '#000' }]}>
+                                            {profileUser.worldSceneId ? 'Edit World' : 'Create World'}
+                                        </Text>
+                                    </BlurView>
                                 </TouchableOpacity>
 
-                                <TouchableOpacity
-                                    style={styles.secondaryButton}
-                                    onPress={() => navigation.navigate('Chat', { userId: profileUser.id })}
-                                >
-                                    <Text style={styles.secondaryButtonText}>Message</Text>
+                                <View style={{ width: 44 }} />{/* Spacer for balance */}
+                            </View>
+                        ) : (
+                            <View style={styles.buttonRow}>
+                                {/* Secondary: Message/Follow */}
+                                <TouchableOpacity style={styles.secondaryCircleBtn} onPress={isFollowing ? handleFollowToggle : handleFollowToggle}>
+                                    <Ionicons name={isFollowing ? "person-remove-outline" : "person-add-outline"} size={24} color={theme.colors.white} />
                                 </TouchableOpacity>
-                            </>
+
+                                {/* HERO: Enter World */}
+                                <TouchableOpacity
+                                    style={[styles.heroButton, styles.heroButtonActive]}
+                                    onPress={() => {
+                                        if (profileUser.worldSceneId) {
+                                            navigation.navigate('Figment', {
+                                                viewOnly: true,
+                                                worldSceneId: profileUser.worldSceneId,
+                                                mode: 'world' // Ensure it loads world logic
+                                            });
+                                        } else {
+                                            Alert.alert('No World', 'This user has not created a world yet.');
+                                        }
+                                    }}
+                                    disabled={!profileUser.worldSceneId}
+                                >
+                                    <BlurView intensity={20} style={styles.heroButtonBlur} tint="light">
+                                        <Ionicons name="enter-outline" size={22} color="#000" style={{ marginRight: 8 }} />
+                                        <Text style={[styles.heroButtonText, { color: '#000' }]}>Enter World</Text>
+                                    </BlurView>
+                                </TouchableOpacity>
+
+                                {/* Secondary: Message */}
+                                <TouchableOpacity style={styles.secondaryCircleBtn} onPress={() => navigation.navigate('Chat', { userId: profileUser.id })}>
+                                    <Ionicons name="chatbubble-outline" size={22} color={theme.colors.white} />
+                                </TouchableOpacity>
+                            </View>
                         )}
                     </View>
+                </BlurView>
+            </View>
 
-                    {/* Gallery or Private Lock */}
-                    {(isSelf || !profileUser.isPrivate || (profileUser.isPrivate && isFollowing)) ? (
-                        <TouchableOpacity style={styles.galleryButton} onPress={() => navigation.navigate('ProfileGallery', { userId: profileUser.id, username: profileUser.username })}>
-                            <LinearGradient
-                                colors={[theme.colors.primary, theme.colors.primary]}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
-                                style={styles.galleryGradient}
-                            >
-                                <Ionicons name="images" size={24} color={theme.colors.black} />
-                                <Text style={[styles.galleryButtonText, { color: theme.colors.black }]}>Open Gallery</Text>
-                                <Ionicons name="arrow-forward" size={20} color={theme.colors.black} />
-                            </LinearGradient>
-                        </TouchableOpacity>
-                    ) : (
-                        <View style={[styles.galleryButton, { backgroundColor: theme.colors.surfaceHighlight }]}>
-                            <View style={styles.galleryGradient}>
-                                <Ionicons name="lock-closed" size={24} color={theme.colors.textDim} />
-                                <Text style={[styles.galleryButtonText, { color: theme.colors.textDim }]}>Private Account</Text>
-                            </View>
-                        </View>
-                    )}
-
-                </View>
-
-                <View style={styles.bioContainer}>
-                    <Text style={styles.bioTitle}>About</Text>
-                    <Text style={styles.bioText}>{profileUser.bio || "No bio yet."}</Text>
-                </View>
-
+            {/* Gallery (Scrollable content below header if needed, or handle differently) */}
+            <ScrollView style={{ marginTop: 20, display: 'none' }} contentContainerStyle={{ paddingBottom: 100 }}>
+                {/* Hidden for now to focus on spatial hero */}
+                <View style={{ height: 100 }} />
             </ScrollView>
         </View>
     );
@@ -241,182 +260,185 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: theme.colors.background,
     },
-    background: {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        top: 0,
-        bottom: 0,
+    backgroundContainer: {
+        ...StyleSheet.absoluteFillObject,
     },
-    content: {
-        paddingTop: 60,
-        paddingBottom: 40,
-        alignItems: 'center',
-    },
-    header: {
-        alignItems: 'center',
+    backgroundImage: {
+        flex: 1,
         width: '100%',
-        paddingHorizontal: theme.spacing.l,
-        marginBottom: theme.spacing.xl,
+        height: '100%',
+    },
+    topNav: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingTop: 10,
+        zIndex: 10,
+    },
+    glassIconBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    redDot: {
+        position: 'absolute',
+        top: 10,
+        right: 12,
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: theme.colors.primary,
+    },
+    contentContainer: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        paddingHorizontal: 10,
+        paddingBottom: 20,
+    },
+    glassPanel: {
+        borderRadius: 32,
+        paddingTop: 50, // Space for avatar overlap
+        paddingHorizontal: 20,
+        alignItems: 'center',
+        overflow: 'visible',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(20,20,30,0.4)',
     },
     avatarContainer: {
-        marginBottom: theme.spacing.m,
+        position: 'absolute',
+        top: -50,
+        alignSelf: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+        elevation: 8,
     },
     avatar: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-        borderWidth: 4,
-        borderColor: theme.colors.surface,
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.8)',
     },
     verifiedBadge: {
         position: 'absolute',
-        bottom: 4,
-        right: 4,
+        bottom: 0,
+        right: 0,
         backgroundColor: theme.colors.primary,
+        borderRadius: 12,
         width: 24,
         height: 24,
-        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
         borderColor: theme.colors.background,
     },
+    identitySection: {
+        alignItems: 'center',
+        marginBottom: 20,
+        marginTop: 10,
+    },
     name: {
-        ...theme.typography.h1,
-        color: theme.colors.text,
-        textAlign: 'center',
-        marginBottom: 4,
+        color: '#fff',
+        fontSize: 22,
+        fontWeight: '700',
+        marginBottom: 2,
+        textShadowColor: 'rgba(0,0,0,0.5)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
     },
     username: {
-        color: theme.colors.textDim,
-        fontSize: 16,
-        marginBottom: theme.spacing.l,
+        color: 'rgba(255,255,255,0.7)',
+        fontSize: 14,
+        marginBottom: 8,
     },
-    statsContainer: {
+    bioText: {
+        color: 'rgba(255,255,255,0.9)',
+        fontSize: 14,
+        textAlign: 'center',
+        lineHeight: 20,
+    },
+    statsRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: theme.colors.surface,
-        paddingVertical: 16,
+        justifyContent: 'center',
+        marginBottom: 24,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        paddingVertical: 12,
         paddingHorizontal: 24,
-        borderRadius: theme.borderRadius.l,
-        marginBottom: theme.spacing.l,
-        width: '100%',
-        justifyContent: 'space-between',
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     statItem: {
         alignItems: 'center',
-        flex: 1,
+        paddingHorizontal: 16,
+    },
+    statNumber: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: '600',
+    },
+    statLabel: {
+        color: 'rgba(255,255,255,0.5)',
+        fontSize: 12,
+        marginTop: 2,
     },
     statDivider: {
         width: 1,
         height: 24,
-        backgroundColor: theme.colors.surfaceHighlight,
-    },
-    statNumber: {
-        color: theme.colors.text,
-        fontSize: 18,
-        fontWeight: '700',
-        marginBottom: 4,
-    },
-    statLabel: {
-        color: theme.colors.textDim,
-        fontSize: 12,
+        backgroundColor: 'rgba(255,255,255,0.1)',
     },
     actionContainer: {
-        flexDirection: 'row',
-        gap: 12,
         width: '100%',
-        marginBottom: 16,
-    },
-    primaryButton: {
-        flex: 1,
-        backgroundColor: theme.colors.surfaceHighlight,
-        paddingVertical: 14,
-        borderRadius: theme.borderRadius.m,
         alignItems: 'center',
     },
-    primaryButtonText: {
-        color: theme.colors.text,
-        fontWeight: '600',
-        fontSize: 16,
-    },
-    secondaryButton: {
-        flex: 1,
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        paddingVertical: 14,
-        borderRadius: theme.borderRadius.m,
-        alignItems: 'center',
-    },
-    secondaryButtonText: {
-        color: theme.colors.text,
-        fontWeight: '600',
-        fontSize: 16,
-    },
-    galleryButton: {
-        width: '100%',
-        borderRadius: theme.borderRadius.m,
-        overflow: 'hidden',
-        marginTop: 8,
-    },
-    galleryGradient: {
+    buttonRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 16,
-        paddingHorizontal: 20,
+        gap: 16,
     },
-    galleryButtonText: {
-        color: theme.colors.white,
-        fontWeight: '700',
-        fontSize: 16,
-        flex: 1,
-        marginLeft: 12,
-    },
-    topNav: {
-        position: 'absolute',
-        top: 50, // Approximate Status Bar height + padding
-        left: 0,
-        right: 0,
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        paddingHorizontal: 20,
-        zIndex: 10,
-    },
-    iconBtn: {
-        width: 44,
-        height: 44,
+    secondaryCircleBtn: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: 'rgba(255,255,255,0.1)',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        borderRadius: 22,
-    },
-    redDot: {
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: '#FF3B30',
         borderWidth: 1,
-        borderColor: theme.colors.surface,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
-    bioContainer: {
+    heroButton: {
+        height: 56,
+        borderRadius: 28,
+        overflow: 'hidden',
+        minWidth: 180,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+    heroButtonActive: {
+        backgroundColor: '#FFD60A',
+        borderColor: '#FFD60A',
+    },
+    heroButtonBlur: {
         width: '100%',
-        paddingHorizontal: theme.spacing.l,
+        height: '100%',
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 24,
     },
-    bioTitle: {
-        color: theme.colors.text,
-        fontWeight: '600',
+    heroButtonText: {
+        color: '#fff',
         fontSize: 18,
-        marginBottom: 8,
+        fontWeight: '600',
     },
-    bioText: {
-        color: theme.colors.textSecondary,
-        lineHeight: 24,
-        fontSize: 15,
-    }
 });
