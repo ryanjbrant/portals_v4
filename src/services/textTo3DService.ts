@@ -39,16 +39,22 @@ export interface GenerationResult {
 }
 
 interface FalResult {
-    mesh?: {
+    model_glb?: {
         url: string;
         file_name?: string;
         file_size?: number;
     };
-    textures?: Array<{
+    thumbnail?: {
         url: string;
         file_name?: string;
-    }>;
+    };
+    seed?: number;
 }
+
+// Mobile-optimized settings for AR performance
+// Range: 40000-1500000, default 500000
+// 50K faces is a good balance for mobile AR
+const MOBILE_FACE_COUNT = 50000;
 
 /**
  * Generate a 3D object from a text prompt
@@ -68,12 +74,16 @@ export async function generateObjectFromText(
 
     try {
         console.log('[TextTo3D] Starting generation for prompt:', prompt);
+        console.log('[TextTo3D] Using mobile-optimized face count:', MOBILE_FACE_COUNT);
         onProgress?.({ status: 'queued', message: 'Starting generation...' });
 
-        // Call Fal.ai with queue subscription for progress updates
+        // Call Fal.ai with mobile-optimized settings
         const result = await fal.subscribe('fal-ai/hunyuan3d-v3/text-to-3d', {
             input: {
                 prompt: prompt,
+                face_count: MOBILE_FACE_COUNT, // Optimized for mobile AR (50K faces)
+                generate_type: 'Normal', // Textured model (can use 'LowPoly' for even lighter models)
+                enable_pbr: true, // Enable PBR materials for better rendering
             },
             logs: true,
             onQueueUpdate: (update) => {
@@ -94,15 +104,15 @@ export async function generateObjectFromText(
         const data = result.data as FalResult;
         console.log('[TextTo3D] Generation complete:', data);
 
-        if (!data.mesh?.url) {
-            throw new Error('No mesh URL in response');
+        if (!data.model_glb?.url) {
+            throw new Error('No model URL in response');
         }
 
         // Download the GLB file
         onProgress?.({ status: 'downloading', message: 'Downloading model...', progress: 70 });
-        console.log('[TextTo3D] Downloading GLB from:', data.mesh.url);
+        console.log('[TextTo3D] Downloading GLB from:', data.model_glb.url);
 
-        const response = await fetch(data.mesh.url);
+        const response = await fetch(data.model_glb.url);
         if (!response.ok) {
             throw new Error(`Failed to download model: ${response.status}`);
         }
