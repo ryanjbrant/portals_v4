@@ -25,6 +25,10 @@ const CategoryFeed = ({ category, isActive, onCommentPress, hideControls }: { ca
         if (category === 'Friends') {
             return relationships.following.includes(post.userId);
         }
+        // Special case: Artifacts shows all posts marked as artifacts
+        if (category === 'Artifacts') {
+            return post.isArtifact === true;
+        }
         // Default category matching
         const postCategory = post.category || 'Feed';
         return postCategory === category;
