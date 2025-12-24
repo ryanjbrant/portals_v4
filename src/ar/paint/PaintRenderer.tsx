@@ -8,8 +8,8 @@ import {
     ViroNode,
     ViroPolyline,
     ViroSphere,
-    ViroMaterials,
 } from '@reactvision/react-viro';
+import { getPaintMaterial } from '../MaterialPool';
 
 // ============ Types ============
 
@@ -113,39 +113,11 @@ function processStrokePoints(points: Vec3[], forActive: boolean = false): Vec3[]
     return interpolated;
 }
 
-// ============ Material Cache ============
-
-const materialCache: Set<string> = new Set();
+// ============ Material (via MaterialPool) ============
 
 function ensureMaterial(color: string): string {
-    const name = `paint_${color.replace('#', '')}`;
-
-    if (!materialCache.has(name)) {
-        try {
-            ViroMaterials.createMaterials({
-                [name]: {
-                    diffuseColor: color,
-                    lightingModel: 'Constant',
-                },
-            });
-            materialCache.add(name);
-        } catch (e) {
-            // Material may already exist
-        }
-    }
-
-    return name;
+    return getPaintMaterial(color);
 }
-
-// Ensure default material
-try {
-    ViroMaterials.createMaterials({
-        paint_default: {
-            diffuseColor: '#FF3366',
-            lightingModel: 'Constant',
-        },
-    });
-} catch (e) { }
 
 // ============ Seeded Random ============
 

@@ -10,7 +10,8 @@ import * as FileSystem from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 
 // Configuration
-const CACHE_DIR = FileSystem.cacheDirectory + 'media/';
+// Note: Using 'as any' because expo-file-system types may vary between versions
+const CACHE_DIR = ((FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '') + 'media/';
 const MAX_CACHE_SIZE_MB = 500;
 const MAX_CACHE_SIZE = MAX_CACHE_SIZE_MB * 1024 * 1024;
 const MAX_MEMORY_CACHE_ITEMS = 50;
@@ -88,9 +89,10 @@ async function initializeCache(): Promise<void> {
         for (const file of files) {
             try {
                 const filePath = CACHE_DIR + file;
-                const info = await FileSystem.getInfoAsync(filePath, { size: true });
+                const info = await FileSystem.getInfoAsync(filePath);
                 if (info.exists && !info.isDirectory) {
-                    const size = (info as any).size || 0;
+                    // Size may not always be available, default to 0
+                    const size = 'size' in info ? (info.size || 0) : 0;
                     cacheEntries.push({
                         localPath: filePath,
                         size,
@@ -200,8 +202,8 @@ async function getOrFetch(uri: string): Promise<string> {
         const downloadResult = await FileSystem.downloadAsync(uri, localPath);
 
         if (downloadResult.status === 200) {
-            const info = await FileSystem.getInfoAsync(localPath, { size: true });
-            const size = (info as any).size || 0;
+            const info = await FileSystem.getInfoAsync(localPath);
+            const size = info.exists && 'size' in info ? (info.size || 0) : 0;
 
             // Add to tracking
             cacheEntries.push({
