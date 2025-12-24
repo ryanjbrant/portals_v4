@@ -243,6 +243,27 @@ export const ProfileScreen = () => {
                             </View>
                         )}
                     </View>
+
+                    {/* Gallery Access */}
+                    {(isSelf || !profileUser.isPrivate || (profileUser.isPrivate && isFollowing)) ? (
+                        <TouchableOpacity
+                            style={styles.galleryButton}
+                            onPress={() => navigation.navigate('ProfileGallery', { userId: profileUser.id, username: profileUser.username })}
+                        >
+                            <BlurView intensity={10} tint="light" style={styles.galleryButtonBlur}>
+                                <Ionicons name="grid-outline" size={20} color="rgba(255,255,255,0.8)" />
+                                <Text style={styles.galleryButtonText}>Open Gallery</Text>
+                                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.5)" />
+                            </BlurView>
+                        </TouchableOpacity>
+                    ) : (
+                        <View style={styles.galleryButton}>
+                            <BlurView intensity={10} tint="dark" style={styles.galleryButtonBlur}>
+                                <Ionicons name="lock-closed-outline" size={20} color="rgba(255,255,255,0.5)" />
+                                <Text style={[styles.galleryButtonText, { color: 'rgba(255,255,255,0.5)' }]}>Private Account</Text>
+                            </BlurView>
+                        </View>
+                    )}
                 </BlurView>
             </View>
 
@@ -440,5 +461,28 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 18,
         fontWeight: '600',
+    },
+    galleryButton: {
+        marginTop: 24,
+        width: '100%',
+        borderRadius: 20,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    galleryButtonBlur: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 16,
+        paddingHorizontal: 20,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
+    galleryButtonText: {
+        color: 'rgba(255,255,255,0.9)',
+        fontSize: 16,
+        fontWeight: '500',
+        flex: 1,
+        marginLeft: 12,
     },
 });
